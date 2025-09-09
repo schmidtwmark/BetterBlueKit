@@ -2,6 +2,8 @@
 
 A Swift package for interacting with Hyundai BlueLink and Kia Connect services. This package provides a modern, type-safe interface for controlling your Hyundai or Kia vehicle using Swift's async/await pattern.
 
+This is used by the [BetterBlue app](https://github.com/schmidtwmark/BetterBlue)
+
 ## Requirements
 
 - iOS 15.0+ / macOS 12.0+
