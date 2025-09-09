@@ -23,10 +23,12 @@ public final class KiaAPIEndpointProvider {
         accountId = configuration.accountId
     }
 
-    // Constants matching Python implementation
-    private let baseURL = "api.owners.kia.com"
+    // Use region-specific base URL
+    private var baseURL: String {
+        region.apiBaseURL(for: .kia)
+    }
     private var apiURL: String {
-        "https://\(baseURL)/apigw/v1/"
+        "\(baseURL)/apigw/v1/"
     }
 
     private let deviceId: String = {
@@ -44,11 +46,14 @@ public final class KiaAPIEndpointProvider {
         formatter.timeZone = TimeZone(abbreviation: "GMT")
         formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss 'GMT'"
 
+        // Extract host from baseURL (remove https:// prefix)
+        let hostName = baseURL.replacingOccurrences(of: "https://", with: "")
+
         return [
             "content-type": "application/json;charset=UTF-8", "accept": "application/json, text/plain, */*",
             "accept-encoding": "gzip, deflate, br", "accept-language": "en-US,en;q=0.9",
             "apptype": "L", "appversion": "7.15.2", "clientid": "MWAMOBILE", "from": "SPA",
-            "host": baseURL, "language": "0", "offset": "\(offset)", "ostype": "Android",
+            "host": hostName, "language": "0", "offset": "\(offset)", "ostype": "Android",
             "osversion": "11", "secretkey": "98er-w34rf-ibf3-3f6h", "to": "APIGW",
             "tokentype": "G", "user-agent": "okhttp/4.10.0", "deviceid": deviceId,
             "date": formatter.string(from: Date())

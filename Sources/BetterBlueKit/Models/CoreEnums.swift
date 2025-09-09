@@ -30,6 +30,28 @@ public enum Brand: String, Codable, CaseIterable {
             return [.hyundai, .kia]
         #endif
     }
+
+    public static func hyundaiBaseUrl(region: Region) -> String {
+        switch region {
+        case .usa: return "https://api.telematics.hyundaiusa.com"
+        case .canada: return "https://mybluelink.ca"
+        case .europe: return "https://prd.eu-ccapi.hyundai.com:8080"
+        case .australia: return "https://au-apigw.ccs.hyundai.com.au:8080"
+        case .china: return "https://prd.cn-ccapi.hyundai.com"
+        case .india: return "https://prd.in-ccapi.hyundai.connected-car.io:8080"
+        }
+    }
+
+    public static func kiaBaseUrl(region: Region) -> String {
+        switch region {
+        case .usa: return "https://api.owners.kia.com"
+        case .canada: return "https://kiaconnect.ca"
+        case .europe: return "https://prd.eu-ccapi.kia.com:8080"
+        case .australia: return "https://au-apigw.ccs.kia.com.au:8082"
+        case .china: return "https://prd.cn-ccapi.kia.com"
+        case .india: return "https://prd.in-ccapi.kia.connected-car.io:8080"
+        }
+    }
 }
 
 public func isTestAccount(username: String, password: String) -> Bool {
@@ -41,15 +63,13 @@ public enum Region: String, CaseIterable, Codable {
     case australia = "AU", china = "CN", india = "IN"
 
     public func apiBaseURL(for brand: Brand) -> String {
-        switch (self, brand) {
-        case (.usa, .hyundai): "https://api.telematics.hyundaiusa.com"
-        case (.usa, .kia): "https://prd.us-ccapi.kia.com:8080"
-        case (.canada, _): "https://prd.ca-ccapi.kia.com:8080"
-        case (.europe, _): "https://prd.eu-ccapi.kia.com:8080"
-        case (.australia, _): "https://prd.au-ccapi.kia.com:8080"
-        case (.china, _): "https://prd.cn-ccapi.kia.com:8080"
-        case (.india, _): "https://prd.in-ccapi.kia.com:8080"
-        case (_, .fake): "https://fake.api.testing.com"
+        switch brand {
+        case .hyundai:
+            return Brand.hyundaiBaseUrl(region: self)
+        case .kia:
+            return Brand.kiaBaseUrl(region: self)
+        case .fake:
+            return "https://fake.api.testing.com"
         }
     }
 }
