@@ -58,6 +58,19 @@ public func isTestAccount(username: String, password: String) -> Bool {
     username.lowercased() == "testaccount@betterblue.com" && password == "betterblue"
 }
 
+public enum FuelType: String, CaseIterable, Codable {
+    case gas
+    case electric
+
+    init(number: Int) {
+        self = switch number {
+        case 0: .gas
+        case 2: .electric
+        default: .gas
+        }
+    }
+}
+
 public enum Region: String, CaseIterable, Codable {
     case usa = "US", canada = "CA", europe = "EU"
     case australia = "AU", china = "CN", india = "IN"

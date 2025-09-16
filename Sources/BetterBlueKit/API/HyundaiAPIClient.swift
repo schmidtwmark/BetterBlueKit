@@ -276,17 +276,28 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
         return statusData
     }
 
+    private func fuelRanges(from statusData: [String: Any]) -> [FuelType: Distance] {
+
+        guard let evStatusData = statusData["evStatus"] as? [String: Any] else { return [:]}
+
+        let distances = evStatusData["drvDistance"] as? [[String: Any]] ?? [[:]]
+        return distances.reduce(into: [FuelType: Distance]()) { dict, distance in
+            let type = distance["type"] as? Int ?? 0
+
+            let rangeByFuelData = distance["rangeByFuel"] as? [String: Any] ?? [:]
+            let totalAvailableRangeData = rangeByFuelData["totalAvailableRange"] as? [String: Any] ?? [:]
+
+            dict[FuelType(number: type)] = Distance(
+                length: totalAvailableRangeData["value"] as? Double ?? 0,
+                units: Distance.Units(totalAvailableRangeData["unit"] as? Int ?? 2),
+            )
+        }
+
+    }
+
     private func parseEVStatus(from statusData: [String: Any]) -> VehicleStatus.EVStatus? {
-        guard let evStatusData = statusData["evStatus"] as? [String: Any] else { return nil }
-
-        let drvDistanceData = (evStatusData["drvDistance"] as? [[String: Any]] ?? [[:]])[0]
-        let rangeByFuelData = drvDistanceData["rangeByFuel"] as? [String: Any] ?? [:]
-        let totalAvailableRangeData = rangeByFuelData["totalAvailableRange"] as? [String: Any] ?? [:]
-
-        let range = Distance(
-            length: totalAvailableRangeData["value"] as? Double ?? 0,
-            units: Distance.Units(totalAvailableRangeData["unit"] as? Int ?? 2),
-        )
+        guard let evStatusData = statusData["evStatus"] as? [String: Any],
+                let evRange = fuelRanges(from: statusData)[.electric] else { return nil }
 
         let fuelPercentage = evStatusData["batteryStatus"] as? Double ?? 0
 
@@ -297,18 +308,15 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
                 evStatusData["batteryFstChrgPower"] as? Double ?? 0,
             ),
             pluggedIn: (evStatusData["batteryPlugin"] as? Int ?? 0) != 0,
-            evRange: VehicleStatus.FuelRange(range: range, percentage: fuelPercentage),
+            evRange: VehicleStatus.FuelRange(range: evRange, percentage: fuelPercentage),
         )
     }
 
     private func parseGasRange(from statusData: [String: Any]) -> VehicleStatus.FuelRange? {
-        guard let distanceToEmptyData = statusData["distanceToEmpty"] as? [String: Any],
-              let rangeValue = distanceToEmptyData["value"] as? Double,
-              let rangeUnit = distanceToEmptyData["unit"] as? Int,
-              let fuelLevel = statusData["fuelLevel"] as? Double else { return nil }
+         guard let fuelLevel = statusData["fuelLevel"] as? Double,
+               let gasRange = fuelRanges(from: statusData)[.gas] else { return nil }
 
-        let range = Distance(length: rangeValue, units: Distance.Units(rangeUnit))
-        return VehicleStatus.FuelRange(range: range, percentage: fuelLevel)
+        return VehicleStatus.FuelRange(range: gasRange, percentage: fuelLevel)
     }
 
     private func parseLocation(from statusData: [String: Any]) -> VehicleStatus.Location {
