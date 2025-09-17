@@ -244,7 +244,7 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
 
     public func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus {
         let statusData = try extractStatusData(from: data)
-        let evStatus = parseEVStatus(from: statusData)
+        let evStatus = parseEVStatus(from: statusData, vehicle: vehicle)
         let gasRange = parseGasRange(from: statusData)
         let location = parseLocation(from: statusData)
         let lockStatus = parseLockStatus(from: statusData)
@@ -295,9 +295,20 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
 
     }
 
-    private func parseEVStatus(from statusData: [String: Any]) -> VehicleStatus.EVStatus? {
-        guard let evStatusData = statusData["evStatus"] as? [String: Any],
-                let evRange = fuelRanges(from: statusData)[.electric] else { return nil }
+    private func parseEVStatus(from statusData: [String: Any], vehicle: Vehicle) -> VehicleStatus.EVStatus? {
+        guard let evStatusData = statusData["evStatus"] as? [String: Any] else { return nil }
+        let ranges = fuelRanges(from: statusData)
+
+        // Sometimes, Hyundai chooses to not report the correct driving distance fuel type, and it just gets a 0
+        // To correct this, if we know this is an EV and there's a single driving distance,
+        // let's just use whatever is first
+        let evRange: Distance
+        if let range = ranges.first, ranges.count == 1 && vehicle.isElectric {
+            evRange = range.value
+        } else {
+            guard let range = ranges[.electric] else { return nil }
+            evRange = range
+        }
 
         let fuelPercentage = evStatusData["batteryStatus"] as? Double ?? 0
 
