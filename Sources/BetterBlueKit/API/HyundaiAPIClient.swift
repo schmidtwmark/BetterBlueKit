@@ -245,7 +245,7 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
     public func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus {
         let statusData = try extractStatusData(from: data)
         let evStatus = parseEVStatus(from: statusData, vehicle: vehicle)
-        let gasRange = parseGasRange(from: statusData)
+        let gasRange = parseGasRange(from: statusData, vehicle: vehicle)
         let location = parseLocation(from: statusData)
         let lockStatus = parseLockStatus(from: statusData)
         let climateStatus = parseClimateStatus(from: statusData)
@@ -296,14 +296,16 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
     }
 
     private func parseEVStatus(from statusData: [String: Any], vehicle: Vehicle) -> VehicleStatus.EVStatus? {
-        guard let evStatusData = statusData["evStatus"] as? [String: Any] else { return nil }
+        guard vehicle.isElectric,
+            let evStatusData = statusData["evStatus"] as? [String: Any] else { return nil }
         let ranges = fuelRanges(from: statusData)
 
         // Sometimes, Hyundai chooses to not report the correct driving distance fuel type, and it just gets a 0
         // To correct this, if we know this is an EV and there's a single driving distance,
-        // let's just use whatever is first
+        // let's just use whatever is first. This may cause problems for PHEVs in the future
+        // but I just want to get this working for today
         let evRange: Distance
-        if let range = ranges.first, ranges.count == 1 && vehicle.isElectric {
+        if let range = ranges.first, ranges.count == 1 {
             evRange = range.value
         } else {
             guard let range = ranges[.electric] else { return nil }
@@ -323,8 +325,9 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
         )
     }
 
-    private func parseGasRange(from statusData: [String: Any]) -> VehicleStatus.FuelRange? {
-         guard let fuelLevel = statusData["fuelLevel"] as? Double,
+    private func parseGasRange(from statusData: [String: Any], vehicle: Vehicle) -> VehicleStatus.FuelRange? {
+        guard !vehicle.isElectric,
+            let fuelLevel = statusData["fuelLevel"] as? Double,
                let gasRange = fuelRanges(from: statusData)[.gas] else { return nil }
 
         return VehicleStatus.FuelRange(range: gasRange, percentage: fuelLevel)
