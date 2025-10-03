@@ -220,12 +220,10 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
                let nickname = vehicleDetails["nickName"] as? String,
                let evStatus = vehicleDetails["evStatus"] as? String,
                let generation = vehicleDetails["vehicleGeneration"] as? String {
-                // Parse odometer field
                 let odometer = Distance(
-                    length: Double(vehicleDetails["odometer"] as? String ?? "0") ?? 0,
-                    units: .miles,
+                    length:
+                    extractNumber(from: vehicleDetails["odometer"]) ?? 0, units: .miles
                 )
-
                 let vehicle = Vehicle(
                     vin: vin,
                     regId: regId,
@@ -277,27 +275,25 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
     }
 
     private func fuelRanges(from statusData: [String: Any]) -> [FuelType: Distance] {
-
-        guard let evStatusData = statusData["evStatus"] as? [String: Any] else { return [:]}
+        guard let evStatusData = statusData["evStatus"] as? [String: Any] else { return [:] }
 
         let distances = evStatusData["drvDistance"] as? [[String: Any]] ?? [[:]]
         return distances.reduce(into: [FuelType: Distance]()) { dict, distance in
-            let type = distance["type"] as? Int ?? 0
+            let type: Int = extractNumber(from: distance["type"]) ?? 0
 
             let rangeByFuelData = distance["rangeByFuel"] as? [String: Any] ?? [:]
             let totalAvailableRangeData = rangeByFuelData["totalAvailableRange"] as? [String: Any] ?? [:]
 
             dict[FuelType(number: type)] = Distance(
-                length: totalAvailableRangeData["value"] as? Double ?? 0,
-                units: Distance.Units(totalAvailableRangeData["unit"] as? Int ?? 2),
+                length: extractNumber(from: totalAvailableRangeData["value"]) ?? 0,
+                units: Distance.Units(extractNumber(from: totalAvailableRangeData["unit"]) ?? 2),
             )
         }
-
     }
 
     private func parseEVStatus(from statusData: [String: Any], vehicle: Vehicle) -> VehicleStatus.EVStatus? {
         guard vehicle.isElectric,
-            let evStatusData = statusData["evStatus"] as? [String: Any] else { return nil }
+              let evStatusData = statusData["evStatus"] as? [String: Any] else { return nil }
         let ranges = fuelRanges(from: statusData)
 
         // Sometimes, Hyundai chooses to not report the correct driving distance fuel type, and it just gets a 0
@@ -312,23 +308,23 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
             evRange = range
         }
 
-        let fuelPercentage = evStatusData["batteryStatus"] as? Double ?? 0
+        let fuelPercentage: Double = extractNumber(from: evStatusData["batteryStatus"]) ?? 0
 
         return VehicleStatus.EVStatus(
             charging: evStatusData["batteryCharge"] as? Bool ?? false,
             chargeSpeed: max(
-                evStatusData["batteryStndChrgPower"] as? Double ?? 0,
-                evStatusData["batteryFstChrgPower"] as? Double ?? 0,
+                extractNumber(from: evStatusData["batteryStndChrgPower"]) ?? 0,
+                extractNumber(from: evStatusData["batteryFstChrgPower"]) ?? 0
             ),
-            pluggedIn: (evStatusData["batteryPlugin"] as? Int ?? 0) != 0,
+            pluggedIn: (extractNumber(from: evStatusData["batteryPlugin"]) ?? 0) != 0,
             evRange: VehicleStatus.FuelRange(range: evRange, percentage: fuelPercentage),
         )
     }
 
     private func parseGasRange(from statusData: [String: Any], vehicle: Vehicle) -> VehicleStatus.FuelRange? {
         guard !vehicle.isElectric,
-            let fuelLevel = statusData["fuelLevel"] as? Double,
-               let gasRange = fuelRanges(from: statusData)[.gas] else { return nil }
+              let fuelLevel: Double = extractNumber(from: statusData["fuelLevel"]),
+              let gasRange = fuelRanges(from: statusData)[.gas] else { return nil }
 
         return VehicleStatus.FuelRange(range: gasRange, percentage: fuelLevel)
     }
@@ -338,8 +334,8 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
         let coordData = vehicleLocationData["coord"] as? [String: Any] ?? [:]
 
         return VehicleStatus.Location(
-            latitude: coordData["lat"] as? Double ?? 0,
-            longitude: coordData["lon"] as? Double ?? 0,
+            latitude: extractNumber(from: coordData["lat"]) ?? 0,
+            longitude: extractNumber(from: coordData["lon"]) ?? 0
         )
     }
 
@@ -353,8 +349,8 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
         return VehicleStatus.ClimateStatus(
             defrostOn: statusData["defrost"] as? Bool ?? false,
             airControlOn: statusData["airCtrlOn"] as? Bool ?? false,
-            steeringWheelHeatingOn: (statusData["steerWheelHeat"] as? Int ?? 0) != 0,
-            temperature: Temperature(units: airTemp["unit"] as? Int, value: airTemp["value"] as? String),
+            steeringWheelHeatingOn: (extractNumber(from: statusData["steerWheelHeat"]) ?? 0) != 0,
+            temperature: Temperature(units: extractNumber(from: airTemp["unit"]), value: airTemp["value"] as? String)
         )
     }
 

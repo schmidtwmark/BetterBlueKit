@@ -278,3 +278,16 @@ public class APIClient<Provider: APIEndpointProvider> {
 
 // Extend the generic APIClient to conform to the protocol
 extension APIClient: APIClientProtocol {}
+
+func extractNumber<T: LosslessStringConvertible>(from value: Any?) -> T? {
+    guard let value = value else {
+        return nil
+    }
+    if let num = value as? T {
+        return num
+    }
+    if let numString = value as? String {
+        return T(numString)
+    }
+    return nil
+}

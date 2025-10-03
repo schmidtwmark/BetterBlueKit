@@ -36,6 +36,20 @@ extension APIClient {
             options: .regularExpression,
         )
 
+        // Redact latitude/longitude coordinates to protect user location privacy
+        redacted = redacted.replacingOccurrences(
+            of: #"("latitude"|"longitude"|"lat"|"lng"|"lon")\s*:\s*[-+]?\d+\.?\d*"#,
+            with: "$1\":[REDACTED]",
+            options: .regularExpression,
+        )
+
+        // Redact coordinate pairs in arrays or objects
+        redacted = redacted.replacingOccurrences(
+            of: #"[-+]?\d{1,3}\.\d{3,10}\s*,\s*[-+]?\d{1,3}\.\d{3,10}"#,
+            with: "[LOCATION_REDACTED]",
+            options: .regularExpression,
+        )
+
         return redacted
     }
 

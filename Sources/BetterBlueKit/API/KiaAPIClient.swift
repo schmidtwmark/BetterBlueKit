@@ -27,6 +27,7 @@ public final class KiaAPIEndpointProvider {
     private var baseURL: String {
         region.apiBaseURL(for: .kia)
     }
+
     private var apiURL: String {
         "\(baseURL)/apigw/v1/"
     }
@@ -90,12 +91,12 @@ public final class KiaAPIEndpointProvider {
     private func checkForKiaSpecificErrors(data: Data) throws {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let status = json["status"] as? [String: Any],
-              let errorCode = status["errorCode"] as? Int,
+              let errorCode: Int = extractNumber(from: status["errorCode"]),
               errorCode != 0 else { return }
 
         let errorMessage = status["errorMessage"] as? String ?? "Unknown Kia API error"
-        let statusCode = status["statusCode"] as? Int ?? -1
-        let errorType = status["errorType"] as? Int ?? -1
+        let statusCode: Int = extractNumber(from: status["statusCode"]) ?? -1
+        let errorType: Int = extractNumber(from: status["errorType"]) ?? -1
         let messageLower = errorMessage.lowercased()
 
         // Check specific error patterns
@@ -247,10 +248,10 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
                let nickname = entry["nickName"] as? String,
                let vehicleKey = entry["vehicleKey"] as? String,
                let generation = entry["genType"] as? String,
-               let fuelType = entry["fuelType"] as? Int {
+               let fuelType: Int = extractNumber(from: entry["fuelType"]) {
                 // Parse mileage field (always in miles)
                 let odometer = Distance(
-                    length: Double(entry["mileage"] as? String ?? "0") ?? 0,
+                    length: extractNumber(from: entry["mileage"]) ?? 0,
                     units: .miles,
                 )
 
@@ -311,7 +312,7 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
 
     private func parseKiaEVStatus(from vehicleStatus: [String: Any]) -> VehicleStatus.EVStatus? {
         let evStatusData = vehicleStatus["evStatus"] as? [String: Any] ?? [:]
-        let batteryStatus = evStatusData["batteryStatus"] as? Double ?? 0
+        let batteryStatus: Double = extractNumber(from: evStatusData["batteryStatus"]) ?? 0
         guard batteryStatus > 0 else { return nil }
 
         let drvDistance = evStatusData["drvDistance"] as? [[String: Any]] ?? []
@@ -319,15 +320,15 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
         let evModeRange = rangeInfo["evModeRange"] as? [String: Any] ?? [:]
 
         let evRange = Distance(
-            length: evModeRange["value"] as? Double ?? 0,
-            units: Distance.Units(evModeRange["unit"] as? Int ?? 3),
+            length: extractNumber(from: evModeRange["value"]) ?? 0,
+            units: Distance.Units(extractNumber(from: evModeRange["unit"]) ?? 3)
         )
 
         return VehicleStatus.EVStatus(
             charging: evStatusData["batteryCharge"] as? Bool ?? false,
             chargeSpeed: max(
-                evStatusData["batteryStndChrgPower"] as? Double ?? 0,
-                evStatusData["batteryFstChrgPower"] as? Double ?? 0,
+                extractNumber(from: evStatusData["batteryStndChrgPower"]) ?? 0,
+                extractNumber(from: evStatusData["batteryFstChrgPower"]) ?? 0
             ),
             pluggedIn: evStatusData["batteryPlugin"] as? Bool ?? false,
             evRange: VehicleStatus.FuelRange(range: evRange, percentage: batteryStatus),
@@ -336,9 +337,9 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
 
     private func parseKiaGasRange(from vehicleStatus: [String: Any]) -> VehicleStatus.FuelRange? {
         guard let distanceToEmptyData = vehicleStatus["distanceToEmpty"] as? [String: Any],
-              let gasRangeValue = distanceToEmptyData["value"] as? Double,
-              let gasRangeUnit = distanceToEmptyData["unit"] as? Int,
-              let fuelLevel = vehicleStatus["fuelLevel"] as? Double else { return nil }
+              let gasRangeValue: Double = extractNumber(from: distanceToEmptyData["value"]),
+              let gasRangeUnit: Int = extractNumber(from: distanceToEmptyData["unit"]),
+              let fuelLevel: Double = extractNumber(from: vehicleStatus["fuelLevel"]) else { return nil }
 
         let gasRangeDistance = Distance(length: gasRangeValue, units: Distance.Units(gasRangeUnit))
         return VehicleStatus.FuelRange(range: gasRangeDistance, percentage: fuelLevel)
@@ -348,7 +349,10 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
         let location = lastVehicleInfo["location"] as? [String: Any] ?? [:]
         let coord = location["coord"] as? [String: Any] ?? [:]
 
-        return VehicleStatus.Location(latitude: coord["lat"] as? Double ?? 0, longitude: coord["lon"] as? Double ?? 0)
+        return VehicleStatus.Location(
+            latitude: extractNumber(from: coord["lat"]) ?? 0,
+            longitude: extractNumber(from: coord["lon"]) ?? 0
+        )
     }
 
     private func parseKiaLockStatus(from vehicleStatus: [String: Any]) -> VehicleStatus.LockStatus {
@@ -363,8 +367,8 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
         return VehicleStatus.ClimateStatus(
             defrostOn: climate["defrost"] as? Bool ?? false,
             airControlOn: climate["airCtrl"] as? Bool ?? false,
-            steeringWheelHeatingOn: (heatingAccessory["steeringWheel"] as? Int ?? 0) != 0,
-            temperature: Temperature(units: airTemp["unit"] as? Int, value: airTemp["value"] as? String),
+            steeringWheelHeatingOn: (extractNumber(from: heatingAccessory["steeringWheel"]) ?? 0) != 0,
+            temperature: Temperature(units: extractNumber(from: airTemp["unit"]), value: airTemp["value"] as? String)
         )
     }
 
