@@ -330,7 +330,7 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
                 extractNumber(from: evStatusData["batteryStndChrgPower"]) ?? 0,
                 extractNumber(from: evStatusData["batteryFstChrgPower"]) ?? 0
             ),
-            pluggedIn: evStatusData["batteryPlugin"] as? Bool ?? false,
+            pluggedIn: (extractNumber(from: evStatusData["batteryPlugin"]) ?? 0) != 0,
             evRange: VehicleStatus.FuelRange(range: evRange, percentage: batteryStatus),
         )
     }
