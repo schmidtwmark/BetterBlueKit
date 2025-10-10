@@ -107,10 +107,12 @@ public class APIClient<Provider: APIEndpointProvider> {
 
     private let endpointProvider: Provider
     let logSink: HTTPLogSink?
+    let urlSession: URLSession
 
     public init(
         configuration: APIClientConfiguration,
         endpointProvider: Provider,
+        urlSession: URLSession = .shared
     ) {
         region = configuration.region
         brand = configuration.brand
@@ -120,6 +122,7 @@ public class APIClient<Provider: APIEndpointProvider> {
         accountId = configuration.accountId
         self.endpointProvider = endpointProvider
         logSink = configuration.logSink
+        self.urlSession = urlSession
     }
 
     public func login() async throws -> AuthToken {
@@ -208,7 +211,7 @@ public class APIClient<Provider: APIEndpointProvider> {
         let requestBody = request.httpBody.flatMap { String(data: $0, encoding: .utf8) }
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await urlSession.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse else {
                 try handleInvalidResponse(

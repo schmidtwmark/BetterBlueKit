@@ -4,7 +4,7 @@ set -e
 
 # 1. Run tests with code coverage enabled
 echo "Running tests with code coverage..."
-swift test --enable-code-coverage
+swift package clean && swift build && swift test --enable-code-coverage
 
 # 2. Find the test binary and coverage data
 BINARY_PATH=$(find .build -type f -name BetterBlueKitPackageTests -print -quit)
