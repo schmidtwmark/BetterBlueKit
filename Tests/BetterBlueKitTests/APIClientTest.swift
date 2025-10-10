@@ -1,4 +1,41 @@
 // swiftlint:disable:next concurrency_safety
+// MARK: - Global Helper Functions
+
+@MainActor func makeHyundaiProvider(region: Region = .usa) -> HyundaiAPIEndpointProvider {
+    let config = APIClientConfiguration(
+        region: region,
+        brand: .hyundai,
+        username: "test@hyundai.com",
+        password: "testpassword",
+        pin: "1234",
+        accountId: UUID()
+    )
+    return HyundaiAPIEndpointProvider(configuration: config)
+}
+
+@MainActor func makeKiaProvider(region: Region = .usa) -> KiaAPIEndpointProvider {
+    let config = APIClientConfiguration(
+        region: region,
+        brand: .kia,
+        username: "test@kia.com",
+        password: "testpassword",
+        pin: "1234",
+        accountId: UUID()
+    )
+    return KiaAPIEndpointProvider(configuration: config)
+}
+
+@MainActor func makeConfiguration(region: Region = .usa, brand: Brand = .hyundai) -> APIClientConfiguration {
+    return APIClientConfiguration(
+        region: region,
+        brand: brand,
+        username: "test@\(brand == .hyundai ? "hyundai" : "kia").com",
+        password: "testpassword",
+        pin: "1234",
+        accountId: UUID()
+    )
+}
+
 // MARK: - Canned Response Models
 
 struct LoginResponse: Codable { let accessToken, refreshToken, pin: String; let expiresAt: Date }
@@ -1161,6 +1198,342 @@ struct KiaAPIClientTests {
         #expect(endpoint1.headers["deviceid"] != endpoint2.headers["deviceid"])
         #expect(endpoint1.headers["deviceid"]?.count == 55) // 22 chars + ":" + 32 chars UUID
         #expect(endpoint2.headers["deviceid"]?.count == 55)
+    }
+}
+
+// MARK: - Additional Edge Case Tests
+
+@Suite("APIClient Edge Cases Tests")
+struct APIClientEdgeCasesTests {
+    
+    @Test("Handle nil Content-Type header scenario")
+    @MainActor func testNilContentTypeHeader() {
+        let provider = makeHyundaiProvider()
+        let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
+        
+        let endpoint = APIEndpoint(
+            url: "https://api.hyundai.com/test",
+            method: .POST,
+            headers: [:], // No Content-Type header
+            body: nil
+        )
+        
+        let request = try! client.createRequest(from: endpoint)
+        
+        // Should set default Content-Type
+        #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+    }
+    
+    @Test("Handle custom Content-Type header")
+    @MainActor func testCustomContentTypeHeader() {
+        let provider = makeHyundaiProvider()
+        let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
+        
+        let endpoint = APIEndpoint(
+            url: "https://api.hyundai.com/test",
+            method: .POST,
+            headers: ["Content-Type": "application/xml"],
+            body: nil
+        )
+        
+        let request = try! client.createRequest(from: endpoint)
+        
+        // Should preserve custom Content-Type
+        #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/xml")
+    }
+    
+    @Test("Test extractResponseHeaders with mixed header types")
+    @MainActor func testExtractResponseHeaders() {
+        let provider = makeHyundaiProvider()
+        let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
+        
+        // Create a mock HTTP response with mixed header types
+        let url = URL(string: "https://test.com")!
+        let httpResponse = HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: [
+                "Content-Type": "application/json",
+                "Authorization": "Bearer token123",
+                "X-Custom-Header": "custom-value"
+            ]
+        )!
+        
+        let headers = client.extractResponseHeaders(from: httpResponse)
+        
+        #expect(headers["Content-Type"] == "application/json")
+        #expect(headers["Authorization"] == "Bearer token123")
+        #expect(headers["X-Custom-Header"] == "custom-value")
+    }
+    
+    @Test("Test RequestContext creation")
+    @MainActor func testRequestContextCreation() {
+        let request = URLRequest(url: URL(string: "https://test.com")!)
+        let headers = ["Authorization": "Bearer test"]
+        let body = "test body"
+        let startTime = Date()
+        
+        let context = APIClient<HyundaiAPIEndpointProvider>.RequestContext(
+            requestType: .login,
+            request: request,
+            requestHeaders: headers,
+            requestBody: body,
+            startTime: startTime
+        )
+        
+        #expect(context.requestType == .login)
+        #expect(context.request == request)
+        #expect(context.requestHeaders == headers)
+        #expect(context.requestBody == body)
+        #expect(context.startTime == startTime)
+    }
+    
+    @Test("Test APIClient generic conformance")
+    @MainActor func testAPIClientProtocolConformance() {
+        let provider = makeHyundaiProvider()
+        let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
+        
+        // Should conform to APIClientProtocol
+        let protocolClient: APIClientProtocol = client
+        #expect(protocolClient is APIClient<HyundaiAPIEndpointProvider>)
+    }
+}
+
+// MARK: - ExtractNumber Function Tests
+
+@Suite("ExtractNumber Function Tests")
+struct ExtractNumberFunctionTests {
+    
+    @Test("extractNumber with Double conversion")
+    func testExtractNumberDouble() {
+        let result: Double? = extractNumber(from: "123.45")
+        #expect(result == 123.45)
+        
+        let resultDirect: Double? = extractNumber(from: 67.89)
+        #expect(resultDirect == 67.89)
+        
+        let resultNil: Double? = extractNumber(from: nil)
+        #expect(resultNil == nil)
+        
+        let resultInvalid: Double? = extractNumber(from: "invalid")
+        #expect(resultInvalid == nil)
+    }
+    
+    @Test("extractNumber with Int conversion")
+    func testExtractNumberInt() {
+        let result: Int? = extractNumber(from: "123")
+        #expect(result == 123)
+        
+        let resultDirect: Int? = extractNumber(from: 456)
+        #expect(resultDirect == 456)
+        
+        let resultFloat: Int? = extractNumber(from: 78.0)
+        #expect(resultFloat == nil) // Float to Int conversion should fail
+        
+        let resultNil: Int? = extractNumber(from: nil)
+        #expect(resultNil == nil)
+    }
+    
+    @Test("extractNumber with Bool conversion")
+    func testExtractNumberBool() {
+        let resultTrue: Bool? = extractNumber(from: true)
+        #expect(resultTrue == true)
+        
+        let resultFalse: Bool? = extractNumber(from: false)
+        #expect(resultFalse == false)
+        
+        let resultStringTrue: Bool? = extractNumber(from: "true")
+        #expect(resultStringTrue == true)
+        
+        let resultStringFalse: Bool? = extractNumber(from: "false")
+        #expect(resultStringFalse == false)
+    }
+}
+
+// MARK: - APIClient Logging Edge Cases Tests
+
+@Suite("APIClient Logging Edge Cases Tests")
+struct APIClientLoggingEdgeCasesTests {
+    
+    @Test("HTTPRequestLogData with all fields")
+    @MainActor func testHTTPRequestLogDataComplete() {
+        let request = URLRequest(url: URL(string: "https://test.com")!)
+        let startTime = Date()
+        
+        let logData = APIClient<HyundaiAPIEndpointProvider>.HTTPRequestLogData(
+            requestType: .login,
+            request: request,
+            requestHeaders: ["Authorization": "Bearer test"],
+            requestBody: "test body",
+            responseStatus: 200,
+            responseHeaders: ["Content-Type": "application/json"],
+            responseBody: "test response",
+            error: "test error",
+            apiError: "test api error",
+            startTime: startTime
+        )
+        
+        #expect(logData.requestType == .login)
+        #expect(logData.request == request)
+        #expect(logData.requestHeaders["Authorization"] == "Bearer test")
+        #expect(logData.requestBody == "test body")
+        #expect(logData.responseStatus == 200)
+        #expect(logData.responseHeaders["Content-Type"] == "application/json")
+        #expect(logData.responseBody == "test response")
+        #expect(logData.error == "test error")
+        #expect(logData.apiError == "test api error")
+        #expect(logData.startTime == startTime)
+    }
+    
+    @Test("logHTTPRequest with nil URL")
+    @MainActor func testLogHTTPRequestWithNilURL() {
+        let provider = makeHyundaiProvider()
+        let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
+        
+        // Create request with nil URL scenario
+        var request = URLRequest(url: URL(string: "https://test.com")!)
+        request.url = nil // This creates the nil URL scenario
+        
+        let logData = APIClient<HyundaiAPIEndpointProvider>.HTTPRequestLogData(
+            requestType: .login,
+            request: request,
+            requestHeaders: [:],
+            requestBody: nil,
+            responseStatus: nil,
+            responseHeaders: [:],
+            responseBody: nil,
+            error: nil,
+            apiError: nil,
+            startTime: Date()
+        )
+        
+        // Test that it doesn't crash with nil URL and handles gracefully
+        client.logHTTPRequest(logData)
+    }
+    
+    @Test("logHTTPRequest with nil HTTP method")
+    @MainActor func testLogHTTPRequestWithNilMethod() {
+        let provider = makeHyundaiProvider()
+        let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
+        
+        // Create request with nil HTTP method
+        var request = URLRequest(url: URL(string: "https://test.com")!)
+        request.httpMethod = nil // This creates the nil method scenario
+        
+        let logData = APIClient<HyundaiAPIEndpointProvider>.HTTPRequestLogData(
+            requestType: .login,
+            request: request,
+            requestHeaders: [:],
+            requestBody: nil,
+            responseStatus: nil,
+            responseHeaders: [:],
+            responseBody: nil,
+            error: nil,
+            apiError: nil,
+            startTime: Date()
+        )
+        
+        // Test that it doesn't crash with nil method and handles gracefully
+        client.logHTTPRequest(logData)
+    }
+    
+    @Test("extractAPIError with Kia/Hyundai status pattern")
+    @MainActor func testExtractAPIErrorStatusPattern() {
+        let provider = makeHyundaiProvider()
+        let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
+        
+        let errorData = """
+        {
+            "status": {
+                "errorCode": 1001,
+                "errorMessage": "Invalid session token"
+            }
+        }
+        """.data(using: .utf8)!
+        
+        let result = client.extractAPIError(from: errorData)
+        #expect(result == "API Error 1001: Invalid session token")
+    }
+    
+    @Test("extractAPIError with zero errorCode")
+    @MainActor func testExtractAPIErrorZeroErrorCode() {
+        let provider = makeHyundaiProvider()
+        let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
+        
+        let successData = """
+        {
+            "status": {
+                "errorCode": 0,
+                "errorMessage": "Success"
+            }
+        }
+        """.data(using: .utf8)!
+        
+        let result = client.extractAPIError(from: successData)
+        #expect(result == nil) // Should return nil for errorCode 0
+    }
+    
+    @Test("extractAPIError with direct errorCode 502")
+    @MainActor func testExtractAPIErrorDirect502() {
+        let provider = makeHyundaiProvider()
+        let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
+        
+        let errorData = """
+        {
+            "errorCode": 502,
+            "errorMessage": "Bad Gateway"
+        }
+        """.data(using: .utf8)!
+        
+        let result = client.extractAPIError(from: errorData)
+        #expect(result == "API Error 502: Bad Gateway")
+    }
+    
+    @Test("extractAPIError with direct errorCode 502 no message")
+    @MainActor func testExtractAPIErrorDirect502NoMessage() {
+        let provider = makeHyundaiProvider()
+        let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
+        
+        let errorData = """
+        {
+            "errorCode": 502
+        }
+        """.data(using: .utf8)!
+        
+        let result = client.extractAPIError(from: errorData)
+        #expect(result == "API Error 502: Server error")
+    }
+    
+    @Test("extractAPIError with direct errorCode 401 no message")
+    @MainActor func testExtractAPIErrorDirect401NoMessage() {
+        let provider = makeHyundaiProvider()
+        let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
+        
+        let errorData = """
+        {
+            "errorCode": 401
+        }
+        """.data(using: .utf8)!
+        
+        let result = client.extractAPIError(from: errorData)
+        #expect(result == "API Error 401: Authentication error")
+    }
+    
+    @Test("extractAPIError with other errorCode")
+    @MainActor func testExtractAPIErrorOtherCode() {
+        let provider = makeHyundaiProvider()
+        let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
+        
+        let errorData = """
+        {
+            "errorCode": 999,
+            "errorMessage": "Unknown error"
+        }
+        """.data(using: .utf8)!
+        
+        let result = client.extractAPIError(from: errorData)
+        #expect(result == nil) // Should return nil for non-401/502 codes
     }
 }
 

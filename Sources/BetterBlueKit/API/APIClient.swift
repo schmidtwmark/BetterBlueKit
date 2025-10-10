@@ -177,7 +177,7 @@ public class APIClient<Provider: APIEndpointProvider> {
 
     // MARK: - Private Helper Methods
 
-    private func createRequest(from endpoint: APIEndpoint) throws -> URLRequest {
+    func createRequest(from endpoint: APIEndpoint) throws -> URLRequest {
         guard let url = URL(string: endpoint.url) else {
             throw HyundaiKiaAPIError(
                 message: "Invalid URL: \(endpoint.url)",
@@ -262,7 +262,7 @@ public class APIClient<Provider: APIEndpointProvider> {
         }
     }
 
-    private func extractResponseHeaders(from httpResponse: HTTPURLResponse) -> [String: String] {
+    func extractResponseHeaders(from httpResponse: HTTPURLResponse) -> [String: String] {
         httpResponse.allHeaderFields.reduce(into: [:]) { result, pair in
             if let key = pair.key as? String, let value = pair.value as? String {
                 result[key] = value
