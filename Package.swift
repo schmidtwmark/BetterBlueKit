@@ -14,9 +14,7 @@ let package = Package(
             targets: ["BetterBlueKit"],
         )
     ],
-    dependencies: [
-        .package(url: "https://github.com/SimplyDanny/SwiftLintPlugins", from: "0.61.0")
-    ],
+    dependencies: [],
     targets: [
         .target(
             name: "BetterBlueKit",
@@ -25,8 +23,7 @@ let package = Package(
             swiftSettings: [
                 .define("DEBUG", .when(configuration: .debug)),
                 .define("RELEASE", .when(configuration: .release))
-            ],
-            plugins: [.plugin(name: "SwiftLintBuildToolPlugin", package: "SwiftLintPlugins")],
+            ]
         )
     ],
     swiftLanguageModes: [.v5, .v6],
