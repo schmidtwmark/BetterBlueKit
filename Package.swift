@@ -27,6 +27,10 @@ let package = Package(
                 .define("RELEASE", .when(configuration: .release))
             ],
             plugins: [.plugin(name: "SwiftLintBuildToolPlugin", package: "SwiftLintPlugins")],
+        ),
+        .testTarget(
+            name: "BetterBlueKitTests",
+            dependencies: ["BetterBlueKit"]
         )
     ],
     swiftLanguageModes: [.v5, .v6],
