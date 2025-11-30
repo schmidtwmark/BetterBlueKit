@@ -56,5 +56,35 @@ public struct ClimateOptions: Codable, Equatable, Sendable {
     public var frontLeftSeat: Int = 0, frontRightSeat: Int = 0
     public var rearLeftSeat: Int = 0, rearRightSeat: Int = 0
     public var steeringWheel: Int = 0
+
+    // New fields added in v1.0.7-1.0.8 - made optional for backward compatibility
+    public var frontLeftVentilation: Bool? = false
+    public var frontRightVentilation: Bool? = false
+    public var rearLeftVentilation: Bool? = false
+    public var rearRightVentilation: Bool? = false
+    public var rearDefrost: Bool? = true
+
     public init() {}
+
+    // Safe getters and setters with default values
+    public var hasFrontLeftVentilation: Bool {
+        get { frontLeftVentilation ?? false }
+        set { frontLeftVentilation = newValue }
+    }
+    public var hasFrontRightVentilation: Bool {
+        get { frontRightVentilation ?? false }
+        set { frontRightVentilation = newValue }
+    }
+    public var hasRearLeftVentilation: Bool {
+        get { rearLeftVentilation ?? false }
+        set { rearLeftVentilation = newValue }
+    }
+    public var hasRearRightVentilation: Bool {
+        get { rearRightVentilation ?? false }
+        set { rearRightVentilation = newValue }
+    }
+    public var hasRearDefrost: Bool {
+        get { rearDefrost ?? true }
+        set { rearDefrost = newValue }
+    }
 }
