@@ -11,9 +11,9 @@ import Testing
 
 @Suite("HTTP Logging Tests")
 struct HTTPLoggingTests {
-    
+
     // MARK: - HTTPRequestType Tests
-    
+
     @Test("HTTPRequestType all cases")
     func testHTTPRequestTypeAllCases() {
         let allCases = HTTPRequestType.allCases
@@ -23,7 +23,7 @@ struct HTTPLoggingTests {
         #expect(allCases.contains(.fetchVehicleStatus))
         #expect(allCases.contains(.sendCommand))
     }
-    
+
     @Test("HTTPRequestType display names")
     func testHTTPRequestTypeDisplayNames() {
         #expect(HTTPRequestType.login.displayName == "Login")
@@ -31,7 +31,7 @@ struct HTTPLoggingTests {
         #expect(HTTPRequestType.fetchVehicleStatus.displayName == "Fetch Status")
         #expect(HTTPRequestType.sendCommand.displayName == "Send Command")
     }
-    
+
     @Test("HTTPRequestType raw values")
     func testHTTPRequestTypeRawValues() {
         #expect(HTTPRequestType.login.rawValue == "login")
@@ -39,26 +39,26 @@ struct HTTPLoggingTests {
         #expect(HTTPRequestType.fetchVehicleStatus.rawValue == "fetchVehicleStatus")
         #expect(HTTPRequestType.sendCommand.rawValue == "sendCommand")
     }
-    
+
     @Test("HTTPRequestType Codable")
     func testHTTPRequestTypeCodable() throws {
         let requestTypes = HTTPRequestType.allCases
-        
+
         for requestType in requestTypes {
             let encoded = try JSONEncoder().encode(requestType)
             let decoded = try JSONDecoder().decode(HTTPRequestType.self, from: encoded)
             #expect(decoded == requestType)
         }
     }
-    
+
     // MARK: - HTTPLog Tests
-    
+
     @Test("HTTPLog creation with all parameters")
     func testHTTPLogCreation() {
         let timestamp = Date()
         let accountId = UUID()
         let duration: TimeInterval = 1.5
-        
+
         let log = HTTPLog(
             timestamp: timestamp,
             accountId: accountId,
@@ -75,7 +75,7 @@ struct HTTPLoggingTests {
             duration: duration,
             stackTrace: "Stack trace here"
         )
-        
+
         #expect(log.timestamp == timestamp)
         #expect(log.accountId == accountId)
         #expect(log.requestType == .login)
@@ -91,12 +91,12 @@ struct HTTPLoggingTests {
         #expect(log.duration == duration)
         #expect(log.stackTrace == "Stack trace here")
     }
-    
+
     @Test("HTTPLog creation with minimal parameters")
     func testHTTPLogCreationMinimal() {
         let timestamp = Date()
         let accountId = UUID()
-        
+
         let log = HTTPLog(
             timestamp: timestamp,
             accountId: accountId,
@@ -111,7 +111,7 @@ struct HTTPLoggingTests {
             error: "Network error",
             duration: 0.5
         )
-        
+
         #expect(log.timestamp == timestamp)
         #expect(log.accountId == accountId)
         #expect(log.requestType == .fetchVehicles)
@@ -127,7 +127,7 @@ struct HTTPLoggingTests {
         #expect(log.duration == 0.5)
         #expect(log.stackTrace == nil)
     }
-    
+
     @Test("HTTPLog statusText for successful response")
     func testHTTPLogStatusTextSuccess() {
         let log = HTTPLog(
@@ -144,10 +144,10 @@ struct HTTPLoggingTests {
             error: nil,
             duration: 1.0
         )
-        
+
         #expect(log.statusText == "200")
     }
-    
+
     @Test("HTTPLog statusText for error response")
     func testHTTPLogStatusTextError() {
         let log = HTTPLog(
@@ -164,10 +164,10 @@ struct HTTPLoggingTests {
             error: nil,
             duration: 1.0
         )
-        
+
         #expect(log.statusText == "401")
     }
-    
+
     @Test("HTTPLog statusText for API error")
     func testHTTPLogStatusTextAPIError() {
         let log = HTTPLog(
@@ -185,10 +185,10 @@ struct HTTPLoggingTests {
             apiError: "API Error 1001: Invalid token",
             duration: 1.0
         )
-        
+
         #expect(log.statusText == "200 (API Error)")
     }
-    
+
     @Test("HTTPLog statusText for network error")
     func testHTTPLogStatusTextNetworkError() {
         let log = HTTPLog(
@@ -205,10 +205,10 @@ struct HTTPLoggingTests {
             error: "Network connection failed",
             duration: 1.0
         )
-        
+
         #expect(log.statusText == "Error")
     }
-    
+
     @Test("HTTPLog statusText for pending request")
     func testHTTPLogStatusTextPending() {
         let log = HTTPLog(
@@ -225,10 +225,10 @@ struct HTTPLoggingTests {
             error: nil,
             duration: 1.0
         )
-        
+
         #expect(log.statusText == "Pending")
     }
-    
+
     @Test("HTTPLog isSuccess for successful response")
     func testHTTPLogIsSuccessTrue() {
         let log = HTTPLog(
@@ -245,10 +245,10 @@ struct HTTPLoggingTests {
             error: nil,
             duration: 1.0
         )
-        
+
         #expect(log.isSuccess == true)
     }
-    
+
     @Test("HTTPLog isSuccess for error responses")
     func testHTTPLogIsSuccessFalse() {
         // Test 400 error
@@ -267,7 +267,7 @@ struct HTTPLoggingTests {
             duration: 1.0
         )
         #expect(log400.isSuccess == false)
-        
+
         // Test with network error
         let logNetworkError = HTTPLog(
             timestamp: Date(),
@@ -284,7 +284,7 @@ struct HTTPLoggingTests {
             duration: 1.0
         )
         #expect(logNetworkError.isSuccess == false)
-        
+
         // Test with API error
         let logAPIError = HTTPLog(
             timestamp: Date(),
@@ -302,7 +302,7 @@ struct HTTPLoggingTests {
             duration: 1.0
         )
         #expect(logAPIError.isSuccess == false)
-        
+
         // Test pending request
         let logPending = HTTPLog(
             timestamp: Date(),
@@ -320,7 +320,7 @@ struct HTTPLoggingTests {
         )
         #expect(logPending.isSuccess == false)
     }
-    
+
     @Test("HTTPLog formattedDuration")
     func testHTTPLogFormattedDuration() {
         let log1 = HTTPLog(
@@ -338,7 +338,7 @@ struct HTTPLoggingTests {
             duration: 1.5
         )
         #expect(log1.formattedDuration == "1.50s")
-        
+
         let log2 = HTTPLog(
             timestamp: Date(),
             accountId: UUID(),
@@ -355,14 +355,14 @@ struct HTTPLoggingTests {
         )
         #expect(log2.formattedDuration == "0.12s")
     }
-    
+
     @Test("HTTPLog preciseTimestamp")
     func testHTTPLogPreciseTimestamp() {
         // Create a specific date for consistent testing
         let calendar = Calendar.current
         let dateComponents = DateComponents(year: 2023, month: 10, day: 15, hour: 14, minute: 30, second: 25, nanosecond: 123_000_000)
         let specificDate = calendar.date(from: dateComponents)!
-        
+
         let log = HTTPLog(
             timestamp: specificDate,
             accountId: UUID(),
@@ -377,11 +377,11 @@ struct HTTPLoggingTests {
             error: nil,
             duration: 1.0
         )
-        
+
         // The format should be HH:mm:ss.SSS
         #expect(log.preciseTimestamp == "14:30:25.123")
     }
-    
+
     @Test("HTTPLog Codable")
     func testHTTPLogCodable() throws {
         let original = HTTPLog(
@@ -400,10 +400,10 @@ struct HTTPLoggingTests {
             duration: 2.5,
             stackTrace: "Stack trace"
         )
-        
+
         let encoded = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(HTTPLog.self, from: encoded)
-        
+
         #expect(abs(decoded.timestamp.timeIntervalSince(original.timestamp)) < 1.0)
         #expect(decoded.accountId == original.accountId)
         #expect(decoded.requestType == original.requestType)
@@ -419,9 +419,9 @@ struct HTTPLoggingTests {
         #expect(decoded.duration == original.duration)
         #expect(decoded.stackTrace == original.stackTrace)
     }
-    
+
     // MARK: - Edge Cases
-    
+
     @Test("HTTPLog with very long duration")
     func testHTTPLogLongDuration() {
         let log = HTTPLog(
@@ -438,10 +438,10 @@ struct HTTPLoggingTests {
             error: nil,
             duration: 123.456789
         )
-        
+
         #expect(log.formattedDuration == "123.46s")
     }
-    
+
     @Test("HTTPLog with zero duration")
     func testHTTPLogZeroDuration() {
         let log = HTTPLog(
@@ -458,10 +458,10 @@ struct HTTPLoggingTests {
             error: nil,
             duration: 0.0
         )
-        
+
         #expect(log.formattedDuration == "0.00s")
     }
-    
+
     @Test("HTTPLog with empty headers and body")
     func testHTTPLogEmptyData() {
         let log = HTTPLog(
@@ -478,7 +478,7 @@ struct HTTPLoggingTests {
             error: nil,
             duration: 1.0
         )
-        
+
         #expect(log.requestHeaders.isEmpty)
         #expect(log.requestBody == "")
         #expect(log.responseHeaders.isEmpty)

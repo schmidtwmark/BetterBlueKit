@@ -121,7 +121,7 @@ struct APIClientLoggingTests {
     func testLogHTTPRequest() async {
         actor LogFlag { var didLog = false; func set() { didLog = true } }
         let logFlag = LogFlag()
-        let logSink: HTTPLogSink = { log in Task { await logFlag.set() } }
+        let logSink: HTTPLogSink = { _ in Task { await logFlag.set() } }
         let apiClient = DummyAPIClient(logSink: logSink)
         let logData = APIClient<DummyProvider>.HTTPRequestLogData(
             requestType: .login,

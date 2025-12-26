@@ -1,203 +1,13 @@
 //
-//  HyundaiAPIClient.swift
+//  HyundaiAPI+Parsing.swift
 //  BetterBlueKit
 //
-//  Hyundai API Client Implementation
+//  Created by Mark Schmidt on 12/26/25.
 //
 
 import Foundation
 
-// MARK: - Hyundai API Endpoint Provider
-
-@MainActor
-public final class HyundaiAPIEndpointProvider {
-    private let region: Region
-    private let username: String
-    private let password: String
-    private let pin: String
-    private let accountId: UUID
-
-    public init(configuration: APIClientConfiguration) {
-        region = configuration.region
-        username = configuration.username
-        password = configuration.password
-        pin = configuration.pin
-        accountId = configuration.accountId
-    }
-
-    private var clientId: String {
-        switch region {
-        case .usa:
-            "m66129Bb-em93-SPAHYN-bZ91-am4540zp19920"
-        default:
-            "m0na2res08hlm125puuhqzpv"
-        }
-    }
-
-    private var clientSecret: String {
-        switch region {
-        case .usa:
-            "v558o935-6nne-423i-baa8"
-        default:
-            "PPaX5NpW4Dqono3oNoz9K5mZbK9RG5u2"
-        }
-    }
-
-    private func getEndpointForCommand(command: VehicleCommand, vehicle: Vehicle) -> URL {
-        let baseURL = region.apiBaseURL(for: .hyundai)
-
-        switch command {
-        case .unlock:
-            return URL(string: "\(baseURL)/ac/v2/rcs/rdo/on")!
-        case .lock:
-            return URL(string: "\(baseURL)/ac/v2/rcs/rdo/off")!
-        case .startClimate:
-            if vehicle.isElectric {
-                return URL(string: "\(baseURL)/ac/v2/evc/fatc/start")!
-            } else {
-                return URL(string: "\(baseURL)/ac/v2/rcs/rsc/start")!
-            }
-        case .stopClimate:
-            if vehicle.isElectric {
-                return URL(string: "\(baseURL)/ac/v2/evc/fatc/stop")!
-            } else {
-                return URL(string: "\(baseURL)/ac/v2/rcs/rsc/stop")!
-            }
-        case .startCharge:
-            return URL(string: "\(baseURL)/ac/v2/evc/charge/start")!
-        case .stopCharge:
-            return URL(string: "\(baseURL)/ac/v2/evc/charge/stop")!
-        }
-    }
-
-    private func getHeaders() -> [String: String] {
-        [
-            "client_id": clientId,
-            "clientSecret": clientSecret,
-            "Host": "api.telematics.hyundaiusa.com",
-            "User-Agent": "okhttp/3.12.0",
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Connection": "Keep-Alive"
-        ]
-    }
-
-    private func getAuthorizedHeaders(authToken: AuthToken, vehicle: Vehicle? = nil) -> [String: String] {
-        var headers = getHeaders()
-        headers["accessToken"] = authToken.accessToken
-        headers["language"] = "0"
-        headers["to"] = "ISS"
-        headers["encryptFlag"] = "false"
-        headers["from"] = "SPA"
-        headers["offset"] = "-5"
-        if let vehicle {
-            headers["gen"] = String(vehicle.generation)
-            headers["registrationId"] = vehicle.regId
-            headers["vin"] = vehicle.vin
-            headers["APPCLOUD-VIN"] = vehicle.vin
-        }
-        headers["brandIndicator"] = "H"
-        headers["origin"] = "https://api.telematics.hyundaiusa.com"
-        headers["referer"] = "https://api.telematics.hyundaiusa.com/login"
-        headers["sec-fetch-dest"] = "empty"
-        headers["sec-fetch-mode"] = "cors"
-        headers["sec-fetch-site"] = "same-origin"
-        headers["username"] = username
-        headers["blueLinkServicePin"] = pin
-        headers["refresh"] = "false"
-
-        // Generate current timestamp in the required format
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyyMMddHHmmss"
-        let timestamp = dateFormatter.string(from: Date())
-        headers["payloadGenerated"] = timestamp
-        headers["includeNonConnectedVehicles"] = "Y"
-
-        return headers
-    }
-}
-
-extension HyundaiAPIEndpointProvider: APIEndpointProvider {
-    public func loginEndpoint() -> APIEndpoint {
-        let loginURL = "\(region.apiBaseURL(for: .hyundai))/v2/ac/oauth/token"
-        let loginData = [
-            "username": username,
-            "password": password
-        ]
-
-        return APIEndpoint(
-            url: loginURL,
-            method: .POST,
-            headers: getHeaders(),
-            body: try? JSONSerialization.data(withJSONObject: loginData),
-        )
-    }
-
-    public func fetchVehiclesEndpoint(authToken: AuthToken) -> APIEndpoint {
-        let vehiclesURL = "\(region.apiBaseURL(for: .hyundai))/ac/v2/enrollment/details/\(username)"
-
-        return APIEndpoint(
-            url: vehiclesURL,
-            method: .GET,
-            headers: getAuthorizedHeaders(authToken: authToken),
-        )
-    }
-
-    public func fetchVehicleStatusEndpoint(for vehicle: Vehicle, authToken: AuthToken) -> APIEndpoint {
-        let statusURL = "\(region.apiBaseURL(for: .hyundai))/ac/v2/rcs/rvs/vehicleStatus"
-
-        return APIEndpoint(
-            url: statusURL,
-            method: .GET,
-            headers: getAuthorizedHeaders(authToken: authToken, vehicle: vehicle),
-        )
-    }
-
-    public func sendCommandEndpoint(
-        for vehicle: Vehicle,
-        command: VehicleCommand,
-        authToken: AuthToken,
-    ) -> APIEndpoint {
-        let endpoint = getEndpointForCommand(command: command, vehicle: vehicle)
-        let requestBody = getBodyForCommand(command: command, vehicle: vehicle)
-
-        return APIEndpoint(
-            url: endpoint.absoluteString,
-            method: .POST,
-            headers: getAuthorizedHeaders(authToken: authToken, vehicle: vehicle),
-            body: try? JSONSerialization.data(withJSONObject: requestBody),
-        )
-    }
-
-    public func getBodyForCommand(command: VehicleCommand, vehicle: Vehicle) -> [String: Any] {
-        var body: [String: Any] = [:]
-        if case let .startClimate(options) = command {
-            if vehicle.isElectric {
-                body = ["airCtrl": options.climate ? 1 : 0,
-                        "airTemp": ["value": String(Int(options.temperature.value)),
-                                    "unit": options.temperature.units.integer()],
-                        "defrost": options.defrost, "heating1": options.heatValue]
-                if vehicle.generation >= 3 {
-                    body["igniOnDuration"] = options.duration
-                    body["seatHeaterVentInfo"] = options.getSeatHeaterVentInfo()
-                }
-            } else {
-                body = ["Ims": 0, "airCtrl": options.climate ? 1 : 0,
-                        "airTemp": ["unit": options.temperature.units.integer(),
-                                    "value": Int(options.temperature.value)],
-                        "defrost": options.defrost, "heating1": options.heatValue,
-                        "igniOnDuration": options.duration,
-                        "seatHeaterVentInfo": options.getSeatHeaterVentInfo(),
-                        "username": username, "vin": vehicle.vin]
-            }
-        } else if case .startCharge = command {
-            body["chargeRatio"] = 100
-        }
-        return body
-    }
-
+extension HyundaiAPIEndpointProvider {
     public func parseLoginResponse(_ data: Data, headers _: [String: String]) throws -> AuthToken {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let accessToken = json["access_token"] as? String,
@@ -317,7 +127,7 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
         guard vehicle.isElectric,
               let evStatusData = statusData["evStatus"] as? [String: Any] else { return nil }
         let ranges = fuelRanges(from: statusData)
-        
+
         // Sometimes, Hyundai chooses to not report the correct driving distance fuel type, and it just gets a 0
         // To correct this, if we know this is an EV and there's a single driving distance,
         // let's just use whatever is first. This may cause problems for PHEVs in the future
@@ -329,12 +139,12 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
             guard let range = ranges[.electric] else { return nil }
             evRange = range
         }
-        
+
         let fuelPercentage: Double = extractNumber(from: evStatusData["batteryStatus"]) ?? 0
-        let remainTime2 = evStatusData["remainTime2"] as? [String : Any] ?? [:]
+        let remainTime2 = evStatusData["remainTime2"] as? [String: Any] ?? [:]
         let atc = remainTime2["atc"] as? [String: Any] ?? [:]
         let chargeTimeMinutes = extractNumber(from: atc["value"]) ?? 0
-        
+
         return VehicleStatus.EVStatus(
             charging: evStatusData["batteryCharge"] as? Bool ?? false,
             chargeSpeed: max(
@@ -398,7 +208,3 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
         }
     }
 }
-
-// MARK: - Type Alias for Convenience
-
-public typealias HyundaiAPIClient = APIClient<HyundaiAPIEndpointProvider>

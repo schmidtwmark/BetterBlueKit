@@ -11,12 +11,12 @@ import Testing
 
 @Suite("Vehicle Tests")
 struct VehicleTests {
-    
+
     @Test("Vehicle creation with all parameters")
     func testVehicleCreation() {
         let accountId = UUID()
         let odometer = Distance(length: 15000.0, units: .miles)
-        
+
         let vehicle = Vehicle(
             vin: "KMHL14JA3PA000000",
             regId: "REG123456",
@@ -27,7 +27,7 @@ struct VehicleTests {
             odometer: odometer,
             vehicleKey: "vehicle_key_123"
         )
-        
+
         #expect(vehicle.vin == "KMHL14JA3PA000000")
         #expect(vehicle.regId == "REG123456")
         #expect(vehicle.model == "Elantra Hybrid")
@@ -38,12 +38,12 @@ struct VehicleTests {
         #expect(vehicle.odometer.units == .miles)
         #expect(vehicle.vehicleKey == "vehicle_key_123")
     }
-    
+
     @Test("Vehicle creation without vehicle key")
     func testVehicleCreationWithoutVehicleKey() {
         let accountId = UUID()
         let odometer = Distance(length: 25000.0, units: .kilometers)
-        
+
         let vehicle = Vehicle(
             vin: "KNDJ23AU1N7000000",
             regId: "REG789012",
@@ -53,7 +53,7 @@ struct VehicleTests {
             generation: 4,
             odometer: odometer
         )
-        
+
         #expect(vehicle.vin == "KNDJ23AU1N7000000")
         #expect(vehicle.regId == "REG789012")
         #expect(vehicle.model == "Ioniq 5")
@@ -64,7 +64,7 @@ struct VehicleTests {
         #expect(vehicle.odometer.units == .kilometers)
         #expect(vehicle.vehicleKey == nil)
     }
-    
+
     @Test("Vehicle id property returns vin")
     func testVehicleIdProperty() {
         let vehicle = Vehicle(
@@ -76,16 +76,16 @@ struct VehicleTests {
             generation: 2,
             odometer: Distance(length: 0, units: .miles)
         )
-        
+
         #expect(vehicle.id == "TEST123VIN456")
         #expect(vehicle.id == vehicle.vin)
     }
-    
+
     @Test("Vehicle Equatable conformance")
     func testVehicleEquatable() {
         let accountId = UUID()
         let odometer = Distance(length: 10000.0, units: .miles)
-        
+
         let vehicle1 = Vehicle(
             vin: "SAME_VIN_123",
             regId: "REG001",
@@ -96,7 +96,7 @@ struct VehicleTests {
             odometer: odometer,
             vehicleKey: "key1"
         )
-        
+
         let vehicle2 = Vehicle(
             vin: "SAME_VIN_123",
             regId: "REG001",
@@ -107,7 +107,7 @@ struct VehicleTests {
             odometer: odometer,
             vehicleKey: "key1"
         )
-        
+
         let vehicle3 = Vehicle(
             vin: "DIFFERENT_VIN",
             regId: "REG001",
@@ -118,11 +118,11 @@ struct VehicleTests {
             odometer: odometer,
             vehicleKey: "key1"
         )
-        
+
         #expect(vehicle1 == vehicle2)
         #expect(vehicle1 != vehicle3)
     }
-    
+
     @Test("Vehicle Codable encoding and decoding")
     func testVehicleCodable() throws {
         let accountId = UUID()
@@ -136,10 +136,10 @@ struct VehicleTests {
             odometer: Distance(length: 5000.0, units: .kilometers),
             vehicleKey: "codable_key"
         )
-        
+
         let encoded = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(Vehicle.self, from: encoded)
-        
+
         #expect(decoded.vin == original.vin)
         #expect(decoded.regId == original.regId)
         #expect(decoded.model == original.model)
@@ -150,7 +150,7 @@ struct VehicleTests {
         #expect(decoded.odometer.units == original.odometer.units)
         #expect(decoded.vehicleKey == original.vehicleKey)
     }
-    
+
     @Test("Vehicle Codable without optional vehicle key")
     func testVehicleCodableWithoutVehicleKey() throws {
         let original = Vehicle(
@@ -162,14 +162,14 @@ struct VehicleTests {
             generation: 3,
             odometer: Distance(length: 1000.0, units: .miles)
         )
-        
+
         let encoded = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(Vehicle.self, from: encoded)
-        
+
         #expect(decoded.vin == original.vin)
         #expect(decoded.vehicleKey == nil)
     }
-    
+
     @Test("Vehicle Identifiable conformance")
     func testVehicleIdentifiable() {
         let vehicle = Vehicle(
@@ -181,17 +181,17 @@ struct VehicleTests {
             generation: 1,
             odometer: Distance(length: 0, units: .miles)
         )
-        
+
         #expect(vehicle.id == "IDENTIFIABLE_VIN")
-        
+
         // Test that we can use it in contexts that require Identifiable
         let vehicles = [vehicle]
         let ids = vehicles.map { $0.id }
         #expect(ids == ["IDENTIFIABLE_VIN"])
     }
-    
+
     // MARK: - Edge Cases
-    
+
     @Test("Vehicle with zero odometer")
     func testVehicleWithZeroOdometer() {
         let vehicle = Vehicle(
@@ -203,11 +203,11 @@ struct VehicleTests {
             generation: 1,
             odometer: Distance(length: 0.0, units: .miles)
         )
-        
+
         #expect(vehicle.odometer.length == 0.0)
         #expect(vehicle.odometer.units == .miles)
     }
-    
+
     @Test("Vehicle with very high generation number")
     func testVehicleWithHighGeneration() {
         let vehicle = Vehicle(
@@ -219,10 +219,10 @@ struct VehicleTests {
             generation: 99,
             odometer: Distance(length: 0, units: .miles)
         )
-        
+
         #expect(vehicle.generation == 99)
     }
-    
+
     @Test("Vehicle with empty string properties")
     func testVehicleWithEmptyStrings() {
         let vehicle = Vehicle(
@@ -235,14 +235,14 @@ struct VehicleTests {
             odometer: Distance(length: 0, units: .miles),
             vehicleKey: ""
         )
-        
+
         #expect(vehicle.vin == "")
         #expect(vehicle.regId == "")
         #expect(vehicle.model == "")
         #expect(vehicle.vehicleKey == "")
         #expect(vehicle.id == "") // id should still equal vin, even if empty
     }
-    
+
     @Test("Vehicle with extremely long VIN")
     func testVehicleWithExtremelyLongVIN() {
         let longVIN = String(repeating: "A", count: 100) // Much longer than standard 17-character VIN
@@ -255,12 +255,12 @@ struct VehicleTests {
             generation: 1,
             odometer: Distance(length: 0, units: .miles)
         )
-        
+
         #expect(vehicle.vin == longVIN)
         #expect(vehicle.id == longVIN)
         #expect(vehicle.vin.count == 100)
     }
-    
+
     @Test("Vehicle with special characters in model name")
     func testVehicleWithSpecialCharactersInModel() {
         let specialModel = "Ioniq 5 N-Line™ (Limited Edition) 🚗 2024.5"
@@ -273,14 +273,14 @@ struct VehicleTests {
             generation: 4,
             odometer: Distance(length: 1000, units: .kilometers)
         )
-        
+
         #expect(vehicle.model == specialModel)
         #expect(vehicle.model.contains("™"))
         #expect(vehicle.model.contains("🚗"))
         #expect(vehicle.model.contains("("))
         #expect(vehicle.model.contains(")"))
     }
-    
+
     @Test("Vehicle generation boundaries")
     func testVehicleGenerationBoundaries() {
         // Test generation 0
@@ -294,7 +294,7 @@ struct VehicleTests {
             odometer: Distance(length: 0, units: .miles)
         )
         #expect(vehicle0.generation == 0)
-        
+
         // Test negative generation (edge case)
         let vehicleNeg = Vehicle(
             vin: "GEN_NEG_VIN",
@@ -306,7 +306,7 @@ struct VehicleTests {
             odometer: Distance(length: 0, units: .miles)
         )
         #expect(vehicleNeg.generation == -1)
-        
+
         // Test very large generation
         let vehicleLarge = Vehicle(
             vin: "GEN_LARGE_VIN",
@@ -319,12 +319,12 @@ struct VehicleTests {
         )
         #expect(vehicleLarge.generation == Int.max)
     }
-    
+
     @Test("Vehicle with Unicode characters in VIN and regId")
     func testVehicleWithUnicodeCharacters() {
         let unicodeVIN = "VIN_测试_🚙_123"
         let unicodeRegId = "REG_Ñoño_Müller"
-        
+
         let vehicle = Vehicle(
             vin: unicodeVIN,
             regId: unicodeRegId,
@@ -334,16 +334,16 @@ struct VehicleTests {
             generation: 2,
             odometer: Distance(length: 5000, units: .kilometers)
         )
-        
+
         #expect(vehicle.vin == unicodeVIN)
         #expect(vehicle.regId == unicodeRegId)
         #expect(vehicle.id == unicodeVIN)
     }
-    
+
     @Test("Vehicle with maximum distance values")
     func testVehicleWithMaximumDistanceValues() {
         let maxDistance = Distance(length: Double.greatestFiniteMagnitude, units: .miles)
-        
+
         let vehicle = Vehicle(
             vin: "MAX_DISTANCE_VIN",
             regId: "MAX_DISTANCE_REG",
@@ -353,16 +353,16 @@ struct VehicleTests {
             generation: 1,
             odometer: maxDistance
         )
-        
+
         #expect(vehicle.odometer.length == Double.greatestFiniteMagnitude)
         #expect(vehicle.odometer.units == .miles)
     }
-    
+
     @Test("Vehicle equality with different optional fields")
     func testVehicleEqualityWithOptionalFields() {
         let accountId = UUID()
         let odometer = Distance(length: 10000.0, units: .miles)
-        
+
         // Vehicle with vehicleKey
         let vehicleWithKey = Vehicle(
             vin: "SAME_VIN_123",
@@ -374,7 +374,7 @@ struct VehicleTests {
             odometer: odometer,
             vehicleKey: "key123"
         )
-        
+
         // Vehicle without vehicleKey
         let vehicleWithoutKey = Vehicle(
             vin: "SAME_VIN_123",
@@ -385,10 +385,10 @@ struct VehicleTests {
             generation: 3,
             odometer: odometer
         )
-        
+
         // Should not be equal due to different vehicleKey values
         #expect(vehicleWithKey != vehicleWithoutKey)
-        
+
         // Vehicles with different vehicleKey values
         let vehicleWithDifferentKey = Vehicle(
             vin: "SAME_VIN_123",
@@ -400,7 +400,7 @@ struct VehicleTests {
             odometer: odometer,
             vehicleKey: "different_key"
         )
-        
+
         #expect(vehicleWithKey != vehicleWithDifferentKey)
     }
 }

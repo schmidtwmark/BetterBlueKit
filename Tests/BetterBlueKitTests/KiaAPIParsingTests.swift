@@ -11,9 +11,9 @@ import Testing
 
 @Suite("Kia API Parsing Tests")
 struct KiaAPIParsingTests {
-    
+
     // MARK: - Test Data
-    
+
     private static let sampleKiaVehicleStatusJSON = """
     {
       "payload": {
@@ -293,7 +293,7 @@ struct KiaAPIParsingTests {
       }
     }
     """
-    
+
     private static let minimalKiaVehicleStatusJSON = """
     {
       "payload": {
@@ -326,7 +326,7 @@ struct KiaAPIParsingTests {
       }
     }
     """
-    
+
     private static let electricVehicleJSON = """
     {
       "payload": {
@@ -379,7 +379,7 @@ struct KiaAPIParsingTests {
       }
     }
     """
-    
+
     private static let hybridVehicleJSON = """
     {
       "payload": {
@@ -417,9 +417,9 @@ struct KiaAPIParsingTests {
       }
     }
     """
-    
+
     // MARK: - Helper Methods
-    
+
     @MainActor private func makeKiaProvider() -> KiaAPIEndpointProvider {
         let config = APIClientConfiguration(
             region: .usa,
@@ -431,11 +431,11 @@ struct KiaAPIParsingTests {
         )
         return KiaAPIEndpointProvider(configuration: config)
     }
-    
+
     private func makeTestVehicle() -> Vehicle {
         Vehicle(
             vin: "KNDJ23AU1N7000000",
-            regId: "REG789012", 
+            regId: "REG789012",
             model: "EV6",
             accountId: UUID(),
             isElectric: true,
@@ -444,27 +444,27 @@ struct KiaAPIParsingTests {
             vehicleKey: "test_vehicle_key"
         )
     }
-    
+
     // MARK: - Comprehensive Parsing Tests
-    
+
     @Test("Parse complete Kia vehicle status response")
     @MainActor func testParseCompleteKiaVehicleStatus() throws {
         let provider = makeKiaProvider()
         let vehicle = makeTestVehicle()
         let data = Data(Self.sampleKiaVehicleStatusJSON.utf8)
-        
+
         let status = try provider.parseVehicleStatusResponse(data, for: vehicle)
-        
+
         // Verify basic vehicle info
         #expect(status.vin == vehicle.vin)
-        
+
         // Verify location parsing
         #expect(abs(status.location.latitude - 38.964185999999998) < 0.000001)
         #expect(abs(status.location.longitude - (-84.516543999999996)) < 0.000001)
-        
+
         // Verify lock status
         #expect(status.lockStatus == VehicleStatus.LockStatus.locked) // doorLock: true
-        
+
         // Verify EV status
         #expect(status.evStatus != nil)
         #expect(status.evStatus?.charging == false) // batteryCharge: false
@@ -472,7 +472,7 @@ struct KiaAPIParsingTests {
         #expect(status.evStatus?.evRange.percentage == 76) // batteryStatus: 76
         #expect(status.evStatus?.evRange.range.length == 279) // from drvDistance
         #expect(status.evStatus?.evRange.range.units == Distance.Units.miles) // unit: 3
-        
+
         // Verify climate status
         #expect(status.climateStatus.airControlOn == false) // airCtrl: false
         #expect(status.climateStatus.defrostOn == false) // defrost: false
@@ -480,21 +480,21 @@ struct KiaAPIParsingTests {
         #expect(status.climateStatus.temperature.value == 72.0) // value: "72"
         #expect(status.climateStatus.temperature.units == Temperature.Units.fahrenheit) // unit: 1
     }
-    
+
     @Test("Parse minimal Kia vehicle status response")
     @MainActor func testParseMinimalKiaVehicleStatus() throws {
         let provider = makeKiaProvider()
         let vehicle = makeTestVehicle()
         let data = Data(Self.minimalKiaVehicleStatusJSON.utf8)
-        
+
         let status = try provider.parseVehicleStatusResponse(data, for: vehicle)
-        
+
         // Verify basic parsing works with minimal data
         #expect(status.vin == vehicle.vin)
         #expect(status.location.latitude == 40.7128)
         #expect(status.location.longitude == -74.0060)
         #expect(status.lockStatus == VehicleStatus.LockStatus.unlocked) // doorLock: false
-        
+
         // Verify climate parsing
         #expect(status.climateStatus.airControlOn == true)
         #expect(status.climateStatus.defrostOn == true)
@@ -502,15 +502,15 @@ struct KiaAPIParsingTests {
         #expect(status.climateStatus.temperature.value == 68.0)
         #expect(status.climateStatus.temperature.units == Temperature.Units.celsius) // unit: 0
     }
-    
+
     @Test("Parse electric vehicle specific data")
     @MainActor func testParseElectricVehicleData() throws {
         let provider = makeKiaProvider()
         let vehicle = makeTestVehicle()
         let data = Data(Self.electricVehicleJSON.utf8)
-        
+
         let status = try provider.parseVehicleStatusResponse(data, for: vehicle)
-        
+
         // Verify EV-specific parsing
         #expect(status.evStatus != nil)
         #expect(status.evStatus?.charging == true) // batteryCharge: true
@@ -518,11 +518,11 @@ struct KiaAPIParsingTests {
         #expect(status.evStatus?.evRange.percentage == 85) // batteryStatus: 85
         #expect(status.evStatus?.evRange.range.length == 295) // evModeRange value: 295
         #expect(status.evStatus?.evRange.range.units == Distance.Units.miles) // unit: 3
-        
+
         // Should not have gas range for pure EV
         #expect(status.gasRange == nil)
     }
-    
+
     @Test("Parse hybrid vehicle data")
     @MainActor func testParseHybridVehicleData() throws {
         let provider = makeKiaProvider()
@@ -537,21 +537,21 @@ struct KiaAPIParsingTests {
             vehicleKey: "hybrid_vehicle_key"
         )
         let data = Data(Self.hybridVehicleJSON.utf8)
-        
+
         let status = try provider.parseVehicleStatusResponse(data, for: hybridVehicle)
-        
+
         // Verify gas range parsing for hybrid
         #expect(status.gasRange != nil)
         #expect(status.gasRange?.percentage == 65) // fuelLevel: 65
         #expect(status.gasRange?.range.length == 320) // distanceToEmpty value: 320
         #expect(status.gasRange?.range.units == Distance.Units.miles) // unit: 3
-        
+
         // Should not have EV status for non-electric vehicle
         #expect(status.evStatus == nil)
     }
-    
+
     // MARK: - Edge Cases and Error Handling
-    
+
     @Test("Handle missing vehicleStatusRpt")
     @MainActor func testHandleMissingVehicleStatusRpt() throws {
         let provider = makeKiaProvider()
@@ -569,12 +569,12 @@ struct KiaAPIParsingTests {
           }
         }
         """.utf8)
-        
+
         #expect(throws: HyundaiKiaAPIError.self) {
             try provider.parseVehicleStatusResponse(invalidData, for: vehicle)
         }
     }
-    
+
     @Test("Handle missing vehicleStatus")
     @MainActor func testHandleMissingVehicleStatus() throws {
         let provider = makeKiaProvider()
@@ -595,23 +595,23 @@ struct KiaAPIParsingTests {
           }
         }
         """.utf8)
-        
+
         #expect(throws: HyundaiKiaAPIError.self) {
             try provider.parseVehicleStatusResponse(invalidData, for: vehicle)
         }
     }
-    
+
     @Test("Handle invalid JSON")
     @MainActor func testHandleInvalidJSON() throws {
         let provider = makeKiaProvider()
         let vehicle = makeTestVehicle()
         let invalidData = Data("{ invalid json".utf8)
-        
+
         #expect(throws: Error.self) {
             try provider.parseVehicleStatusResponse(invalidData, for: vehicle)
         }
     }
-    
+
     @Test("Handle missing location coordinates")
     @MainActor func testHandleMissingLocationCoordinates() throws {
         let provider = makeKiaProvider()
@@ -640,21 +640,21 @@ struct KiaAPIParsingTests {
           }
         }
         """.utf8)
-        
+
         let status = try provider.parseVehicleStatusResponse(dataWithoutCoordinates, for: vehicle)
-        
+
         // Should default to 0,0 coordinates when missing
         #expect(status.location.latitude == 0.0)
         #expect(status.location.longitude == 0.0)
     }
-    
+
     // MARK: - Specific Field Parsing Tests
-    
+
     @Test("Parse door lock status variations")
     @MainActor func testParseDoorLockVariations() throws {
         let provider = makeKiaProvider()
         let vehicle = makeTestVehicle()
-        
+
         // Test locked door
         let lockedData = Data("""
         {
@@ -670,7 +670,7 @@ struct KiaAPIParsingTests {
         """.utf8)
         let lockedStatus = try provider.parseVehicleStatusResponse(lockedData, for: vehicle)
         #expect(lockedStatus.lockStatus == VehicleStatus.LockStatus.locked)
-        
+
         // Test unlocked door
         let unlockedData = Data("""
         {
@@ -686,7 +686,7 @@ struct KiaAPIParsingTests {
         """.utf8)
         let unlockedStatus = try provider.parseVehicleStatusResponse(unlockedData, for: vehicle)
         #expect(unlockedStatus.lockStatus == VehicleStatus.LockStatus.unlocked)
-        
+
         // Test missing door lock (should default to unknown)
         let missingData = Data("""
         {
@@ -703,12 +703,12 @@ struct KiaAPIParsingTests {
         let missingStatus = try provider.parseVehicleStatusResponse(missingData, for: vehicle)
         #expect(missingStatus.lockStatus == VehicleStatus.LockStatus.unknown)
     }
-    
+
     @Test("Parse climate temperature units")
     @MainActor func testParseClimateTemperatureUnits() throws {
         let provider = makeKiaProvider()
         let vehicle = makeTestVehicle()
-        
+
         // Test Celsius (unit: 0)
         let celsiusData = Data("""
         {
@@ -734,7 +734,7 @@ struct KiaAPIParsingTests {
         let celsiusStatus = try provider.parseVehicleStatusResponse(celsiusData, for: vehicle)
         #expect(celsiusStatus.climateStatus.temperature.units == Temperature.Units.celsius)
         #expect(celsiusStatus.climateStatus.temperature.value == 22.0)
-        
+
         // Test Fahrenheit (unit: 1)
         let fahrenheitData = Data("""
         {
@@ -761,12 +761,12 @@ struct KiaAPIParsingTests {
         #expect(fahrenheitStatus.climateStatus.temperature.units == Temperature.Units.fahrenheit)
         #expect(fahrenheitStatus.climateStatus.temperature.value == 72.0)
     }
-    
+
     @Test("Parse EV battery status edge cases")
     @MainActor func testParseEVBatteryStatusEdgeCases() throws {
         let provider = makeKiaProvider()
         let vehicle = makeTestVehicle()
-        
+
         // Test 0% battery
         let emptyBatteryData = Data("""
         {
@@ -800,7 +800,7 @@ struct KiaAPIParsingTests {
         // Note: Current parsing logic returns nil for 0% battery, but this may be intentional
         // In a real implementation, we might want to still return EVStatus even at 0%
         #expect(emptyStatus.evStatus == nil) // Current behavior: nil for 0% battery
-        
+
         // Test 100% battery
         let fullBatteryData = Data("""
         {
@@ -834,7 +834,7 @@ struct KiaAPIParsingTests {
         #expect(fullStatus.evStatus?.evRange.percentage == 100)
         #expect(fullStatus.evStatus?.evRange.range.length == 350)
     }
-    
+
     @Test("Parse sync date format")
     @MainActor func testParseSyncDate() throws {
         let provider = makeKiaProvider()
@@ -864,54 +864,54 @@ struct KiaAPIParsingTests {
           }
         }
         """.utf8)
-        
+
         let status = try provider.parseVehicleStatusResponse(dataWithSyncDate, for: vehicle)
-        
+
         // Verify sync date is parsed (format: yyyyMMddHHmmss)
         #expect(status.syncDate != nil)
-        
+
         // Create expected date for "20251003012546" (2025-10-03 01:25:46 UTC)
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMddHHmmss"
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         let expectedDate = formatter.date(from: "20251003012546")
-        
+
         #expect(status.syncDate == expectedDate)
     }
-    
+
     // MARK: - Performance Tests
-    
+
     @Test("Parse large response performance")
     @MainActor func testParseLargeResponsePerformance() throws {
         let provider = makeKiaProvider()
         let vehicle = makeTestVehicle()
         let data = Data(Self.sampleKiaVehicleStatusJSON.utf8)
-        
+
         // Measure parsing performance
         let startTime = Date()
-        
+
         for _ in 0..<100 {
             _ = try provider.parseVehicleStatusResponse(data, for: vehicle)
         }
-        
+
         let endTime = Date()
         let duration = endTime.timeIntervalSince(startTime)
-        
+
         // Should parse 100 responses in under 1 second
         #expect(duration < 1.0)
     }
-    
+
     // MARK: - Real-world Scenario Tests
-    
+
     @Test("Parse typical EV6 status during charging")
     @MainActor func testParseEV6ChargingScenario() throws {
         let provider = makeKiaProvider()
         let vehicle = makeTestVehicle()
-        
+
         // Use the original sample data which represents an EV6 at 76% battery, not charging
         let data = Data(Self.sampleKiaVehicleStatusJSON.utf8)
         let status = try provider.parseVehicleStatusResponse(data, for: vehicle)
-        
+
         // Verify realistic EV6 scenario
         #expect(status.vin == vehicle.vin)
         #expect(status.evStatus?.evRange.percentage == 76) // Reasonable battery level
@@ -921,7 +921,7 @@ struct KiaAPIParsingTests {
         #expect(status.lockStatus == VehicleStatus.LockStatus.locked) // Vehicle is locked
         #expect(status.climateStatus.temperature.value == 72.0) // Comfortable temperature
         #expect(status.climateStatus.temperature.units == Temperature.Units.fahrenheit) // US units
-        
+
         // Verify location is reasonable (appears to be Kentucky based on coordinates)
         #expect(status.location.latitude > 38.0 && status.location.latitude < 40.0)
         #expect(status.location.longitude > -85.0 && status.location.longitude < -84.0)

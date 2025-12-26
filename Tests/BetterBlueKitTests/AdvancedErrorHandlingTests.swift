@@ -11,14 +11,14 @@ import Testing
 
 @Suite("Advanced Error Handling Tests")
 struct AdvancedErrorHandlingTests {
-    
+
     // MARK: - Malformed API Response Tests
-    
+
     @Test("API response with missing payload structure")
     @MainActor func testAPIResponseWithMissingPayload() throws {
         let provider = makeKiaProvider()
         let vehicle = makeTestVehicle()
-        
+
         let invalidResponseVariants = [
             // Missing payload entirely
             """
@@ -27,21 +27,21 @@ struct AdvancedErrorHandlingTests {
               "message": "OK"
             }
             """,
-            
+
             // Payload is not an object
             """
             {
               "payload": "invalid_string"
             }
             """,
-            
+
             // Payload is an array instead of object
             """
             {
               "payload": ["not", "an", "object"]
             }
             """,
-            
+
             // Empty payload
             """
             {
@@ -49,21 +49,21 @@ struct AdvancedErrorHandlingTests {
             }
             """
         ]
-        
+
         for invalidJSON in invalidResponseVariants {
             let data = Data(invalidJSON.utf8)
-            
+
             #expect(throws: HyundaiKiaAPIError.self) {
                 try provider.parseVehicleStatusResponse(data, for: vehicle)
             }
         }
     }
-    
+
     @Test("API response with corrupted vehicleInfoList")
     @MainActor func testAPIResponseWithCorruptedVehicleInfoList() throws {
         let provider = makeKiaProvider()
         let vehicle = makeTestVehicle()
-        
+
         let corruptedVariants = [
             // vehicleInfoList is not an array
             """
@@ -73,7 +73,7 @@ struct AdvancedErrorHandlingTests {
               }
             }
             """,
-            
+
             // vehicleInfoList is empty array
             """
             {
@@ -82,7 +82,7 @@ struct AdvancedErrorHandlingTests {
               }
             }
             """,
-            
+
             // vehicleInfoList contains non-object elements
             """
             {
@@ -92,21 +92,21 @@ struct AdvancedErrorHandlingTests {
             }
             """
         ]
-        
+
         for invalidJSON in corruptedVariants {
             let data = Data(invalidJSON.utf8)
-            
+
             #expect(throws: HyundaiKiaAPIError.self) {
                 try provider.parseVehicleStatusResponse(data, for: vehicle)
             }
         }
     }
-    
+
     @Test("Partial data corruption in vehicle status")
     @MainActor func testPartialDataCorruptionInVehicleStatus() throws {
         let provider = makeKiaProvider()
         let vehicle = makeTestVehicle()
-        
+
         // Test with corrupted but parseable data
         let partiallyCorruptedJSON = """
         {
@@ -140,26 +140,26 @@ struct AdvancedErrorHandlingTests {
           }
         }
         """
-        
+
         let data = Data(partiallyCorruptedJSON.utf8)
-        
+
         // Should not throw, but should handle gracefully with defaults
         let status = try provider.parseVehicleStatusResponse(data, for: vehicle)
-        
+
         // Verify graceful handling of corrupted data
         #expect(status.vin == vehicle.vin)
         #expect(status.location.latitude == 0.0) // Should default to 0 for invalid number
         #expect(status.location.longitude == 0.0) // Should default to 0 for invalid number
         #expect(status.lockStatus == VehicleStatus.LockStatus.unknown) // Should handle invalid boolean
     }
-    
+
     // MARK: - API Version Mismatch Tests
-    
+
     @Test("API response with unknown fields")
     @MainActor func testAPIResponseWithUnknownFields() throws {
         let provider = makeKiaProvider()
         let vehicle = makeTestVehicle()
-        
+
         let futureVersionJSON = """
         {
           "payload": {
@@ -205,12 +205,12 @@ struct AdvancedErrorHandlingTests {
           }
         }
         """
-        
+
         let data = Data(futureVersionJSON.utf8)
-        
+
         // Should parse successfully, ignoring unknown fields
         let status = try provider.parseVehicleStatusResponse(data, for: vehicle)
-        
+
         #expect(status.vin == vehicle.vin)
         #expect(status.lockStatus == VehicleStatus.LockStatus.locked)
         #expect(status.location.latitude == 40.7128)
@@ -218,13 +218,13 @@ struct AdvancedErrorHandlingTests {
         #expect(status.climateStatus.airControlOn == false)
         #expect(status.climateStatus.temperature.value == 72.0)
     }
-    
+
     // MARK: - Rate Limiting Response Tests
-    
+
     @Test("Rate limiting error response parsing")
     @MainActor func testRateLimitingErrorResponse() throws {
         let provider = makeKiaProvider()
-        
+
         let rateLimitJSON = """
         {
           "status": {
@@ -236,18 +236,18 @@ struct AdvancedErrorHandlingTests {
           }
         }
         """
-        
+
         let data = Data(rateLimitJSON.utf8)
-        
+
         #expect(throws: HyundaiKiaAPIError.self) {
             try provider.parseCommandResponse(data)
         }
     }
-    
+
     @Test("Server maintenance response parsing")
     @MainActor func testServerMaintenanceResponse() throws {
         let provider = makeKiaProvider()
-        
+
         let maintenanceJSON = """
         {
           "status": {
@@ -262,20 +262,20 @@ struct AdvancedErrorHandlingTests {
           }
         }
         """
-        
+
         let data = Data(maintenanceJSON.utf8)
-        
+
         #expect(throws: HyundaiKiaAPIError.self) {
             try provider.parseCommandResponse(data)
         }
     }
-    
+
     // MARK: - Authentication Edge Cases
-    
+
     @Test("Expired session error handling")
     @MainActor func testExpiredSessionErrorHandling() throws {
         let provider = makeKiaProvider()
-        
+
         let expiredSessionJSON = """
         {
           "status": {
@@ -286,9 +286,9 @@ struct AdvancedErrorHandlingTests {
           }
         }
         """
-        
+
         let data = Data(expiredSessionJSON.utf8)
-        
+
         do {
             try provider.parseCommandResponse(data)
             #expect(Bool(false), "Should have thrown an error")
@@ -298,19 +298,19 @@ struct AdvancedErrorHandlingTests {
             #expect(error.message.lowercased().contains("expired"))
         }
     }
-    
+
     @Test("Invalid PIN error handling")
     @MainActor func testInvalidPINErrorHandling() {
         let pinError = HyundaiKiaAPIError.invalidPin("PIN is incorrect", apiName: "TestAPI")
-        
+
         #expect(pinError.errorType == .invalidPin)
         #expect(pinError.apiName == "TestAPI")
         #expect(pinError.message.contains("PIN is incorrect"))
         // Note: HyundaiKiaAPIError doesn't have a statusCode property in this implementation
     }
-    
+
     // MARK: - Network Timeout Simulation
-    
+
     @Test("Network timeout error characteristics")
     func testNetworkTimeoutErrorCharacteristics() {
         let timeoutLog = HTTPLog(
@@ -327,26 +327,26 @@ struct AdvancedErrorHandlingTests {
             error: "Request timeout",
             duration: 30.0 // Long duration indicating timeout
         )
-        
+
         #expect(timeoutLog.responseStatus == nil)
         #expect(timeoutLog.isSuccess == false)
         #expect(timeoutLog.statusText == "Error")
         #expect(timeoutLog.duration >= 30.0)
         #expect(timeoutLog.formattedDuration.contains("30"))
     }
-    
+
     // MARK: - JSON Structure Variations
-    
+
     @Test("Different JSON encoding formats")
     @MainActor func testDifferentJSONEncodingFormats() throws {
         let provider = makeKiaProvider()
         let vehicle = makeTestVehicle()
-        
+
         // Test with different valid JSON formatting
         let compactJSON = """
         {"payload":{"vehicleInfoList":[{"lastVehicleInfo":{"vehicleStatusRpt":{"vehicleStatus":{"doorLock":true,"climate":{"airCtrl":false,"airTemp":{"value":"70","unit":1},"defrost":false,"heatingAccessory":{"steeringWheel":0}}}},"location":{"coord":{"lat":40.0,"lon":-74.0}}}}]}}
         """
-        
+
         let prettyJSON = """
         {
           "payload" : {
@@ -379,23 +379,23 @@ struct AdvancedErrorHandlingTests {
           }
         }
         """
-        
+
         // Both should parse successfully
         let compactData = Data(compactJSON.utf8)
         let prettyData = Data(prettyJSON.utf8)
-        
+
         let status1 = try provider.parseVehicleStatusResponse(compactData, for: vehicle)
         let status2 = try provider.parseVehicleStatusResponse(prettyData, for: vehicle)
-        
+
         // Results should be identical
         #expect(status1.vin == status2.vin)
         #expect(status1.lockStatus == status2.lockStatus)
         #expect(status1.location.latitude == status2.location.latitude)
         #expect(status1.location.longitude == status2.location.longitude)
     }
-    
+
     // MARK: - Memory and Performance Edge Cases
-    
+
     @Test("Deeply nested JSON handling")
     func testDeeplyNestedJSONHandling() throws {
         // Create deeply nested JSON structure
@@ -424,20 +424,20 @@ struct AdvancedErrorHandlingTests {
           }
         }
         """
-        
+
         let data = Data(nestedJSON.utf8)
-        
+
         // Should parse without stack overflow or performance issues
         let startTime = Date()
         let json = try JSONSerialization.jsonObject(with: data)
         let endTime = Date()
-        
+
         #expect(json is [String: Any])
         #expect(endTime.timeIntervalSince(startTime) < 0.1) // Should be fast
     }
-    
+
     // MARK: - Helper Methods
-    
+
     @MainActor private func makeKiaProvider() -> KiaAPIEndpointProvider {
         let config = APIClientConfiguration(
             region: .usa,
@@ -449,7 +449,7 @@ struct AdvancedErrorHandlingTests {
         )
         return KiaAPIEndpointProvider(configuration: config)
     }
-    
+
     private func makeTestVehicle() -> Vehicle {
         Vehicle(
             vin: "KNDJ23AU1N7000000",

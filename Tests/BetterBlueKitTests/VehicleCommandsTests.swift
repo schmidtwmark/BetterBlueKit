@@ -11,9 +11,9 @@ import Testing
 
 @Suite("VehicleCommands Tests")
 struct VehicleCommandsTests {
-    
+
     // MARK: - ClimateOptions Tests
-    
+
     @Test("ClimateOptions default initialization")
     func testClimateOptionsDefaults() {
         let options = ClimateOptions()
@@ -30,7 +30,7 @@ struct VehicleCommandsTests {
         #expect(options.rearRightSeat == 0)
         #expect(options.steeringWheel == 0)
     }
-    
+
     @Test("ClimateOptions custom values")
     func testClimateOptionsCustomValues() {
         var options = ClimateOptions()
@@ -57,18 +57,18 @@ struct VehicleCommandsTests {
         #expect(options.rearRightSeat == 2)
         #expect(options.steeringWheel == 1)
     }
-    
+
     @Test("ClimateOptions Equatable")
     func testClimateOptionsEquatable() {
         let options1 = ClimateOptions()
         var options2 = ClimateOptions()
-        
+
         #expect(options1 == options2)
-        
+
         options2.temperature = Temperature(value: 70.0, units: .fahrenheit)
         #expect(options1 != options2)
     }
-    
+
     @Test("ClimateOptions Codable")
     func testClimateOptionsCodable() throws {
         var original = ClimateOptions()
@@ -92,9 +92,9 @@ struct VehicleCommandsTests {
         #expect(decoded.frontLeftSeat == original.frontLeftSeat)
         #expect(decoded.frontRightSeat == original.frontRightSeat)
     }
-    
+
     // MARK: - VehicleCommand Tests
-    
+
     @Test("VehicleCommand simple commands")
     func testSimpleCommands() {
         let lockCommand = VehicleCommand.lock
@@ -102,19 +102,19 @@ struct VehicleCommandsTests {
         let stopClimateCommand = VehicleCommand.stopClimate
         let startChargeCommand = VehicleCommand.startCharge
         let stopChargeCommand = VehicleCommand.stopCharge
-        
+
         // These should compile and be valid enum cases
         #expect(true) // If we get here, the enum cases are valid
     }
-    
+
     @Test("VehicleCommand startClimate with options")
     func testStartClimateCommand() {
         var options = ClimateOptions()
         options.temperature = Temperature(value: 75.0, units: .fahrenheit)
         options.defrost = true
-        
+
         let command = VehicleCommand.startClimate(options)
-        
+
         if case let .startClimate(extractedOptions) = command {
             #expect(extractedOptions.temperature.value == 75.0)
             #expect(extractedOptions.defrost == true)

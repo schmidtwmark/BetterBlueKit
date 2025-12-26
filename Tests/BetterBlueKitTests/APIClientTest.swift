@@ -58,7 +58,7 @@ struct APIClientAsyncTests {
     class MockURLProtocol: URLProtocol {
         // Simple test-only responses - accessing only from main thread in tests
         nonisolated(unsafe) static var cannedResponses: [String: (Int, Data)] = [:]
-        
+
         override class func canInit(with request: URLRequest) -> Bool { true }
         override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
         override func startLoading() {
@@ -102,7 +102,7 @@ struct APIClientAsyncTests {
             "https://example.com/login": (200, loginData),
             "https://example.com/vehicles": (200, vehiclesData),
             "https://example.com/vehicles/TEST123VIN/status": (200, statusData),
-            "https://example.com/vehicles/TEST123VIN/command": (200, Data()),
+            "https://example.com/vehicles/TEST123VIN/command": (200, Data())
         ]
         return APIClient(configuration: config, endpointProvider: provider, urlSession: makeMockSession())
     }
@@ -205,15 +205,15 @@ struct TestProvider: APIEndpointProvider {
     func loginEndpoint() -> APIEndpoint {
         APIEndpoint(url: "https://example.com/login", method: .POST)
     }
-    
+
     func fetchVehiclesEndpoint(authToken: AuthToken) -> APIEndpoint {
         APIEndpoint(url: "https://example.com/vehicles", method: .GET)
     }
-    
+
     func fetchVehicleStatusEndpoint(for vehicle: Vehicle, authToken: AuthToken) -> APIEndpoint {
         APIEndpoint(url: "https://example.com/vehicles/\(vehicle.vin)/status", method: .GET)
     }
-    
+
     func sendCommandEndpoint(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) -> APIEndpoint {
         APIEndpoint(url: "https://example.com/vehicles/\(vehicle.vin)/command", method: .POST)
     }
@@ -222,13 +222,13 @@ struct TestProvider: APIEndpointProvider {
     func parseLoginResponse(_ data: Data, headers: [String: String]) throws -> AuthToken {
         return AuthToken(accessToken: "test_access_token", refreshToken: "test_refresh_token", expiresAt: Date().addingTimeInterval(3600), pin: "0000")
     }
-    
+
     func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] {
         return [
             Vehicle(vin: "TEST123VIN", regId: "REG123", model: "Test Model", accountId: UUID(), isElectric: true, generation: 3, odometer: Distance(length: 0, units: .miles))
         ]
     }
-    
+
     func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus {
         return VehicleStatus(
             vin: vehicle.vin,
@@ -241,8 +241,8 @@ struct TestProvider: APIEndpointProvider {
             syncDate: nil
         )
     }
-    
-    func parseCommandResponse(_ data: Data) throws { 
+
+    func parseCommandResponse(_ data: Data) throws {
         // no-op for successful commands
     }
 }
@@ -251,12 +251,12 @@ struct TestProvider: APIEndpointProvider {
 
 @Suite("APIClient Configuration Tests")
 struct APIClientConfigurationTests {
-    
+
     @Test("APIClientConfiguration creation")
     func testAPIClientConfigurationCreation() {
         let accountId = UUID()
         let logSink: HTTPLogSink = { _ in }
-        
+
         let config = APIClientConfiguration(
             region: .usa,
             brand: .hyundai,
@@ -266,7 +266,7 @@ struct APIClientConfigurationTests {
             accountId: accountId,
             logSink: logSink
         )
-        
+
         #expect(config.region == .usa)
         #expect(config.brand == .hyundai)
         #expect(config.username == "test@example.com")
@@ -275,7 +275,7 @@ struct APIClientConfigurationTests {
         #expect(config.accountId == accountId)
         #expect(config.logSink != nil)
     }
-    
+
     @Test("APIClientConfiguration creation without log sink")
     func testAPIClientConfigurationWithoutLogSink() {
         let config = APIClientConfiguration(
@@ -286,7 +286,7 @@ struct APIClientConfigurationTests {
             pin: "0000",
             accountId: UUID()
         )
-        
+
         #expect(config.region == .canada)
         #expect(config.brand == .kia)
         #expect(config.logSink == nil)
@@ -297,39 +297,39 @@ struct APIClientConfigurationTests {
 
 @Suite("APIEndpoint Tests")
 struct APIEndpointTests {
-    
+
     @Test("APIEndpoint creation with all parameters")
     func testAPIEndpointCreation() {
         let headers = ["Authorization": "Bearer token", "Content-Type": "application/json"]
         let body = Data("{\"test\":\"data\"}".utf8)
-        
+
         let endpoint = APIEndpoint(
             url: "https://api.example.com/test",
             method: .POST,
             headers: headers,
             body: body
         )
-        
+
         #expect(endpoint.url == "https://api.example.com/test")
         #expect(endpoint.method == .POST)
         #expect(endpoint.headers["Authorization"] == "Bearer token")
         #expect(endpoint.headers["Content-Type"] == "application/json")
         #expect(endpoint.body == body)
     }
-    
+
     @Test("APIEndpoint creation with minimal parameters")
     func testAPIEndpointMinimal() {
         let endpoint = APIEndpoint(
             url: "https://api.example.com/get",
             method: .GET
         )
-        
+
         #expect(endpoint.url == "https://api.example.com/get")
         #expect(endpoint.method == .GET)
         #expect(endpoint.headers.isEmpty)
         #expect(endpoint.body == nil)
     }
-    
+
     @Test("HTTPMethod raw values")
     func testHTTPMethodRawValues() {
         #expect(HTTPMethod.GET.rawValue == "GET")
@@ -360,7 +360,7 @@ struct APIClientTests {
     @Test("APIClient initialization")
     @MainActor func testAPIClientInitialization() {
         let client = makeClient()
-        
+
         #expect(client.region == .usa)
         #expect(client.brand == .hyundai)
         #expect(client.username == "test@example.com")
@@ -368,18 +368,18 @@ struct APIClientTests {
         #expect(client.pin == "0000")
         #expect(client.logSink == nil)
     }
-    
+
     @Test("APIClient endpoint provider integration")
     @MainActor func testAPIClientEndpointProvider() {
         let client = makeClient()
         _ = client // Suppress unused variable warning
         let provider = TestProvider()
-        
+
         // Test that endpoints are created correctly
         let loginEndpoint = provider.loginEndpoint()
         #expect(loginEndpoint.url == "https://example.com/login")
         #expect(loginEndpoint.method == .POST)
-        
+
         let authToken = AuthToken(accessToken: "test", refreshToken: "test", expiresAt: Date(), pin: "0000")
         let vehiclesEndpoint = provider.fetchVehiclesEndpoint(authToken: authToken)
         #expect(vehiclesEndpoint.url == "https://example.com/vehicles")
@@ -391,7 +391,7 @@ struct APIClientTests {
 
 @Suite("Hyundai API Client Tests")
 struct HyundaiAPIClientTests {
-    
+
     @MainActor private func makeHyundaiProvider(region: Region = .usa) -> HyundaiAPIEndpointProvider {
         let config = APIClientConfiguration(
             region: region,
@@ -403,7 +403,7 @@ struct HyundaiAPIClientTests {
         )
         return HyundaiAPIEndpointProvider(configuration: config)
     }
-    
+
     @Test("HyundaiAPIEndpointProvider initialization")
     @MainActor func testHyundaiProviderInitialization() {
         let provider = makeHyundaiProvider()
@@ -412,97 +412,97 @@ struct HyundaiAPIClientTests {
         #expect(endpoint.url.contains("api.telematics.hyundaiusa.com"))
         #expect(endpoint.method == .POST)
     }
-    
+
     @Test("Hyundai login endpoint creation")
     @MainActor func testHyundaiLoginEndpoint() {
         let provider = makeHyundaiProvider()
         let endpoint = provider.loginEndpoint()
-        
+
         #expect(endpoint.url.contains("/v2/ac/oauth/token"))
         #expect(endpoint.method == .POST)
         #expect(endpoint.headers["Content-Type"] == "application/json")
         #expect(endpoint.headers["client_id"] == "m66129Bb-em93-SPAHYN-bZ91-am4540zp19920")
         #expect(endpoint.body != nil)
     }
-    
+
     @Test("Hyundai client ID based on region")
     @MainActor func testHyundaiClientIdByRegion() {
         let usaProvider = makeHyundaiProvider(region: .usa)
         let europeProvider = makeHyundaiProvider(region: .europe)
-        
+
         let usaEndpoint = usaProvider.loginEndpoint()
         let europeEndpoint = europeProvider.loginEndpoint()
-        
+
         #expect(usaEndpoint.headers["client_id"] == "m66129Bb-em93-SPAHYN-bZ91-am4540zp19920")
         #expect(europeEndpoint.headers["client_id"] == "m0na2res08hlm125puuhqzpv")
     }
-    
+
     @Test("Hyundai fetch vehicles endpoint")
     @MainActor func testHyundaiFetchVehiclesEndpoint() {
         let provider = makeHyundaiProvider()
         let authToken = AuthToken(accessToken: "test_token", refreshToken: "refresh", expiresAt: Date().addingTimeInterval(3600), pin: "1234")
-        
+
         let endpoint = provider.fetchVehiclesEndpoint(authToken: authToken)
-        
+
         #expect(endpoint.url.contains("/ac/v2/enrollment/details/test@hyundai.com"))
         #expect(endpoint.method == .GET)
         #expect(endpoint.headers["accessToken"] == "test_token")
         #expect(endpoint.headers["username"] == "test@hyundai.com")
         #expect(endpoint.headers["blueLinkServicePin"] == "1234")
     }
-    
+
     @Test("Hyundai vehicle status endpoint")
     @MainActor func testHyundaiVehicleStatusEndpoint() {
         let provider = makeHyundaiProvider()
         let authToken = AuthToken(accessToken: "test_token", refreshToken: "refresh", expiresAt: Date().addingTimeInterval(3600), pin: "1234")
         let vehicle = Vehicle(vin: "TEST123VIN", regId: "REG123", model: "Test Model", accountId: UUID(), isElectric: true, generation: 3, odometer: Distance(length: 0, units: .miles))
-        
+
         let endpoint = provider.fetchVehicleStatusEndpoint(for: vehicle, authToken: authToken)
-        
+
         #expect(endpoint.url.contains("/ac/v2/rcs/rvs/vehicleStatus"))
         #expect(endpoint.method == .GET)
         #expect(endpoint.headers["vin"] == "TEST123VIN")
         #expect(endpoint.headers["registrationId"] == "REG123")
         #expect(endpoint.headers["gen"] == "3")
     }
-    
+
     @Test("Hyundai command endpoints for different commands")
     @MainActor func testHyundaiCommandEndpoints() {
         let provider = makeHyundaiProvider()
         let authToken = AuthToken(accessToken: "test_token", refreshToken: "refresh", expiresAt: Date().addingTimeInterval(3600), pin: "1234")
         let electricVehicle = Vehicle(vin: "EV123", regId: "REG123", model: "Electric", accountId: UUID(), isElectric: true, generation: 3, odometer: Distance(length: 0, units: .miles))
         let gasVehicle = Vehicle(vin: "GAS123", regId: "REG456", model: "Gas", accountId: UUID(), isElectric: false, generation: 2, odometer: Distance(length: 0, units: .miles))
-        
+
         // Test unlock command
         let unlockEndpoint = provider.sendCommandEndpoint(for: electricVehicle, command: .unlock, authToken: authToken)
         #expect(unlockEndpoint.url.contains("/ac/v2/rcs/rdo/on"))
-        
+
         // Test lock command
         let lockEndpoint = provider.sendCommandEndpoint(for: electricVehicle, command: .lock, authToken: authToken)
         #expect(lockEndpoint.url.contains("/ac/v2/rcs/rdo/off"))
-        
+
         // Test electric vehicle climate commands
         let evStartClimateEndpoint = provider.sendCommandEndpoint(for: electricVehicle, command: .startClimate(ClimateOptions()), authToken: authToken)
         #expect(evStartClimateEndpoint.url.contains("/ac/v2/evc/fatc/start"))
-        
+
         let evStopClimateEndpoint = provider.sendCommandEndpoint(for: electricVehicle, command: .stopClimate, authToken: authToken)
         #expect(evStopClimateEndpoint.url.contains("/ac/v2/evc/fatc/stop"))
-        
+
         // Test gas vehicle climate commands
         let gasStartClimateEndpoint = provider.sendCommandEndpoint(for: gasVehicle, command: .startClimate(ClimateOptions()), authToken: authToken)
         #expect(gasStartClimateEndpoint.url.contains("/ac/v2/rcs/rsc/start"))
-        
+
         let gasStopClimateEndpoint = provider.sendCommandEndpoint(for: gasVehicle, command: .stopClimate, authToken: authToken)
         #expect(gasStopClimateEndpoint.url.contains("/ac/v2/rcs/rsc/stop"))
-        
+
         // Test charge commands
         let startChargeEndpoint = provider.sendCommandEndpoint(for: electricVehicle, command: .startCharge, authToken: authToken)
         #expect(startChargeEndpoint.url.contains("/ac/v2/evc/charge/start"))
-        
+
         let stopChargeEndpoint = provider.sendCommandEndpoint(for: electricVehicle, command: .stopCharge, authToken: authToken)
         #expect(stopChargeEndpoint.url.contains("/ac/v2/evc/charge/stop"))
     }
-    
+
     @Test("Hyundai parse login response success")
     @MainActor func testHyundaiParseLoginResponseSuccess() throws {
         let provider = makeHyundaiProvider()
@@ -513,15 +513,15 @@ struct HyundaiAPIClientTests {
             "expires_in": "3600"
         }
         """.data(using: .utf8)!
-        
+
         let authToken = try provider.parseLoginResponse(responseData, headers: [:])
-        
+
         #expect(authToken.accessToken == "hyundai_access_token")
         #expect(authToken.refreshToken == "hyundai_refresh_token")
         #expect(authToken.pin == "1234")
         #expect(authToken.expiresAt > Date())
     }
-    
+
     @Test("Hyundai parse login response failure")
     @MainActor func testHyundaiParseLoginResponseFailure() {
         let provider = makeHyundaiProvider()
@@ -530,12 +530,12 @@ struct HyundaiAPIClientTests {
             "error": "invalid_credentials"
         }
         """.data(using: .utf8)!
-        
+
         #expect(throws: HyundaiKiaAPIError.self) {
             try provider.parseLoginResponse(invalidResponseData, headers: [:])
         }
     }
-    
+
     @Test("Hyundai parse vehicles response success")
     @MainActor func testHyundaiParseVehiclesResponseSuccess() throws {
         let provider = makeHyundaiProvider()
@@ -565,11 +565,11 @@ struct HyundaiAPIClientTests {
             ]
         }
         """.data(using: .utf8)!
-        
+
         let vehicles = try provider.parseVehiclesResponse(responseData)
-        
+
         #expect(vehicles.count == 2)
-        
+
         let evVehicle = vehicles[0]
         #expect(evVehicle.vin == "HYUNDAI123VIN")
         #expect(evVehicle.regId == "HYUNDAI_REG_123")
@@ -577,14 +577,14 @@ struct HyundaiAPIClientTests {
         #expect(evVehicle.isElectric == true)
         #expect(evVehicle.generation == 3)
         #expect(evVehicle.odometer.length == 15000)
-        
+
         let gasVehicle = vehicles[1]
         #expect(gasVehicle.vin == "HYUNDAI456VIN")
         #expect(gasVehicle.isElectric == false)
         #expect(gasVehicle.generation == 2)
         #expect(gasVehicle.odometer.length == 25000)
     }
-    
+
     @Test("Hyundai parse vehicles response failure")
     @MainActor func testHyundaiParseVehiclesResponseFailure() {
         let provider = makeHyundaiProvider()
@@ -593,12 +593,12 @@ struct HyundaiAPIClientTests {
             "error": "no_vehicles"
         }
         """.data(using: .utf8)!
-        
+
         #expect(throws: HyundaiKiaAPIError.self) {
             try provider.parseVehiclesResponse(invalidResponseData)
         }
     }
-    
+
     @Test("Hyundai parse command response with invalid PIN")
     @MainActor func testHyundaiParseCommandResponseInvalidPin() {
         let provider = makeHyundaiProvider()
@@ -608,12 +608,12 @@ struct HyundaiAPIClientTests {
             "remainingAttemptCount": "2"
         }
         """.data(using: .utf8)!
-        
+
         #expect(throws: HyundaiKiaAPIError.self) {
             try provider.parseCommandResponse(responseData)
         }
     }
-    
+
     @Test("Hyundai parse command response success")
     @MainActor func testHyundaiParseCommandResponseSuccess() throws {
         let provider = makeHyundaiProvider()
@@ -623,16 +623,16 @@ struct HyundaiAPIClientTests {
             "result": "success"
         }
         """.data(using: .utf8)!
-        
+
         // Should not throw
         try provider.parseCommandResponse(responseData)
     }
-    
+
     @Test("Hyundai parse vehicle status response - electric vehicle")
     @MainActor func testHyundaiParseVehicleStatusResponseElectric() throws {
         let provider = makeHyundaiProvider()
         let vehicle = Vehicle(vin: "EV123VIN", regId: "EVREG123", model: "EV Model", accountId: UUID(), isElectric: true, generation: 3, odometer: Distance(length: 15000, units: .miles))
-        
+
         let responseData = """
         {
             "vehicleStatus": {
@@ -670,9 +670,9 @@ struct HyundaiAPIClientTests {
             }
         }
         """.data(using: .utf8)!
-        
+
         let status = try provider.parseVehicleStatusResponse(responseData, for: vehicle)
-        
+
         #expect(status.vin == "EV123VIN")
         #expect(status.evStatus?.charging == true)
         #expect(status.evStatus?.chargeSpeed == 7.2)
@@ -686,12 +686,12 @@ struct HyundaiAPIClientTests {
         #expect(status.climateStatus.defrostOn == false)
         #expect(status.climateStatus.steeringWheelHeatingOn == true)
     }
-    
+
     @Test("Hyundai parse vehicle status response - gas vehicle")
     @MainActor func testHyundaiParseVehicleStatusResponseGas() throws {
         let provider = makeHyundaiProvider()
         let vehicle = Vehicle(vin: "GAS123VIN", regId: "GASREG123", model: "Gas Model", accountId: UUID(), isElectric: false, generation: 2, odometer: Distance(length: 25000, units: .miles))
-        
+
         let responseData = """
         {
             "vehicleStatus": {
@@ -725,9 +725,9 @@ struct HyundaiAPIClientTests {
             }
         }
         """.data(using: .utf8)!
-        
+
         let status = try provider.parseVehicleStatusResponse(responseData, for: vehicle)
-        
+
         #expect(status.vin == "GAS123VIN")
         #expect(status.evStatus == nil)
         #expect(status.gasRange?.percentage == 65.5)
@@ -739,18 +739,18 @@ struct HyundaiAPIClientTests {
         #expect(status.climateStatus.defrostOn == true)
         #expect(status.climateStatus.steeringWheelHeatingOn == false)
     }
-    
+
     @Test("Hyundai parse vehicle status response - invalid response")
     @MainActor func testHyundaiParseVehicleStatusResponseInvalid() {
         let provider = makeHyundaiProvider()
         let vehicle = Vehicle(vin: "TEST123VIN", regId: "TESTREG123", model: "Test Model", accountId: UUID(), isElectric: true, generation: 3, odometer: Distance(length: 0, units: .miles))
-        
+
         let invalidResponseData = """
         {
             "error": "invalid_status"
         }
         """.data(using: .utf8)!
-        
+
         #expect(throws: HyundaiKiaAPIError.self) {
             try provider.parseVehicleStatusResponse(invalidResponseData, for: vehicle)
         }
@@ -761,7 +761,7 @@ struct HyundaiAPIClientTests {
 
 @Suite("Kia API Client Tests")
 struct KiaAPIClientTests {
-    
+
     @MainActor private func makeKiaProvider(region: Region = .usa) -> KiaAPIEndpointProvider {
         let config = APIClientConfiguration(
             region: region,
@@ -773,7 +773,7 @@ struct KiaAPIClientTests {
         )
         return KiaAPIEndpointProvider(configuration: config)
     }
-    
+
     @Test("KiaAPIEndpointProvider initialization")
     @MainActor func testKiaProviderInitialization() {
         let provider = makeKiaProvider()
@@ -781,18 +781,18 @@ struct KiaAPIClientTests {
         #expect(endpoint.url.contains("apigw/v1/prof/authUser"))
         #expect(endpoint.method == .POST)
     }
-    
+
     @Test("Kia login endpoint creation")
     @MainActor func testKiaLoginEndpoint() {
         let provider = makeKiaProvider()
         let endpoint = provider.loginEndpoint()
-        
+
         #expect(endpoint.url.contains("/apigw/v1/prof/authUser"))
         #expect(endpoint.method == .POST)
         #expect(endpoint.headers["content-type"] == "application/json;charset=UTF-8")
         #expect(endpoint.headers["clientid"] == "MWAMOBILE")
         #expect(endpoint.body != nil)
-        
+
         // Verify login body contains correct structure
         if let bodyData = endpoint.body,
            let json = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any],
@@ -801,61 +801,61 @@ struct KiaAPIClientTests {
             #expect(userCredential["password"] as? String == "testpassword")
         }
     }
-    
+
     @Test("Kia fetch vehicles endpoint")
     @MainActor func testKiaFetchVehiclesEndpoint() {
         let provider = makeKiaProvider()
         let authToken = AuthToken(accessToken: "kia_session_id", refreshToken: "kia_session_id", expiresAt: Date().addingTimeInterval(3600), pin: "5678")
-        
+
         let endpoint = provider.fetchVehiclesEndpoint(authToken: authToken)
-        
+
         #expect(endpoint.url.contains("/apigw/v1/ownr/gvl"))
         #expect(endpoint.method == .GET)
         #expect(endpoint.headers["sid"] == "kia_session_id")
     }
-    
+
     @Test("Kia vehicle status endpoint")
     @MainActor func testKiaVehicleStatusEndpoint() {
         let provider = makeKiaProvider()
         let authToken = AuthToken(accessToken: "kia_session_id", refreshToken: "kia_session_id", expiresAt: Date().addingTimeInterval(3600), pin: "5678")
         let vehicle = Vehicle(vin: "KIA123VIN", regId: "KIA_REG_123", model: "Kia Model", accountId: UUID(), isElectric: true, generation: 3, odometer: Distance(length: 0, units: .miles), vehicleKey: "kia_vehicle_key")
-        
+
         let endpoint = provider.fetchVehicleStatusEndpoint(for: vehicle, authToken: authToken)
-        
+
         #expect(endpoint.url.contains("/apigw/v1/cmm/gvi"))
         #expect(endpoint.method == .POST)
         #expect(endpoint.headers["vinkey"] == "kia_vehicle_key")
         #expect(endpoint.body != nil)
     }
-    
+
     @Test("Kia command endpoints for different commands")
     @MainActor func testKiaCommandEndpoints() {
         let provider = makeKiaProvider()
         let authToken = AuthToken(accessToken: "kia_session_id", refreshToken: "kia_session_id", expiresAt: Date().addingTimeInterval(3600), pin: "5678")
         let vehicle = Vehicle(vin: "KIA123VIN", regId: "KIA_REG_123", model: "Kia Model", accountId: UUID(), isElectric: true, generation: 3, odometer: Distance(length: 0, units: .miles), vehicleKey: "kia_vehicle_key")
-        
+
         // Test lock/unlock commands
         let lockEndpoint = provider.sendCommandEndpoint(for: vehicle, command: .lock, authToken: authToken)
         #expect(lockEndpoint.url.contains("/apigw/v1/rems/door/lock"))
-        
+
         let unlockEndpoint = provider.sendCommandEndpoint(for: vehicle, command: .unlock, authToken: authToken)
         #expect(unlockEndpoint.url.contains("/apigw/v1/rems/door/unlock"))
-        
+
         // Test climate commands
         let startClimateEndpoint = provider.sendCommandEndpoint(for: vehicle, command: .startClimate(ClimateOptions()), authToken: authToken)
         #expect(startClimateEndpoint.url.contains("/apigw/v1/rems/start"))
-        
+
         let stopClimateEndpoint = provider.sendCommandEndpoint(for: vehicle, command: .stopClimate, authToken: authToken)
         #expect(stopClimateEndpoint.url.contains("/apigw/v1/rems/stop"))
-        
+
         // Test charge commands
         let startChargeEndpoint = provider.sendCommandEndpoint(for: vehicle, command: .startCharge, authToken: authToken)
         #expect(startChargeEndpoint.url.contains("/apigw/v1/evc/charge"))
-        
+
         let stopChargeEndpoint = provider.sendCommandEndpoint(for: vehicle, command: .stopCharge, authToken: authToken)
         #expect(stopChargeEndpoint.url.contains("/apigw/v1/evc/cancel"))
     }
-    
+
     @Test("Kia parse login response success")
     @MainActor func testKiaParseLoginResponseSuccess() throws {
         let provider = makeKiaProvider()
@@ -867,16 +867,16 @@ struct KiaAPIClientTests {
             }
         }
         """.data(using: .utf8)!
-        
+
         let headers = ["sid": "kia_session_12345"]
         let authToken = try provider.parseLoginResponse(responseData, headers: headers)
-        
+
         #expect(authToken.accessToken == "kia_session_12345")
         #expect(authToken.refreshToken == "kia_session_12345")
         #expect(authToken.pin == "5678")
         #expect(authToken.expiresAt > Date())
     }
-    
+
     @Test("Kia parse login response missing session ID")
     @MainActor func testKiaParseLoginResponseMissingSessionId() {
         let provider = makeKiaProvider()
@@ -888,12 +888,12 @@ struct KiaAPIClientTests {
             }
         }
         """.data(using: .utf8)!
-        
+
         #expect(throws: HyundaiKiaAPIError.self) {
             try provider.parseLoginResponse(responseData, headers: [:])
         }
     }
-    
+
     @Test("Kia parse vehicles response success")
     @MainActor func testKiaParseVehiclesResponseSuccess() throws {
         let provider = makeKiaProvider()
@@ -923,11 +923,11 @@ struct KiaAPIClientTests {
             }
         }
         """.data(using: .utf8)!
-        
+
         let vehicles = try provider.parseVehiclesResponse(responseData)
-        
+
         #expect(vehicles.count == 2)
-        
+
         let evVehicle = vehicles[0]
         #expect(evVehicle.vin == "KIA123VIN")
         #expect(evVehicle.regId == "KIA_REG_123")
@@ -936,7 +936,7 @@ struct KiaAPIClientTests {
         #expect(evVehicle.generation == 3)
         #expect(evVehicle.vehicleKey == "kia_key_123")
         #expect(evVehicle.odometer.length == 12500)
-        
+
         let gasVehicle = vehicles[1]
         #expect(gasVehicle.vin == "KIA456VIN")
         #expect(gasVehicle.isElectric == false)
@@ -944,7 +944,7 @@ struct KiaAPIClientTests {
         #expect(gasVehicle.vehicleKey == "kia_key_456")
         #expect(gasVehicle.odometer.length == 35000)
     }
-    
+
     @Test("Kia parse vehicles response failure")
     @MainActor func testKiaParseVehiclesResponseFailure() {
         let provider = makeKiaProvider()
@@ -953,12 +953,12 @@ struct KiaAPIClientTests {
             "error": "no_vehicles"
         }
         """.data(using: .utf8)!
-        
+
         #expect(throws: HyundaiKiaAPIError.self) {
             try provider.parseVehiclesResponse(invalidResponseData)
         }
     }
-    
+
     @Test("Kia error handling - invalid credentials")
     @MainActor func testKiaErrorHandlingInvalidCredentials() {
         let provider = makeKiaProvider()
@@ -972,12 +972,12 @@ struct KiaAPIClientTests {
             }
         }
         """.data(using: .utf8)!
-        
+
         #expect(throws: HyundaiKiaAPIError.self) {
             try provider.parseLoginResponse(responseData, headers: ["sid": "test"])
         }
     }
-    
+
     @Test("Kia error handling - session expired")
     @MainActor func testKiaErrorHandlingSessionExpired() {
         let provider = makeKiaProvider()
@@ -991,12 +991,12 @@ struct KiaAPIClientTests {
             }
         }
         """.data(using: .utf8)!
-        
+
         #expect(throws: HyundaiKiaAPIError.self) {
             try provider.parseLoginResponse(responseData, headers: ["sid": "test"])
         }
     }
-    
+
     @Test("Kia error handling - vehicle session error")
     @MainActor func testKiaErrorHandlingVehicleSession() {
         let provider = makeKiaProvider()
@@ -1010,17 +1010,17 @@ struct KiaAPIClientTests {
             }
         }
         """.data(using: .utf8)!
-        
+
         #expect(throws: HyundaiKiaAPIError.self) {
             try provider.parseLoginResponse(responseData, headers: ["sid": "test"])
         }
     }
-    
+
     @Test("Kia parse vehicle status response - electric vehicle")
     @MainActor func testKiaParseVehicleStatusResponseElectric() throws {
         let provider = makeKiaProvider()
         let vehicle = Vehicle(vin: "KIA_EV123", regId: "KIA_EV_REG", model: "Kia EV", accountId: UUID(), isElectric: true, generation: 3, odometer: Distance(length: 12000, units: .miles), vehicleKey: "kia_ev_key")
-        
+
         let responseData = """
         {
             "payload": {
@@ -1071,9 +1071,9 @@ struct KiaAPIClientTests {
             }
         }
         """.data(using: .utf8)!
-        
+
         let status = try provider.parseVehicleStatusResponse(responseData, for: vehicle)
-        
+
         #expect(status.vin == "KIA_EV123")
         #expect(status.evStatus?.charging == false)
         #expect(status.evStatus?.chargeSpeed == 0)
@@ -1088,12 +1088,12 @@ struct KiaAPIClientTests {
         #expect(status.climateStatus.steeringWheelHeatingOn == true)
         #expect(status.syncDate != nil)
     }
-    
+
     @Test("Kia parse vehicle status response - gas vehicle")
     @MainActor func testKiaParseVehicleStatusResponseGas() throws {
         let provider = makeKiaProvider()
         let vehicle = Vehicle(vin: "KIA_GAS456", regId: "KIA_GAS_REG", model: "Kia Gas", accountId: UUID(), isElectric: false, generation: 2, odometer: Distance(length: 35000, units: .miles), vehicleKey: "kia_gas_key")
-        
+
         let responseData = """
         {
             "payload": {
@@ -1137,9 +1137,9 @@ struct KiaAPIClientTests {
             }
         }
         """.data(using: .utf8)!
-        
+
         let status = try provider.parseVehicleStatusResponse(responseData, for: vehicle)
-        
+
         #expect(status.vin == "KIA_GAS456")
         #expect(status.evStatus == nil)
         #expect(status.gasRange?.percentage == 45.8)
@@ -1152,23 +1152,23 @@ struct KiaAPIClientTests {
         #expect(status.climateStatus.steeringWheelHeatingOn == false)
         #expect(status.syncDate != nil)
     }
-    
+
     @Test("Kia parse vehicle status response - invalid response")
     @MainActor func testKiaParseVehicleStatusResponseInvalid() {
         let provider = makeKiaProvider()
         let vehicle = Vehicle(vin: "KIA_TEST123", regId: "KIA_TEST_REG", model: "Kia Test", accountId: UUID(), isElectric: true, generation: 3, odometer: Distance(length: 0, units: .miles), vehicleKey: "kia_test_key")
-        
+
         let invalidResponseData = """
         {
             "error": "invalid_vehicle_status"
         }
         """.data(using: .utf8)!
-        
+
         #expect(throws: HyundaiKiaAPIError.self) {
             try provider.parseVehicleStatusResponse(invalidResponseData, for: vehicle)
         }
     }
-    
+
     @Test("Kia parse command response success")
     @MainActor func testKiaParseCommandResponseSuccess() throws {
         let provider = makeKiaProvider()
@@ -1181,19 +1181,19 @@ struct KiaAPIClientTests {
             }
         }
         """.data(using: .utf8)!
-        
+
         // Should not throw
         try provider.parseCommandResponse(responseData)
     }
-    
+
     @Test("Kia device ID generation")
     @MainActor func testKiaDeviceIdGeneration() {
         let provider1 = makeKiaProvider()
         let provider2 = makeKiaProvider()
-        
+
         let endpoint1 = provider1.loginEndpoint()
         let endpoint2 = provider2.loginEndpoint()
-        
+
         // Device IDs should be different for different instances
         #expect(endpoint1.headers["deviceid"] != endpoint2.headers["deviceid"])
         #expect(endpoint1.headers["deviceid"]?.count == 55) // 22 chars + ":" + 32 chars UUID
@@ -1205,48 +1205,48 @@ struct KiaAPIClientTests {
 
 @Suite("APIClient Edge Cases Tests")
 struct APIClientEdgeCasesTests {
-    
+
     @Test("Handle nil Content-Type header scenario")
     @MainActor func testNilContentTypeHeader() {
         let provider = makeHyundaiProvider()
         let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
-        
+
         let endpoint = APIEndpoint(
             url: "https://api.hyundai.com/test",
             method: .POST,
             headers: [:], // No Content-Type header
             body: nil
         )
-        
+
         let request = try! client.createRequest(from: endpoint)
-        
+
         // Should set default Content-Type
         #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
     }
-    
+
     @Test("Handle custom Content-Type header")
     @MainActor func testCustomContentTypeHeader() {
         let provider = makeHyundaiProvider()
         let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
-        
+
         let endpoint = APIEndpoint(
             url: "https://api.hyundai.com/test",
             method: .POST,
             headers: ["Content-Type": "application/xml"],
             body: nil
         )
-        
+
         let request = try! client.createRequest(from: endpoint)
-        
+
         // Should preserve custom Content-Type
         #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/xml")
     }
-    
+
     @Test("Test extractResponseHeaders with mixed header types")
     @MainActor func testExtractResponseHeaders() {
         let provider = makeHyundaiProvider()
         let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
-        
+
         // Create a mock HTTP response with mixed header types
         let url = URL(string: "https://test.com")!
         let httpResponse = HTTPURLResponse(
@@ -1259,21 +1259,21 @@ struct APIClientEdgeCasesTests {
                 "X-Custom-Header": "custom-value"
             ]
         )!
-        
+
         let headers = client.extractResponseHeaders(from: httpResponse)
-        
+
         #expect(headers["Content-Type"] == "application/json")
         #expect(headers["Authorization"] == "Bearer token123")
         #expect(headers["X-Custom-Header"] == "custom-value")
     }
-    
+
     @Test("Test RequestContext creation")
     @MainActor func testRequestContextCreation() {
         let request = URLRequest(url: URL(string: "https://test.com")!)
         let headers = ["Authorization": "Bearer test"]
         let body = "test body"
         let startTime = Date()
-        
+
         let context = APIClient<HyundaiAPIEndpointProvider>.RequestContext(
             requestType: .login,
             request: request,
@@ -1281,19 +1281,19 @@ struct APIClientEdgeCasesTests {
             requestBody: body,
             startTime: startTime
         )
-        
+
         #expect(context.requestType == .login)
         #expect(context.request == request)
         #expect(context.requestHeaders == headers)
         #expect(context.requestBody == body)
         #expect(context.startTime == startTime)
     }
-    
+
     @Test("Test APIClient generic conformance")
     @MainActor func testAPIClientProtocolConformance() {
         let provider = makeHyundaiProvider()
         let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
-        
+
         // Should conform to APIClientProtocol
         let protocolClient: APIClientProtocol = client
         #expect(protocolClient is APIClient<HyundaiAPIEndpointProvider>)
@@ -1304,48 +1304,48 @@ struct APIClientEdgeCasesTests {
 
 @Suite("ExtractNumber Function Tests")
 struct ExtractNumberFunctionTests {
-    
+
     @Test("extractNumber with Double conversion")
     func testExtractNumberDouble() {
         let result: Double? = extractNumber(from: "123.45")
         #expect(result == 123.45)
-        
+
         let resultDirect: Double? = extractNumber(from: 67.89)
         #expect(resultDirect == 67.89)
-        
+
         let resultNil: Double? = extractNumber(from: nil)
         #expect(resultNil == nil)
-        
+
         let resultInvalid: Double? = extractNumber(from: "invalid")
         #expect(resultInvalid == nil)
     }
-    
+
     @Test("extractNumber with Int conversion")
     func testExtractNumberInt() {
         let result: Int? = extractNumber(from: "123")
         #expect(result == 123)
-        
+
         let resultDirect: Int? = extractNumber(from: 456)
         #expect(resultDirect == 456)
-        
+
         let resultFloat: Int? = extractNumber(from: 78.0)
         #expect(resultFloat == nil) // Float to Int conversion should fail
-        
+
         let resultNil: Int? = extractNumber(from: nil)
         #expect(resultNil == nil)
     }
-    
+
     @Test("extractNumber with Bool conversion")
     func testExtractNumberBool() {
         let resultTrue: Bool? = extractNumber(from: true)
         #expect(resultTrue == true)
-        
+
         let resultFalse: Bool? = extractNumber(from: false)
         #expect(resultFalse == false)
-        
+
         let resultStringTrue: Bool? = extractNumber(from: "true")
         #expect(resultStringTrue == true)
-        
+
         let resultStringFalse: Bool? = extractNumber(from: "false")
         #expect(resultStringFalse == false)
     }
@@ -1355,12 +1355,12 @@ struct ExtractNumberFunctionTests {
 
 @Suite("APIClient Logging Edge Cases Tests")
 struct APIClientLoggingEdgeCasesTests {
-    
+
     @Test("HTTPRequestLogData with all fields")
     @MainActor func testHTTPRequestLogDataComplete() {
         let request = URLRequest(url: URL(string: "https://test.com")!)
         let startTime = Date()
-        
+
         let logData = APIClient<HyundaiAPIEndpointProvider>.HTTPRequestLogData(
             requestType: .login,
             request: request,
@@ -1373,7 +1373,7 @@ struct APIClientLoggingEdgeCasesTests {
             apiError: "test api error",
             startTime: startTime
         )
-        
+
         #expect(logData.requestType == .login)
         #expect(logData.request == request)
         #expect(logData.requestHeaders["Authorization"] == "Bearer test")
@@ -1385,16 +1385,16 @@ struct APIClientLoggingEdgeCasesTests {
         #expect(logData.apiError == "test api error")
         #expect(logData.startTime == startTime)
     }
-    
+
     @Test("logHTTPRequest with nil URL")
     @MainActor func testLogHTTPRequestWithNilURL() {
         let provider = makeHyundaiProvider()
         let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
-        
+
         // Create request with nil URL scenario
         var request = URLRequest(url: URL(string: "https://test.com")!)
         request.url = nil // This creates the nil URL scenario
-        
+
         let logData = APIClient<HyundaiAPIEndpointProvider>.HTTPRequestLogData(
             requestType: .login,
             request: request,
@@ -1407,20 +1407,20 @@ struct APIClientLoggingEdgeCasesTests {
             apiError: nil,
             startTime: Date()
         )
-        
+
         // Test that it doesn't crash with nil URL and handles gracefully
         client.logHTTPRequest(logData)
     }
-    
+
     @Test("logHTTPRequest with nil HTTP method")
     @MainActor func testLogHTTPRequestWithNilMethod() {
         let provider = makeHyundaiProvider()
         let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
-        
+
         // Create request with nil HTTP method
         var request = URLRequest(url: URL(string: "https://test.com")!)
         request.httpMethod = nil // This creates the nil method scenario
-        
+
         let logData = APIClient<HyundaiAPIEndpointProvider>.HTTPRequestLogData(
             requestType: .login,
             request: request,
@@ -1433,16 +1433,16 @@ struct APIClientLoggingEdgeCasesTests {
             apiError: nil,
             startTime: Date()
         )
-        
+
         // Test that it doesn't crash with nil method and handles gracefully
         client.logHTTPRequest(logData)
     }
-    
+
     @Test("extractAPIError with Kia/Hyundai status pattern")
     @MainActor func testExtractAPIErrorStatusPattern() {
         let provider = makeHyundaiProvider()
         let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
-        
+
         let errorData = """
         {
             "status": {
@@ -1451,16 +1451,16 @@ struct APIClientLoggingEdgeCasesTests {
             }
         }
         """.data(using: .utf8)!
-        
+
         let result = client.extractAPIError(from: errorData)
         #expect(result == "API Error 1001: Invalid session token")
     }
-    
+
     @Test("extractAPIError with zero errorCode")
     @MainActor func testExtractAPIErrorZeroErrorCode() {
         let provider = makeHyundaiProvider()
         let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
-        
+
         let successData = """
         {
             "status": {
@@ -1469,71 +1469,70 @@ struct APIClientLoggingEdgeCasesTests {
             }
         }
         """.data(using: .utf8)!
-        
+
         let result = client.extractAPIError(from: successData)
         #expect(result == nil) // Should return nil for errorCode 0
     }
-    
+
     @Test("extractAPIError with direct errorCode 502")
     @MainActor func testExtractAPIErrorDirect502() {
         let provider = makeHyundaiProvider()
         let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
-        
+
         let errorData = """
         {
             "errorCode": 502,
             "errorMessage": "Bad Gateway"
         }
         """.data(using: .utf8)!
-        
+
         let result = client.extractAPIError(from: errorData)
         #expect(result == "API Error 502: Bad Gateway")
     }
-    
+
     @Test("extractAPIError with direct errorCode 502 no message")
     @MainActor func testExtractAPIErrorDirect502NoMessage() {
         let provider = makeHyundaiProvider()
         let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
-        
+
         let errorData = """
         {
             "errorCode": 502
         }
         """.data(using: .utf8)!
-        
+
         let result = client.extractAPIError(from: errorData)
         #expect(result == "API Error 502: Server error")
     }
-    
+
     @Test("extractAPIError with direct errorCode 401 no message")
     @MainActor func testExtractAPIErrorDirect401NoMessage() {
         let provider = makeHyundaiProvider()
         let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
-        
+
         let errorData = """
         {
             "errorCode": 401
         }
         """.data(using: .utf8)!
-        
+
         let result = client.extractAPIError(from: errorData)
         #expect(result == "API Error 401: Authentication error")
     }
-    
+
     @Test("extractAPIError with other errorCode")
     @MainActor func testExtractAPIErrorOtherCode() {
         let provider = makeHyundaiProvider()
         let client = APIClient(configuration: makeConfiguration(), endpointProvider: provider)
-        
+
         let errorData = """
         {
             "errorCode": 999,
             "errorMessage": "Unknown error"
         }
         """.data(using: .utf8)!
-        
+
         let result = client.extractAPIError(from: errorData)
         #expect(result == nil) // Should return nil for non-401/502 codes
     }
 }
-
