@@ -12,33 +12,6 @@ import Foundation
 public enum VehicleCommand: Sendable {
     case lock, unlock, startClimate(ClimateOptions)
     case stopClimate, startCharge, stopCharge
-
-    public func getBodyForCommand(vin: String, isElectric: Bool, generation: Int, username: String) -> [String: Any] {
-        var body: [String: Any] = [:]
-        if case let .startClimate(options) = self {
-            if isElectric {
-                body = ["airCtrl": options.climate ? 1 : 0,
-                        "airTemp": ["value": String(Int(options.temperature.value)),
-                                    "unit": options.temperature.units.integer()],
-                        "defrost": options.defrost, "heating1": options.heatValue]
-                if generation >= 3 {
-                    body["igniOnDuration"] = options.duration
-                    body["seatHeaterVentInfo"] = options.getSeatHeaterVentInfo()
-                }
-            } else {
-                body = ["Ims": 0, "airCtrl": options.climate ? 1 : 0,
-                        "airTemp": ["unit": options.temperature.units.integer(),
-                                    "value": Int(options.temperature.value)],
-                        "defrost": options.defrost, "heating1": options.heatValue,
-                        "igniOnDuration": options.duration,
-                        "seatHeaterVentInfo": options.getSeatHeaterVentInfo(),
-                        "username": username, "vin": vin]
-            }
-        } else if case .startCharge = self {
-            body["chargeRatio"] = 100
-        }
-        return body
-    }
 }
 
 public struct ClimateOptions: Codable, Equatable, Sendable {

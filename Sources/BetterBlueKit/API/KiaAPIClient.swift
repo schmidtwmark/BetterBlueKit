@@ -193,12 +193,7 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
         authToken: AuthToken,
     ) -> APIEndpoint {
         let endpoint = getCommandEndpoint(command: command)
-        let requestBody = command.getBodyForCommand(
-            vin: vehicle.vin,
-            isElectric: vehicle.isElectric,
-            generation: vehicle.generation,
-            username: username,
-        )
+        let requestBody = getBodyForCommand(command: command, vehicle: vehicle)
 
         return APIEndpoint(
             url: endpoint,
@@ -206,6 +201,60 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
             headers: authedApiHeaders(authToken: authToken, vehicleKey: vehicle.vehicleKey),
             body: try? JSONSerialization.data(withJSONObject: requestBody),
         )
+    }
+
+    public func getBodyForCommand(command: VehicleCommand, vehicle: Vehicle) -> [String: Any] {
+        var body: [String: Any] = [:]
+        
+        switch command {
+        case .startClimate(let options):
+            let heatingAccessory: [String: Int] = [
+                "steeringWheel": options.steeringWheel > 0 ? 1 : 0,
+                "rearWindow": options.rearDefrostEnabled ? 1 : 0,
+                "sideMirror": options.rearDefrostEnabled ? 1 : 0
+            ]
+            
+            var remoteClimate: [String: Any] = [
+                "airCtrl": options.climate,
+                "defrost": options.defrost,
+                "airTemp": [
+                    "value": String(Int(options.temperature.value)),
+                    "unit": options.temperature.units.integer()
+                ],
+                "ignitionOnDuration": [
+                    "unit": 4,
+                    "value": options.duration
+                ],
+                "heatingAccessory": heatingAccessory
+            ]
+            
+            // Seat configuration
+            let seats: [String: Int] = [
+                "driverSeat": convertSeatSetting(options.frontLeftSeat, options.frontLeftVentilationEnabled),
+                "passengerSeat": convertSeatSetting(options.frontRightSeat, options.frontRightVentilationEnabled),
+                "rearLeftSeat": convertSeatSetting(options.rearLeftSeat, options.rearLeftVentilationEnabled),
+                "rearRightSeat": convertSeatSetting(options.rearRightSeat, options.rearRightVentilationEnabled)
+            ]
+            
+            remoteClimate["heatVentSeat"] = seats
+            
+            body = ["remoteClimate": remoteClimate]
+            
+        case .startCharge:
+            body = ["chargeRatio": 100] // Existing implementation
+            
+        case .stopCharge, .stopClimate:
+            // Stop commands typically have empty bodies or are handled via specific endpoints without body payload requirements in this context.
+            // For .stopCharge, Kia uses "evc/cancel", and for .stopClimate "rems/stop".
+            // If they need a body, it's usually minimal, but often empty JSON or nothing.
+            // The previous implementation returned empty for these, so we'll maintain that.
+            break
+            
+        case .lock, .unlock:
+            break
+        }
+        
+        return body
     }
 
     public func parseLoginResponse(_ data: Data, headers: [String: String]) throws -> AuthToken {
@@ -318,12 +367,14 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
         let drvDistance = evStatusData["drvDistance"] as? [[String: Any]] ?? []
         let rangeInfo = drvDistance.first?["rangeByFuel"] as? [String: Any] ?? [:]
         let evModeRange = rangeInfo["evModeRange"] as? [String: Any] ?? [:]
+        let chargeTimes = evStatusData["remainChargeTime"] as? [[String: Any]] ?? []
+        let chargeTime = extractNumber(from: chargeTimes.first?["value"]) ?? 0
 
         let evRange = Distance(
             length: extractNumber(from: evModeRange["value"]) ?? 0,
             units: Distance.Units(extractNumber(from: evModeRange["unit"]) ?? 3)
         )
-
+        
         return VehicleStatus.EVStatus(
             charging: evStatusData["batteryCharge"] as? Bool ?? false,
             chargeSpeed: max(
@@ -332,6 +383,7 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
             ),
             pluggedIn: (extractNumber(from: evStatusData["batteryPlugin"]) ?? 0) != 0,
             evRange: VehicleStatus.FuelRange(range: evRange, percentage: batteryStatus),
+            chargeTime: .seconds(60 * chargeTime)
         )
     }
 

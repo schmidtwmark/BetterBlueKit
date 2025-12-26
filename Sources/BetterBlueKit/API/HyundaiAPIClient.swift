@@ -161,12 +161,7 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
         authToken: AuthToken,
     ) -> APIEndpoint {
         let endpoint = getEndpointForCommand(command: command, vehicle: vehicle)
-        let requestBody = command.getBodyForCommand(
-            vin: vehicle.vin,
-            isElectric: vehicle.isElectric,
-            generation: vehicle.generation,
-            username: username,
-        )
+        let requestBody = getBodyForCommand(command: command, vehicle: vehicle)
 
         return APIEndpoint(
             url: endpoint.absoluteString,
@@ -174,6 +169,33 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
             headers: getAuthorizedHeaders(authToken: authToken, vehicle: vehicle),
             body: try? JSONSerialization.data(withJSONObject: requestBody),
         )
+    }
+
+    public func getBodyForCommand(command: VehicleCommand, vehicle: Vehicle) -> [String: Any] {
+        var body: [String: Any] = [:]
+        if case let .startClimate(options) = command {
+            if vehicle.isElectric {
+                body = ["airCtrl": options.climate ? 1 : 0,
+                        "airTemp": ["value": String(Int(options.temperature.value)),
+                                    "unit": options.temperature.units.integer()],
+                        "defrost": options.defrost, "heating1": options.heatValue]
+                if vehicle.generation >= 3 {
+                    body["igniOnDuration"] = options.duration
+                    body["seatHeaterVentInfo"] = options.getSeatHeaterVentInfo()
+                }
+            } else {
+                body = ["Ims": 0, "airCtrl": options.climate ? 1 : 0,
+                        "airTemp": ["unit": options.temperature.units.integer(),
+                                    "value": Int(options.temperature.value)],
+                        "defrost": options.defrost, "heating1": options.heatValue,
+                        "igniOnDuration": options.duration,
+                        "seatHeaterVentInfo": options.getSeatHeaterVentInfo(),
+                        "username": username, "vin": vehicle.vin]
+            }
+        } else if case .startCharge = command {
+            body["chargeRatio"] = 100
+        }
+        return body
     }
 
     public func parseLoginResponse(_ data: Data, headers _: [String: String]) throws -> AuthToken {
@@ -295,7 +317,7 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
         guard vehicle.isElectric,
               let evStatusData = statusData["evStatus"] as? [String: Any] else { return nil }
         let ranges = fuelRanges(from: statusData)
-
+        
         // Sometimes, Hyundai chooses to not report the correct driving distance fuel type, and it just gets a 0
         // To correct this, if we know this is an EV and there's a single driving distance,
         // let's just use whatever is first. This may cause problems for PHEVs in the future
@@ -307,9 +329,12 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
             guard let range = ranges[.electric] else { return nil }
             evRange = range
         }
-
+        
         let fuelPercentage: Double = extractNumber(from: evStatusData["batteryStatus"]) ?? 0
-
+        let remainTime2 = evStatusData["remainTime2"] as? [String : Any] ?? [:]
+        let atc = remainTime2["atc"] as? [String: Any] ?? [:]
+        let chargeTimeMinutes = extractNumber(from: atc["value"]) ?? 0
+        
         return VehicleStatus.EVStatus(
             charging: evStatusData["batteryCharge"] as? Bool ?? false,
             chargeSpeed: max(
@@ -318,6 +343,7 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
             ),
             pluggedIn: (extractNumber(from: evStatusData["batteryPlugin"]) ?? 0) != 0,
             evRange: VehicleStatus.FuelRange(range: evRange, percentage: fuelPercentage),
+            chargeTime: .seconds(60 * chargeTimeMinutes)
         )
     }
 

@@ -9,8 +9,8 @@ import Foundation
 
 // MARK: - Measurements
 
-public struct Distance: Codable, Equatable, Sendable {
-    public enum Units: String, Codable, CaseIterable, Identifiable, Sendable {
+public struct Distance: Codable, Hashable, Sendable {
+    public enum Units: String, Codable, CaseIterable, Identifiable, Hashable, Sendable {
         case miles, kilometers
 
         init(_ integer: Int) { self = integer == 1 ? .kilometers : .miles }
@@ -49,8 +49,8 @@ public struct Distance: Codable, Equatable, Sendable {
     }
 }
 
-public struct Temperature: Codable, Equatable, Sendable {
-    public enum Units: String, Codable, CaseIterable, Equatable, Identifiable, Sendable {
+public struct Temperature: Codable, Hashable, Sendable {
+    public enum Units: String, Codable, CaseIterable, Hashable, Identifiable, Sendable {
         case celsius, fahrenheit
 
         public init(_ number: Int?) { self = number == 1 ? .fahrenheit : .celsius }

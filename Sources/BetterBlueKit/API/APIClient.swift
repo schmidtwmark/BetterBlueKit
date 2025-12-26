@@ -84,6 +84,9 @@ public protocol APIEndpointProvider: Sendable {
         authToken: AuthToken,
     ) -> APIEndpoint
 
+    // Command body generation
+    func getBodyForCommand(command: VehicleCommand, vehicle: Vehicle) -> [String: Any]
+
     // Response parsing methods
     func parseLoginResponse(_ data: Data, headers: [String: String]) throws -> AuthToken
     func parseVehiclesResponse(_ data: Data) throws -> [Vehicle]
