@@ -1,3 +1,4 @@
+// swiftlint:disable file_length type_body_length line_length force_try
 // swiftlint:disable:next concurrency_safety
 // MARK: - Global Helper Functions
 
@@ -96,7 +97,14 @@ struct APIClientAsyncTests {
         )
         // Set up canned responses for all endpoints used by TestProvider
         let loginData = try! JSONEncoder().encode(LoginResponse(accessToken: "test_access_token", refreshToken: "test_refresh_token", pin: "0000", expiresAt: Date().addingTimeInterval(3600)))
-        let vehiclesData = try! JSONEncoder().encode([VehicleResponse(vin: "TEST123VIN", regId: "REG123", model: "Test Model", accountId: UUID().uuidString, isElectric: true, generation: 3, odometer: Odometer(length: 0, units: "miles"))])
+        // swiftlint:disable:this force_try line_length
+        let vehiclesData = try! JSONEncoder().encode([
+            VehicleResponse(
+                vin: "TEST123VIN", regId: "REG123", model: "Test Model",
+                accountId: UUID().uuidString, isElectric: true, generation: 3,
+                odometer: Odometer(length: 0, units: "miles")
+            )
+        ])
         let statusData = try! JSONEncoder().encode(StatusResponse(vin: "TEST123VIN", evStatus: EVStatus(evRange: EVRange(range: Odometer(length: 100, units: "miles"), percentage: 80))))
         MockURLProtocol.cannedResponses = [
             "https://example.com/login": (200, loginData),
@@ -161,6 +169,10 @@ struct APIClientAsyncTests {
             func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] { fatalError() }
             func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus { fatalError() }
             func parseCommandResponse(_ data: Data) throws { fatalError() }
+
+            func getBodyForCommand(command: VehicleCommand, vehicle: Vehicle) -> [String: Any] {
+                fatalError("This should not be called in this test")
+            }
         }
     let client = makeClient(provider: BadProvider())
         do {
@@ -233,7 +245,7 @@ struct TestProvider: APIEndpointProvider {
         return VehicleStatus(
             vin: vehicle.vin,
             gasRange: nil,
-            evStatus: .init(charging: false, chargeSpeed: 0, pluggedIn: false, evRange: .init(range: Distance(length: 100, units: .miles), percentage: 80)),
+            evStatus: .init(charging: false, chargeSpeed: 0, pluggedIn: false, evRange: .init(range: Distance(length: 100, units: .miles), percentage: 80), chargeTime: .zero),
             location: .init(latitude: 37.7749, longitude: -122.4194),
             lockStatus: .locked,
             climateStatus: .init(defrostOn: false, airControlOn: false, steeringWheelHeatingOn: false, temperature: Temperature(value: 70, units: .fahrenheit)),
@@ -244,6 +256,10 @@ struct TestProvider: APIEndpointProvider {
 
     func parseCommandResponse(_ data: Data) throws {
         // no-op for successful commands
+    }
+
+    func getBodyForCommand(command: VehicleCommand, vehicle: Vehicle) -> [String: Any] {
+        return [:]
     }
 }
 

@@ -14,11 +14,6 @@ extension KiaAPIEndpointProvider {
 
         let sid = headers["sid"] ?? headers["Sid"] ?? headers["SID"]
 
-        // Check for MFA requirement
-        if sid == nil, let xid = headers["xid"] ?? headers["Xid"] ?? headers["XID"] {
-            throw APIError.requiresMFA(xid: xid, apiName: "KiaAPI")
-        }
-
         // Extract session ID from response headers - Kia API returns 'sid' header
         guard let sessionId = sid else {
             throw APIError.logError("Kia API login response missing session ID header", apiName: "KiaAPI")
@@ -35,10 +30,12 @@ extension KiaAPIEndpointProvider {
         )
     }
 
-    public func parseVerifyOTPResponse(_ data: Data, headers: [String: String]) throws -> (rememberMeToken: String, sid: String) {
+    public func parseVerifyOTPResponse(
+        _ data: Data, headers: [String: String]) throws -> (rememberMeToken: String, sid: String) {
         try checkForKiaSpecificErrors(data: data)
 
-        guard let rememberMeToken = headers["rememberMeToken"] ?? headers["rememberMeToken"] ?? headers["rememberMeToken"],
+        guard let rememberMeToken = headers["rememberMeToken"]
+                ?? headers["rememberMeToken"] ?? headers["rememberMeToken"],
               let sid = headers["sid"] ?? headers["Sid"] ?? headers["SID"]
         else {
             throw APIError.logError("Kia API verify OTP response missing tokens", apiName: "KiaAPI")

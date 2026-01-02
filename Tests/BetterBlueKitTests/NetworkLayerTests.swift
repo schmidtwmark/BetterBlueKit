@@ -246,8 +246,8 @@ struct NetworkLayerTests {
         let json = try JSONSerialization.jsonObject(with: bodyData) as? [String: Any]
 
         #expect(json != nil)
-        #expect(json?["deviceKey"] as? String == "")
-        #expect(json?["deviceType"] as? Int == 2)
+        #expect(json?["deviceKey"] as? String == nil)
+        #expect(json?["deviceType"] as? Int == nil)
 
         let userCredential = json?["userCredential"] as? [String: Any]
         #expect(userCredential != nil)

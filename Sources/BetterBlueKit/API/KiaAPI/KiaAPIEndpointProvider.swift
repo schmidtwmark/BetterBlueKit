@@ -99,6 +99,22 @@ public final class KiaAPIEndpointProvider {
            messageLower.contains("expired") {
             throw APIError.invalidCredentials("Session Key is either invalid or expired", apiName: "KiaAPI")
         }
+
+        if errorCode == 9789 {
+            throw APIError.kiaInvalidRequest(
+                "Kia API is currently unsupported. " +
+                "See https://github.com/schmidtwmark/BetterBlueKit/issues/7 for updates",
+                apiName: "KiaAPI"
+            )
+        }
+
+        if errorCode == 429 {
+            throw APIError.serverError("Rate limited", apiName: "KiaAPI")
+        }
+
+        if errorCode == 503 {
+            throw APIError.serverError("Service unavailable", apiName: "KiaAPI")
+        }
     }
 }
 

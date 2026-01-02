@@ -220,63 +220,65 @@ public class APIClient<Provider: APIEndpointProvider> {
         let requestHeaders = request.allHTTPHeaderFields ?? [:]
         let requestBody = request.httpBody.flatMap { String(data: $0, encoding: .utf8) }
 
+        let context = RequestContext(
+            requestType: requestType,
+            request: request,
+            requestHeaders: requestHeaders,
+            requestBody: requestBody,
+            startTime: startTime
+        )
+
         do {
             let (data, response) = try await urlSession.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                try handleInvalidResponse(
-                    requestType: requestType,
-                    request: request,
-                    requestHeaders: requestHeaders,
-                    requestBody: requestBody,
-                    startTime: startTime,
-                )
-                fatalError("handleInvalidResponse should throw")
-            }
-
-            let responseHeaders = extractResponseHeaders(from: httpResponse)
-            let responseBody = String(data: data, encoding: .utf8)
-            let apiError = extractAPIError(from: data)
-
-            print("📥 [APIClient] Received response for \(requestType.displayName)")
-            print("   Status Code: \(httpResponse.statusCode)")
-            print("   Headers: \(responseHeaders)")
-            if let responseBody {
-                print("   Body: \(responseBody)")
-            }
-
-            logHTTPRequest(HTTPRequestLogData(
-                requestType: requestType,
-                request: request,
-                requestHeaders: requestHeaders,
-                requestBody: requestBody,
-                responseStatus: httpResponse.statusCode,
-                responseHeaders: responseHeaders,
-                responseBody: responseBody,
-                error: nil,
-                apiError: apiError,
-                startTime: startTime,
-            ))
-
-            try validateHTTPResponse(httpResponse, data: data, responseBody: responseBody)
-
-            return (data, httpResponse)
-
+            return try handleSuccessfulRequest(data: data, response: response, context: context)
         } catch let error as APIError {
             throw error
         } catch {
-            try handleNetworkError(
-                error,
-                context: RequestContext(
-                    requestType: requestType,
-                    request: request,
-                    requestHeaders: requestHeaders,
-                    requestBody: requestBody,
-                    startTime: startTime,
-                ),
-            )
+            try handleNetworkError(error, context: context)
             fatalError("handleNetworkError should throw")
         }
+    }
+
+    private func handleSuccessfulRequest(
+        data: Data, response: URLResponse, context: RequestContext) throws -> (Data, HTTPURLResponse) {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            try handleInvalidResponse(
+                requestType: context.requestType,
+                request: context.request,
+                requestHeaders: context.requestHeaders,
+                requestBody: context.requestBody,
+                startTime: context.startTime
+            )
+            fatalError("handleInvalidResponse should throw")
+        }
+
+        let responseHeaders = extractResponseHeaders(from: httpResponse)
+        let responseBody = String(data: data, encoding: .utf8)
+        let apiError = extractAPIError(from: data)
+
+        print("📥 [APIClient] Received response for \(context.requestType.displayName)")
+        print("   Status Code: \(httpResponse.statusCode)")
+        print("   Headers: \(responseHeaders)")
+        if let responseBody {
+            print("   Body: \(responseBody)")
+        }
+
+        logHTTPRequest(HTTPRequestLogData(
+            requestType: context.requestType,
+            request: context.request,
+            requestHeaders: context.requestHeaders,
+            requestBody: context.requestBody,
+            responseStatus: httpResponse.statusCode,
+            responseHeaders: responseHeaders,
+            responseBody: responseBody,
+            error: nil,
+            apiError: apiError,
+            startTime: context.startTime
+        ))
+
+        try validateHTTPResponse(httpResponse, data: data, responseBody: responseBody)
+
+        return (data, httpResponse)
     }
 
     func extractResponseHeaders(from httpResponse: HTTPURLResponse) -> [String: String] {

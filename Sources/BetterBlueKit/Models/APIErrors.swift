@@ -17,7 +17,7 @@ public struct APIError: Error, Codable {
     public enum ErrorType: String, Codable, Sendable {
         case general, invalidVehicleSession, invalidCredentials
         case serverError, invalidPin, concurrentRequest, failedRetryLogin
-        case requiresMFA
+        case requiresMFA, kiaInvalidRequest
     }
 
     public init(
@@ -106,5 +106,12 @@ public struct APIError: Error, Codable {
         apiName: String? = nil,
     ) -> APIError {
         logError(message, code: 502, apiName: apiName, errorType: .failedRetryLogin)
+    }
+
+    public static func kiaInvalidRequest(
+        _ message: String = "Invalid request",
+        apiName: String? = nil,
+    ) -> APIError {
+        logError(message, code: 502, apiName: apiName, errorType: .kiaInvalidRequest)
     }
 }

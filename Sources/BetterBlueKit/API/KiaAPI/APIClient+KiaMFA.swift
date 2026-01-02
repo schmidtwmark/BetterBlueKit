@@ -17,7 +17,8 @@ extension APIClient where Provider == KiaAPIEndpointProvider {
         try endpointProvider.parseCommandResponse(data)
     }
 
-    public func verifyOTP(otpKey: String, xid: String, otp: String) async throws -> (rememberMeToken: String, sid: String) {
+    public func verifyOTP(
+        otpKey: String, xid: String, otp: String) async throws -> (rememberMeToken: String, sid: String) {
         print("🛠️ [KiaMFA] verifyOTP called - otpKey: \(otpKey), xid: \(xid), otp: \(otp)")
         let endpoint = endpointProvider.verifyOTPEndpoint(otpKey: otpKey, xid: xid, otp: otp)
         let request = try createRequest(from: endpoint)

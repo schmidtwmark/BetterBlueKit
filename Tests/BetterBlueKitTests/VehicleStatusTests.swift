@@ -52,7 +52,8 @@ struct VehicleStatusTests {
             charging: true,
             chargeSpeed: 50.0,
             pluggedIn: true,
-            evRange: evRange
+            evRange: evRange,
+            chargeTime: .zero
         )
 
         #expect(evStatus.charging == true)
@@ -71,7 +72,8 @@ struct VehicleStatusTests {
             evRange: VehicleStatus.FuelRange(
                 range: Distance(length: 150.0, units: .kilometers),
                 percentage: 40.0
-            )
+            ),
+            chargeTime: .zero
         )
 
         let encoded = try JSONEncoder().encode(original)
@@ -205,7 +207,8 @@ struct VehicleStatusTests {
             charging: false,
             chargeSpeed: 0.0,
             pluggedIn: true,
-            evRange: evRange
+            evRange: evRange,
+            chargeTime: .zero
         )
         let location = VehicleStatus.Location(latitude: 37.7749, longitude: -122.4194)
         let climateStatus = VehicleStatus.ClimateStatus(
@@ -232,7 +235,7 @@ struct VehicleStatusTests {
         #expect(vehicleStatus.evStatus?.charging == false)
         #expect(vehicleStatus.evStatus?.pluggedIn == true)
         #expect(vehicleStatus.location.latitude == 37.7749)
-        #expect(vehicleStatus.lockStatus == .locked)
+        #expect(vehicleStatus.lockStatus == VehicleStatus.LockStatus.locked)
         #expect(vehicleStatus.climateStatus.airControlOn == true)
         #expect(vehicleStatus.odometer?.length == 15000.0)
     }

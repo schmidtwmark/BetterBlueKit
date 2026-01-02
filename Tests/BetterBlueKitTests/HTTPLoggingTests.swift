@@ -17,11 +17,13 @@ struct HTTPLoggingTests {
     @Test("HTTPRequestType all cases")
     func testHTTPRequestTypeAllCases() {
         let allCases = HTTPRequestType.allCases
-        #expect(allCases.count == 4)
+        #expect(allCases.count == 6)
         #expect(allCases.contains(.login))
         #expect(allCases.contains(.fetchVehicles))
         #expect(allCases.contains(.fetchVehicleStatus))
         #expect(allCases.contains(.sendCommand))
+        #expect(allCases.contains(.sendMFA))
+        #expect(allCases.contains(.verifyMFA))
     }
 
     @Test("HTTPRequestType display names")
@@ -30,6 +32,8 @@ struct HTTPLoggingTests {
         #expect(HTTPRequestType.fetchVehicles.displayName == "Fetch Vehicles")
         #expect(HTTPRequestType.fetchVehicleStatus.displayName == "Fetch Status")
         #expect(HTTPRequestType.sendCommand.displayName == "Send Command")
+        #expect(HTTPRequestType.sendMFA.displayName == "Send MFA")
+        #expect(HTTPRequestType.verifyMFA.displayName == "Verify MFA")
     }
 
     @Test("HTTPRequestType raw values")
@@ -38,6 +42,8 @@ struct HTTPLoggingTests {
         #expect(HTTPRequestType.fetchVehicles.rawValue == "fetchVehicles")
         #expect(HTTPRequestType.fetchVehicleStatus.rawValue == "fetchVehicleStatus")
         #expect(HTTPRequestType.sendCommand.rawValue == "sendCommand")
+        #expect(HTTPRequestType.sendMFA.rawValue == "sendMFA")
+        #expect(HTTPRequestType.verifyMFA.rawValue == "verifyMFA")
     }
 
     @Test("HTTPRequestType Codable")

@@ -31,6 +31,10 @@ struct APIClientLoggingTests {
         func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] { [] }
         func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus { throw NSError(domain: "", code: 0) }
         func parseCommandResponse(_ data: Data) throws {}
+
+        func getBodyForCommand(command: VehicleCommand, vehicle: Vehicle) -> [String: Any] {
+            return [:] // Dummy implementation for test
+        }
     }
 
     class DummyAPIClient: APIClient<DummyProvider> {

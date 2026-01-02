@@ -10,6 +10,7 @@ import Testing
 @testable import BetterBlueKit
 
 @Suite("Kia API Parsing Tests")
+// swiftlint:disable type_body_length
 struct KiaAPIParsingTests {
 
     // MARK: - Test Data
