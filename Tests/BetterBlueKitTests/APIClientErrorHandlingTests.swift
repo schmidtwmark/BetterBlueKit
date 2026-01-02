@@ -107,7 +107,7 @@ struct APIClientErrorHandlingTests {
                 startTime: startTime
             )
             #expect(Bool(false), "Should have thrown")
-        } catch let error as HyundaiKiaAPIError {
+        } catch let error as APIError {
             #expect(error.message.contains("Invalid response type"))
             #expect(error.apiName == "APIClient")
         } catch {
@@ -127,15 +127,15 @@ struct APIClientErrorHandlingTests {
         let response404 = HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: nil)!
         let data = Data()
         // 401
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try client.validateHTTPResponse(response401, data: data, responseBody: "expired")
         }
         // 502
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try client.validateHTTPResponse(response502, data: data, responseBody: "server error")
         }
         // 404
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try client.validateHTTPResponse(response404, data: data, responseBody: nil as String?)
         }
     }

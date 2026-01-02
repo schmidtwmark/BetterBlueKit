@@ -12,9 +12,16 @@ extension KiaAPIEndpointProvider {
         // Check for Kia-specific errors in the response body
         try checkForKiaSpecificErrors(data: data)
 
+        let sid = headers["sid"] ?? headers["Sid"] ?? headers["SID"]
+
+        // Check for MFA requirement
+        if sid == nil, let xid = headers["xid"] ?? headers["Xid"] ?? headers["XID"] {
+            throw APIError.requiresMFA(xid: xid, apiName: "KiaAPI")
+        }
+
         // Extract session ID from response headers - Kia API returns 'sid' header
-        guard let sessionId = headers["sid"] ?? headers["Sid"] ?? headers["SID"] else {
-            throw HyundaiKiaAPIError.logError("Kia API login response missing session ID header", apiName: "KiaAPI")
+        guard let sessionId = sid else {
+            throw APIError.logError("Kia API login response missing session ID header", apiName: "KiaAPI")
         }
 
         let validUntil = Date().addingTimeInterval(3600) // 1 hour like Python
@@ -28,12 +35,24 @@ extension KiaAPIEndpointProvider {
         )
     }
 
+    public func parseVerifyOTPResponse(_ data: Data, headers: [String: String]) throws -> (rememberMeToken: String, sid: String) {
+        try checkForKiaSpecificErrors(data: data)
+
+        guard let rememberMeToken = headers["rememberMeToken"] ?? headers["rememberMeToken"] ?? headers["rememberMeToken"],
+              let sid = headers["sid"] ?? headers["Sid"] ?? headers["SID"]
+        else {
+            throw APIError.logError("Kia API verify OTP response missing tokens", apiName: "KiaAPI")
+        }
+
+        return (rememberMeToken, sid)
+    }
+
     public func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let payload = json["payload"] as? [String: Any],
               let vehicleSummary = payload["vehicleSummary"] as? [[String: Any]]
         else {
-            throw HyundaiKiaAPIError.logError(
+            throw APIError.logError(
                 "Invalid Kia vehicles response " +
                     "\(String(data: data, encoding: .utf8) ?? "<empty>")",
                 apiName: "KiaAPI",
@@ -96,7 +115,7 @@ extension KiaAPIEndpointProvider {
               let vehicleInfo = vehicleInfoList.first,
               let lastVehicleInfo = vehicleInfo["lastVehicleInfo"] as? [String: Any]
         else {
-            throw HyundaiKiaAPIError.logError("Invalid Kia vehicle status response", apiName: "KiaAPI")
+            throw APIError.logError("Invalid Kia vehicle status response", apiName: "KiaAPI")
         }
         return lastVehicleInfo
     }
@@ -105,7 +124,7 @@ extension KiaAPIEndpointProvider {
         guard let vehicleStatusRpt = lastVehicleInfo["vehicleStatusRpt"] as? [String: Any],
               let vehicleStatus = vehicleStatusRpt["vehicleStatus"] as? [String: Any]
         else {
-            throw HyundaiKiaAPIError.logError("Invalid Kia vehicle status response", apiName: "KiaAPI")
+            throw APIError.logError("Invalid Kia vehicle status response", apiName: "KiaAPI")
         }
         return vehicleStatus
     }

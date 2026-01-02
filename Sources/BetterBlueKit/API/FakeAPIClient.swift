@@ -39,13 +39,13 @@ public class FakeAPIClient: APIClientProtocol {
         if try await vehicleProvider.shouldFailCredentialValidation(accountId: accountId) {
             print("🔴 [FakeAPI] Debug: Simulating credential validation failure")
             let message = try await vehicleProvider.getCustomCredentialErrorMessage(accountId: accountId)
-            throw HyundaiKiaAPIError.invalidCredentials(message, apiName: "FakeAPI")
+            throw APIError.invalidCredentials(message, apiName: "FakeAPI")
         }
 
         // Check for debug login failure
         if try await vehicleProvider.shouldFailLogin(accountId: accountId) {
             print("🔴 [FakeAPI] Debug: Simulating login failure")
-            throw HyundaiKiaAPIError.logError("Debug: Simulated login failure", code: 500, apiName: "FakeAPI")
+            throw APIError.logError("Debug: Simulated login failure", code: 500, apiName: "FakeAPI")
         }
 
         print("🟢 [FakeAPI] Login successful for user '\(username)'")
@@ -61,7 +61,7 @@ public class FakeAPIClient: APIClientProtocol {
         // Check for debug vehicle fetch failure
         if try await vehicleProvider.shouldFailVehicleFetch(accountId: accountId) {
             print("🔴 [FakeAPI] Debug: Simulating vehicle fetch failure")
-            throw HyundaiKiaAPIError.logError("Debug: Simulated vehicle fetch failure", code: 500, apiName: "FakeAPI")
+            throw APIError.logError("Debug: Simulated vehicle fetch failure", code: 500, apiName: "FakeAPI")
         }
 
         print("🚗 [FakeAPI] Fetching vehicles for user '\(username)'...")
@@ -75,7 +75,7 @@ public class FakeAPIClient: APIClientProtocol {
         // Check for debug status fetch failure
         if try await vehicleProvider.shouldFailStatusFetch(for: vehicle.vin, accountId: accountId) {
             print("🔴 [FakeAPI] Debug: Simulating status fetch failure")
-            throw HyundaiKiaAPIError.logError("Debug: Simulated status fetch failure", code: 500, apiName: "FakeAPI")
+            throw APIError.logError("Debug: Simulated status fetch failure", code: 500, apiName: "FakeAPI")
         }
 
         let status = try await vehicleProvider.getVehicleStatus(for: vehicle.vin, accountId: accountId)
@@ -91,14 +91,14 @@ public class FakeAPIClient: APIClientProtocol {
                 for: vehicle.vin,
                 accountId: accountId,
             )
-            throw HyundaiKiaAPIError.invalidPin(errorMessage, apiName: "FakeAPI")
+            throw APIError.invalidPin(errorMessage, apiName: "FakeAPI")
         }
 
         // Check for debug command-specific failures
         if try await vehicleProvider.shouldFailCommand(command, for: vehicle.vin, accountId: accountId) {
             let commandName = String(describing: command).components(separatedBy: "(").first ?? "command"
             print("🔴 [FakeAPI] Debug: Simulating \(commandName) failure")
-            throw HyundaiKiaAPIError.logError("Debug: Simulated \(commandName) failure", code: 500, apiName: "FakeAPI")
+            throw APIError.logError("Debug: Simulated \(commandName) failure", code: 500, apiName: "FakeAPI")
         }
 
         try await vehicleProvider.executeCommand(command, for: vehicle.vin, accountId: accountId)

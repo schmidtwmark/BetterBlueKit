@@ -53,7 +53,7 @@ struct AdvancedErrorHandlingTests {
         for invalidJSON in invalidResponseVariants {
             let data = Data(invalidJSON.utf8)
 
-            #expect(throws: HyundaiKiaAPIError.self) {
+            #expect(throws: APIError.self) {
                 try provider.parseVehicleStatusResponse(data, for: vehicle)
             }
         }
@@ -96,7 +96,7 @@ struct AdvancedErrorHandlingTests {
         for invalidJSON in corruptedVariants {
             let data = Data(invalidJSON.utf8)
 
-            #expect(throws: HyundaiKiaAPIError.self) {
+            #expect(throws: APIError.self) {
                 try provider.parseVehicleStatusResponse(data, for: vehicle)
             }
         }
@@ -239,7 +239,7 @@ struct AdvancedErrorHandlingTests {
 
         let data = Data(rateLimitJSON.utf8)
 
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try provider.parseCommandResponse(data)
         }
     }
@@ -265,7 +265,7 @@ struct AdvancedErrorHandlingTests {
 
         let data = Data(maintenanceJSON.utf8)
 
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try provider.parseCommandResponse(data)
         }
     }
@@ -292,7 +292,7 @@ struct AdvancedErrorHandlingTests {
         do {
             try provider.parseCommandResponse(data)
             #expect(Bool(false), "Should have thrown an error")
-        } catch let error as HyundaiKiaAPIError {
+        } catch let error as APIError {
             #expect(error.errorType == .invalidCredentials)
             #expect(error.message.lowercased().contains("session"))
             #expect(error.message.lowercased().contains("expired"))
@@ -301,12 +301,12 @@ struct AdvancedErrorHandlingTests {
 
     @Test("Invalid PIN error handling")
     @MainActor func testInvalidPINErrorHandling() {
-        let pinError = HyundaiKiaAPIError.invalidPin("PIN is incorrect", apiName: "TestAPI")
+        let pinError = APIError.invalidPin("PIN is incorrect", apiName: "TestAPI")
 
         #expect(pinError.errorType == .invalidPin)
         #expect(pinError.apiName == "TestAPI")
         #expect(pinError.message.contains("PIN is incorrect"))
-        // Note: HyundaiKiaAPIError doesn't have a statusCode property in this implementation
+        // Note: APIError doesn't have a statusCode property in this implementation
     }
 
     // MARK: - Network Timeout Simulation

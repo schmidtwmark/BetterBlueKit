@@ -19,6 +19,8 @@ public struct APIClientConfiguration {
     public let pin: String
     public let accountId: UUID
     public let logSink: HTTPLogSink?
+    public let rememberMeToken: String?
+
     public init(
         region: Region,
         brand: Brand,
@@ -27,6 +29,7 @@ public struct APIClientConfiguration {
         pin: String,
         accountId: UUID,
         logSink: HTTPLogSink? = nil,
+        rememberMeToken: String? = nil
     ) {
         self.region = region
         self.brand = brand
@@ -35,6 +38,7 @@ public struct APIClientConfiguration {
         self.pin = pin
         self.accountId = accountId
         self.logSink = logSink
+        self.rememberMeToken = rememberMeToken
     }
 }
 
@@ -108,7 +112,7 @@ public class APIClient<Provider: APIEndpointProvider> {
     let pin: String
     let accountId: UUID
 
-    private let endpointProvider: Provider
+    let endpointProvider: Provider
     let logSink: HTTPLogSink?
     let urlSession: URLSession
 
@@ -131,6 +135,8 @@ public class APIClient<Provider: APIEndpointProvider> {
     public func login() async throws -> AuthToken {
         let endpoint = endpointProvider.loginEndpoint()
         let request = try createRequest(from: endpoint)
+
+        print("📤 [APIClient] Attempting login")
         let (data, response) = try await performLoggedRequest(request, requestType: .login)
 
         // Extract headers for parsing
@@ -182,7 +188,7 @@ public class APIClient<Provider: APIEndpointProvider> {
 
     func createRequest(from endpoint: APIEndpoint) throws -> URLRequest {
         guard let url = URL(string: endpoint.url) else {
-            throw HyundaiKiaAPIError(
+            throw APIError(
                 message: "Invalid URL: \(endpoint.url)",
                 apiName: "APIClient",
             )
@@ -209,6 +215,7 @@ public class APIClient<Provider: APIEndpointProvider> {
         _ request: URLRequest,
         requestType: HTTPRequestType,
     ) async throws -> (Data, HTTPURLResponse) {
+        print("🚀 [APIClient] Sending \(requestType.displayName) request to \(request.url?.absoluteString ?? "unknown")")
         let startTime = Date()
         let requestHeaders = request.allHTTPHeaderFields ?? [:]
         let requestBody = request.httpBody.flatMap { String(data: $0, encoding: .utf8) }
@@ -231,6 +238,13 @@ public class APIClient<Provider: APIEndpointProvider> {
             let responseBody = String(data: data, encoding: .utf8)
             let apiError = extractAPIError(from: data)
 
+            print("📥 [APIClient] Received response for \(requestType.displayName)")
+            print("   Status Code: \(httpResponse.statusCode)")
+            print("   Headers: \(responseHeaders)")
+            if let responseBody {
+                print("   Body: \(responseBody)")
+            }
+
             logHTTPRequest(HTTPRequestLogData(
                 requestType: requestType,
                 request: request,
@@ -248,7 +262,7 @@ public class APIClient<Provider: APIEndpointProvider> {
 
             return (data, httpResponse)
 
-        } catch let error as HyundaiKiaAPIError {
+        } catch let error as APIError {
             throw error
         } catch {
             try handleNetworkError(

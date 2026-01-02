@@ -15,7 +15,7 @@ extension HyundaiAPIEndpointProvider {
               let expiresInString = json["expires_in"] as? String,
               let expiresIn = Int(expiresInString)
         else {
-            throw HyundaiKiaAPIError.logError(
+            throw APIError.logError(
                 "Invalid login response for \(username): " +
                     "\(String(data: data, encoding: .utf8) ?? "No data")",
                 apiName: "HyundaiAPI",
@@ -36,7 +36,7 @@ extension HyundaiAPIEndpointProvider {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let vehicleArray = json["enrolledVehicleDetails"] as? [[String: Any]]
         else {
-            throw HyundaiKiaAPIError.logError(
+            throw APIError.logError(
                 "Invalid vehicles response " +
                     "\(String(data: data, encoding: .utf8) ?? "<empty>")",
                 apiName: "HyundaiAPI",
@@ -97,7 +97,7 @@ extension HyundaiAPIEndpointProvider {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let statusData = json["vehicleStatus"] as? [String: Any]
         else {
-            throw HyundaiKiaAPIError.logError(
+            throw APIError.logError(
                 "Invalid vehicle status response " +
                     "\(String(data: data, encoding: .utf8) ?? "<empty>")",
                 apiName: "HyundaiAPI",
@@ -203,7 +203,7 @@ extension HyundaiAPIEndpointProvider {
                isBlueLinkServicePinValid == "invalid" {
                 let remainingAttempts = jsonResponse["remainingAttemptCount"] as? String ?? "unknown"
                 let errorMessage = "Invalid PIN, \(remainingAttempts) attempts remaining"
-                throw HyundaiKiaAPIError.invalidPin(errorMessage, apiName: "HyundaiAPI")
+                throw APIError.invalidPin(errorMessage, apiName: "HyundaiAPI")
             }
         }
     }

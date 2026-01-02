@@ -11,19 +11,53 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
     public func loginEndpoint() -> APIEndpoint {
         let loginURL = "\(apiURL)prof/authUser"
         let loginData: [String: Any] = [
-            "deviceKey": "",
-            "deviceType": 2,
             "userCredential": [
                 "userId": username,
                 "password": password
             ]
         ]
 
+        var headers = apiHeaders()
+        if let rememberMeToken {
+            headers["rmToken"] = rememberMeToken
+        }
+
         return APIEndpoint(
             url: loginURL,
             method: .POST,
-            headers: apiHeaders(),
+            headers: headers,
             body: try? JSONSerialization.data(withJSONObject: loginData),
+        )
+    }
+
+    public func sendOTPEndpoint(otpKey: String, xid: String, notifyType: String) -> APIEndpoint {
+        let endpoint = "\(apiURL)cmm/sendOTP"
+        var headers = apiHeaders()
+        headers["otpkey"] = otpKey
+        headers["notifytype"] = notifyType
+        headers["xid"] = xid
+
+        return APIEndpoint(
+            url: endpoint,
+            method: .POST,
+            headers: headers,
+            body: nil,
+        )
+    }
+
+    public func verifyOTPEndpoint(otpKey: String, xid: String, otp: String) -> APIEndpoint {
+        let endpoint = "\(apiURL)cmm/verifyOTP"
+        var headers = apiHeaders()
+        headers["otpkey"] = otpKey
+        headers["xid"] = xid
+
+        let body = ["otp": otp]
+
+        return APIEndpoint(
+            url: endpoint,
+            method: .POST,
+            headers: headers,
+            body: try? JSONSerialization.data(withJSONObject: body),
         )
     }
 

@@ -14,6 +14,7 @@ public final class KiaAPIEndpointProvider {
     let password: String
     let pin: String
     let accountId: UUID
+    let rememberMeToken: String?
 
     public init(configuration: APIClientConfiguration) {
         region = configuration.region
@@ -21,6 +22,7 @@ public final class KiaAPIEndpointProvider {
         password = configuration.password
         pin = configuration.pin
         accountId = configuration.accountId
+        rememberMeToken = configuration.rememberMeToken
     }
 
     // Use region-specific base URL
@@ -85,23 +87,18 @@ public final class KiaAPIEndpointProvider {
         if statusCode == 1, errorType == 1, errorCode == 1,
            messageLower.contains("valid email") || messageLower.contains("invalid") ||
            messageLower.contains("credential") {
-            throw HyundaiKiaAPIError.invalidCredentials("Invalid username or password", apiName: "KiaAPI")
+            throw APIError.invalidCredentials("Invalid username or password", apiName: "KiaAPI")
         }
 
         if errorCode == 1005 || errorCode == 1103 {
-            throw HyundaiKiaAPIError.invalidVehicleSession(errorMessage, apiName: "KiaAPI")
+            throw APIError.invalidVehicleSession(errorMessage, apiName: "KiaAPI")
         }
 
         if errorCode == 1003,
            messageLower.contains("session key") || messageLower.contains("invalid") ||
            messageLower.contains("expired") {
-            throw HyundaiKiaAPIError.invalidCredentials("Session Key is either invalid or expired", apiName: "KiaAPI")
+            throw APIError.invalidCredentials("Session Key is either invalid or expired", apiName: "KiaAPI")
         }
-
-        throw HyundaiKiaAPIError.logError(
-            "Kia API error: \(errorMessage) (Code: \(errorCode), Status: \(statusCode), Type: \(errorType))",
-            code: errorCode, apiName: "KiaAPI",
-        )
     }
 }
 

@@ -570,7 +570,7 @@ struct KiaAPIParsingTests {
         }
         """.utf8)
 
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try provider.parseVehicleStatusResponse(invalidData, for: vehicle)
         }
     }
@@ -596,7 +596,7 @@ struct KiaAPIParsingTests {
         }
         """.utf8)
 
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try provider.parseVehicleStatusResponse(invalidData, for: vehicle)
         }
     }

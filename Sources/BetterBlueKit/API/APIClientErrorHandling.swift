@@ -50,7 +50,7 @@ extension APIClient {
 
         logHTTPRequest(logData)
 
-        throw HyundaiKiaAPIError(
+        throw APIError(
             message: "Invalid response type",
             apiName: "APIClient",
         )
@@ -89,7 +89,7 @@ extension APIClient {
         ) {
             let errorMessage = "Authentication expired (\(httpResponse.statusCode)): " +
                 "\(responseBody ?? "Unknown error")"
-            throw HyundaiKiaAPIError(
+            throw APIError(
                 message: errorMessage,
                 code: httpResponse.statusCode,
                 apiName: "APIClient",
@@ -101,7 +101,7 @@ extension APIClient {
         if httpResponse.statusCode == 502 {
             let errorMessage = "Server error (502): " +
                 "\(responseBody ?? "Unknown error")"
-            throw HyundaiKiaAPIError(
+            throw APIError(
                 message: errorMessage,
                 code: httpResponse.statusCode,
                 apiName: "APIClient",
@@ -113,7 +113,7 @@ extension APIClient {
         if httpResponse.statusCode >= 400 {
             let errorMessage = "HTTP \(httpResponse.statusCode): " +
                 "\(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))"
-            throw HyundaiKiaAPIError(
+            throw APIError(
                 message: errorMessage,
                 apiName: "APIClient",
             )
@@ -139,7 +139,7 @@ extension APIClient {
 
         logHTTPRequest(logData)
 
-        throw HyundaiKiaAPIError(
+        throw APIError(
             message: "Network error: \(error.localizedDescription)",
             apiName: "APIClient",
         )

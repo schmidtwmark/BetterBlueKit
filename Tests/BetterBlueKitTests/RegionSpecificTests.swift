@@ -266,7 +266,7 @@ struct RegionSpecificTests {
 
     @Test("Regional error message consistency")
     func testRegionalErrorMessageConsistency() {
-        let errorTypes: [HyundaiKiaAPIError.ErrorType] = [
+        let errorTypes: [APIError.ErrorType] = [
             .invalidCredentials,
             .invalidVehicleSession,
             .serverError,
@@ -276,12 +276,12 @@ struct RegionSpecificTests {
         ]
 
         for _ in errorTypes {
-            let error1 = HyundaiKiaAPIError.logError("Test error", code: 123, apiName: "USAAPI")
-            let error2 = HyundaiKiaAPIError.logError("Test error", code: 123, apiName: "EuropeAPI")
+            let error1 = APIError.logError("Test error", code: 123, apiName: "USAAPI")
+            let error2 = APIError.logError("Test error", code: 123, apiName: "EuropeAPI")
 
             // Error structure should be consistent across regions
             #expect(error1.errorType == error2.errorType)
-            // Note: HyundaiKiaAPIError doesn't have a statusCode property in this implementation
+            // Note: APIError doesn't have a statusCode property in this implementation
         }
     }
 

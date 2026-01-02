@@ -531,7 +531,7 @@ struct HyundaiAPIClientTests {
         }
         """.data(using: .utf8)!
 
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try provider.parseLoginResponse(invalidResponseData, headers: [:])
         }
     }
@@ -594,7 +594,7 @@ struct HyundaiAPIClientTests {
         }
         """.data(using: .utf8)!
 
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try provider.parseVehiclesResponse(invalidResponseData)
         }
     }
@@ -609,7 +609,7 @@ struct HyundaiAPIClientTests {
         }
         """.data(using: .utf8)!
 
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try provider.parseCommandResponse(responseData)
         }
     }
@@ -751,7 +751,7 @@ struct HyundaiAPIClientTests {
         }
         """.data(using: .utf8)!
 
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try provider.parseVehicleStatusResponse(invalidResponseData, for: vehicle)
         }
     }
@@ -889,7 +889,7 @@ struct KiaAPIClientTests {
         }
         """.data(using: .utf8)!
 
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try provider.parseLoginResponse(responseData, headers: [:])
         }
     }
@@ -954,7 +954,7 @@ struct KiaAPIClientTests {
         }
         """.data(using: .utf8)!
 
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try provider.parseVehiclesResponse(invalidResponseData)
         }
     }
@@ -973,7 +973,7 @@ struct KiaAPIClientTests {
         }
         """.data(using: .utf8)!
 
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try provider.parseLoginResponse(responseData, headers: ["sid": "test"])
         }
     }
@@ -992,7 +992,7 @@ struct KiaAPIClientTests {
         }
         """.data(using: .utf8)!
 
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try provider.parseLoginResponse(responseData, headers: ["sid": "test"])
         }
     }
@@ -1011,7 +1011,7 @@ struct KiaAPIClientTests {
         }
         """.data(using: .utf8)!
 
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try provider.parseLoginResponse(responseData, headers: ["sid": "test"])
         }
     }
@@ -1164,7 +1164,7 @@ struct KiaAPIClientTests {
         }
         """.data(using: .utf8)!
 
-        #expect(throws: HyundaiKiaAPIError.self) {
+        #expect(throws: APIError.self) {
             try provider.parseVehicleStatusResponse(invalidResponseData, for: vehicle)
         }
     }
