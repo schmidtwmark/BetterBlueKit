@@ -145,15 +145,35 @@ extension HyundaiAPIEndpointProvider {
         let atc = remainTime2["atc"] as? [String: Any] ?? [:]
         let chargeTimeMinutes = extractNumber(from: atc["value"]) ?? 0
 
+        let batteryPlugin: Int = extractNumber(from: evStatusData["batteryPlugin"]) ?? 0
+
+        // Extract target SOC values for AC and DC charging (plugType 0 = AC, plugType 1 = DC)
+        let reserveChargeInfos = evStatusData["reservChargeInfos"] as? [String: Any] ?? [:]
+        let targetSocList = reserveChargeInfos["targetSOClist"] as? [[String: Any]] ?? []
+        var targetSocAC: Double?
+        var targetSocDC: Double?
+
+        for target in targetSocList {
+            if let plugType = target["plugType"] as? Int, let soc = target["targetSOClevel"] as? Double {
+                if plugType == 0 {
+                    targetSocAC = soc
+                } else if plugType == 1 {
+                    targetSocDC = soc
+                }
+            }
+        }
+
         return VehicleStatus.EVStatus(
             charging: evStatusData["batteryCharge"] as? Bool ?? false,
             chargeSpeed: max(
                 extractNumber(from: evStatusData["batteryStndChrgPower"]) ?? 0,
                 extractNumber(from: evStatusData["batteryFstChrgPower"]) ?? 0
             ),
-            pluggedIn: (extractNumber(from: evStatusData["batteryPlugin"]) ?? 0) != 0,
             evRange: VehicleStatus.FuelRange(range: evRange, percentage: fuelPercentage),
-            chargeTime: .seconds(60 * chargeTimeMinutes)
+            plugType: VehicleStatus.PlugType(fromBatteryPlugin: batteryPlugin),
+            chargeTime: .seconds(60 * chargeTimeMinutes),
+            targetSocAC: targetSocAC,
+            targetSocDC: targetSocDC
         )
     }
 

@@ -142,15 +142,34 @@ extension KiaAPIEndpointProvider {
             units: Distance.Units(extractNumber(from: evModeRange["unit"]) ?? 3)
         )
 
+        let batteryPlugin: Int = extractNumber(from: evStatusData["batteryPlugin"]) ?? 0
+
+        // Extract target SOC values for AC and DC charging (plugType 0 = AC, plugType 1 = DC)
+        let targetSOC = evStatusData["targetSOC"] as? [[String: Any]] ?? []
+        var targetSocAC: Double?
+        var targetSocDC: Double?
+
+        for target in targetSOC {
+            if let plugType = target["plugType"] as? Int, let soc = target["targetSOClevel"] as? Double {
+                if plugType == 0 {
+                    targetSocAC = soc
+                } else if plugType == 1 {
+                    targetSocDC = soc
+                }
+            }
+        }
+
         return VehicleStatus.EVStatus(
             charging: evStatusData["batteryCharge"] as? Bool ?? false,
             chargeSpeed: max(
                 extractNumber(from: evStatusData["batteryStndChrgPower"]) ?? 0,
                 extractNumber(from: evStatusData["batteryFstChrgPower"]) ?? 0
             ),
-            pluggedIn: (extractNumber(from: evStatusData["batteryPlugin"]) ?? 0) != 0,
             evRange: VehicleStatus.FuelRange(range: evRange, percentage: batteryStatus),
-            chargeTime: .seconds(60 * chargeTime)
+            plugType: VehicleStatus.PlugType(fromBatteryPlugin: batteryPlugin),
+            chargeTime: .seconds(60 * chargeTime),
+            targetSocAC: targetSocAC,
+            targetSocDC: targetSocDC
         )
     }
 

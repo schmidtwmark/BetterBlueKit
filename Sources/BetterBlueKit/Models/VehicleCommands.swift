@@ -12,6 +12,7 @@ import Foundation
 public enum VehicleCommand: Sendable {
     case lock, unlock, startClimate(ClimateOptions)
     case stopClimate, startCharge, stopCharge
+    case setTargetSOC(acLevel: Int, dcLevel: Int)
 }
 
 public struct ClimateOptions: Codable, Equatable, Sendable {

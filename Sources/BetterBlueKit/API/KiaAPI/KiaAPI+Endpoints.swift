@@ -159,6 +159,11 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
             body = ["remoteClimate": remoteClimate]
         case .startCharge:
             body = ["chargeRatio": 100]
+        case .setTargetSOC(let acLevel, let dcLevel):
+            body["targetSOClist"] = [
+                ["targetSOClevel": acLevel, "plugType": 0],
+                ["targetSOClevel": dcLevel, "plugType": 1]
+            ]
         case .stopCharge, .stopClimate, .lock, .unlock:
             break
         }
@@ -180,6 +185,8 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
             "evc/charge"
         case .stopCharge:
             "evc/cancel"
+        case .setTargetSOC:
+            "evc/charge/targetsoc/set"
         }
         return "\(apiURL)\(path)"
     }

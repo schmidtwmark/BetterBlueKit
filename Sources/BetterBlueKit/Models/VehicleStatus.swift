@@ -21,14 +21,62 @@ public struct VehicleStatus: Codable, Hashable, Sendable {
     }
 
     public var gasRange: FuelRange?
+
+    public enum PlugType: Int, Codable, Hashable, Sendable {
+        case unplugged = 0
+        case acCharger = 2
+        case dcCharger = 1 // DC is any value other than 0 or 2
+
+        public init(fromBatteryPlugin value: Int) {
+            switch value {
+            case 0:
+                self = .unplugged
+            case 2:
+                self = .acCharger
+            default:
+                self = .dcCharger
+            }
+        }
+    }
+
     public struct EVStatus: Codable, Hashable, Sendable {
         public var charging: Bool, chargeSpeed: Double
-        public var pluggedIn: Bool, evRange: FuelRange
+        @available(*, deprecated, message: "Use plugType != .unplugged instead")
+        public var deprecatedPluggedInField: Bool?
+        public var pluggedIn: Bool { plugType != .unplugged }
+        public var evRange: FuelRange
+        public var maybePlugType: PlugType?
+        public var plugType: PlugType { maybePlugType ?? .unplugged }
         private var maybeChargeTimeSeconds: Int64?
         public var chargeTime: Duration { .seconds(maybeChargeTimeSeconds ?? 0 ) }
-        public init(charging: Bool, chargeSpeed: Double, pluggedIn: Bool, evRange: FuelRange, chargeTime: Duration) {
-            (self.charging, self.chargeSpeed, self.pluggedIn, self.evRange, self.maybeChargeTimeSeconds) =
-            (charging, chargeSpeed, pluggedIn, evRange, chargeTime.components.seconds)
+        public var targetSocAC: Double?
+        public var targetSocDC: Double?
+
+        public var currentTargetSOC: Double? {
+            switch plugType {
+            case .acCharger:
+                return targetSocAC
+            case .dcCharger:
+                return targetSocDC
+            case .unplugged:
+                return nil
+            }
+        }
+
+        public init(
+            charging: Bool,
+            chargeSpeed: Double,
+            pluggedIn: Bool = false,
+            evRange: FuelRange,
+            plugType: PlugType = .unplugged,
+            chargeTime: Duration,
+            targetSocAC: Double? = nil,
+            targetSocDC: Double? = nil
+        ) {
+            (self.charging, self.chargeSpeed, self.deprecatedPluggedInField, self.evRange, self.maybePlugType,
+             self.maybeChargeTimeSeconds) = (charging, chargeSpeed, pluggedIn, evRange, plugType,
+                                              chargeTime.components.seconds)
+            (self.targetSocAC, self.targetSocDC) = (targetSocAC, targetSocDC)
         }
     }
 

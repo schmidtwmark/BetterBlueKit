@@ -35,31 +35,48 @@ public final class KiaAPIEndpointProvider {
     }
 
     let deviceId: String = {
-        let charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-        let randomPart = String((0 ..< 22).map { _ in charset.randomElement()! })
-        return "\(randomPart):\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        // Format: 22chars:9chars_10chars-5chars_22chars_8chars-18chars-_22chars_17chars
+        func genRanHex(_ length: Int) -> String {
+            let charset = "0123456789abcdef"
+            return String((0 ..< length).map { _ in charset.randomElement()! })
+        }
+        return "\(genRanHex(22)):\(genRanHex(9))_\(genRanHex(10))" +
+               "-\(genRanHex(5))_\(genRanHex(22))_\(genRanHex(8))" +
+               "-\(genRanHex(18))-_\(genRanHex(22))_\(genRanHex(17))"
     }()
+
+    let clientUUID: String = UUID().uuidString.lowercased()
 
     // MARK: - Helper Methods
 
     func apiHeaders() -> [String: String] {
         let offset = TimeZone.current.secondsFromGMT() / 3600
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(abbreviation: "GMT")
-        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss 'GMT'"
+        let offsetString = offset >= 0 ? "+\(offset)" : "\(offset)"
 
         // Extract host from baseURL (remove https:// prefix)
         let hostName = baseURL.replacingOccurrences(of: "https://", with: "")
 
         return [
-            "content-type": "application/json;charset=UTF-8", "accept": "application/json, text/plain, */*",
-            "accept-encoding": "gzip, deflate, br", "accept-language": "en-US,en;q=0.9",
-            "apptype": "L", "appversion": "7.15.2", "clientid": "MWAMOBILE", "from": "SPA",
-            "host": hostName, "language": "0", "offset": "\(offset)", "ostype": "Android",
-            "osversion": "11", "secretkey": "98er-w34rf-ibf3-3f6h", "to": "APIGW",
-            "tokentype": "G", "user-agent": "okhttp/4.10.0", "deviceid": deviceId,
-            "date": formatter.string(from: Date())
+            "content-type": "application/json;charset=UTF-8",
+            "accept": "application/json, text/plain, */*",
+            "accept-encoding": "gzip, deflate, br",
+            "accept-language": "en-US,en;q=0.9",
+            "from": "SPA",
+            "language": "0",
+            "offset": offsetString,
+            "appType": "L",
+            "appVersion": "7.22.0",
+            "clientuuid": clientUUID,
+            "clientId": "SPACL716-APL",
+            "phonebrand": "iPhone",
+            "osType": "iOS",
+            "osVersion": "15.8.5",
+            "secretKey": "sydnat-9kykci-Kuhtep-h5nK",
+            "to": "APIGW",
+            "tokentype": "A",
+            "User-Agent": "KIAPrimo_iOS/37 CFNetwork/1335.0.3.4 Darwin/21.6.0",
+            "deviceId": deviceId,
+            "Host": hostName
         ]
     }
 

@@ -83,6 +83,8 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
             return URL(string: "\(baseURL)/ac/v2/evc/charge/start")!
         case .stopCharge:
             return URL(string: "\(baseURL)/ac/v2/evc/charge/stop")!
+        case .setTargetSOC:
+            return URL(string: "\(baseURL)/ac/v2/evc/charge/targetsoc/set")!
         }
     }
 
@@ -109,6 +111,11 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
             }
         } else if case .startCharge = command {
             body["chargeRatio"] = 100
+        } else if case let .setTargetSOC(acLevel, dcLevel) = command {
+            body["targetSOClist"] = [
+                ["targetSOClevel": acLevel, "plugType": 0],
+                ["targetSOClevel": dcLevel, "plugType": 1]
+            ]
         }
         return body
     }
