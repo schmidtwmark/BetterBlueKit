@@ -12,6 +12,35 @@ extension KiaAPIEndpointProvider {
         // Check for Kia-specific errors in the response body
         try checkForKiaSpecificErrors(data: data)
 
+        // Parse JSON response to check for MFA requirement
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let payload = json["payload"] as? [String: Any],
+           let otpKey = payload["otpKey"] as? String {
+            // MFA required - extract xid from response headers
+            let xid = headers["xid"] ?? headers["Xid"] ?? headers["XID"] ?? ""
+
+            // Extract contact options for OTP delivery
+            let hasEmail = payload["hasEmail"] as? Bool ?? false
+            let hasPhone = payload["hasPhone"] as? Bool ?? false
+            let email = payload["email"] as? String
+            let phone = payload["phone"] as? String
+
+            print("🔐 [KiaAPI] MFA required - otpKey: \(otpKey), xid: \(xid)")
+            print("   Contact options - hasEmail: \(hasEmail), hasPhone: \(hasPhone)")
+            if let email { print("   Email: \(email)") }
+            if let phone { print("   Phone: \(phone)") }
+
+            throw APIError.requiresMFA(
+                xid: xid,
+                otpKey: otpKey,
+                hasEmail: hasEmail,
+                hasPhone: hasPhone,
+                email: email,
+                phone: phone,
+                apiName: "KiaAPI"
+            )
+        }
+
         let sid = headers["sid"] ?? headers["Sid"] ?? headers["SID"]
 
         // Extract session ID from response headers - Kia API returns 'sid' header
@@ -34,13 +63,15 @@ extension KiaAPIEndpointProvider {
         _ data: Data, headers: [String: String]) throws -> (rememberMeToken: String, sid: String) {
         try checkForKiaSpecificErrors(data: data)
 
-        guard let rememberMeToken = headers["rememberMeToken"]
-                ?? headers["rememberMeToken"] ?? headers["rememberMeToken"],
+        // The header is "rmToken" (not "rememberMeToken")
+        guard let rememberMeToken = headers["rmToken"] ?? headers["rmtoken"] ?? headers["RmToken"],
               let sid = headers["sid"] ?? headers["Sid"] ?? headers["SID"]
         else {
+            print("⚠️ [KiaAPI] verifyOTP response headers: \(headers)")
             throw APIError.logError("Kia API verify OTP response missing tokens", apiName: "KiaAPI")
         }
 
+        print("✅ [KiaAPI] OTP verified - rmToken: \(rememberMeToken.prefix(10))..., sid: \(sid)")
         return (rememberMeToken, sid)
     }
 

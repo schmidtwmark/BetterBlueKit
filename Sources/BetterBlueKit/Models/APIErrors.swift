@@ -55,11 +55,23 @@ public struct APIError: Error, Codable {
     public static func requiresMFA(
         xid: String,
         otpKey: String? = nil,
+        hasEmail: Bool = false,
+        hasPhone: Bool = false,
+        email: String? = nil,
+        phone: String? = nil,
         apiName: String? = nil
     ) -> APIError {
         var info = ["xid": xid]
         if let otpKey {
             info["otpKey"] = otpKey
+        }
+        info["hasEmail"] = hasEmail ? "true" : "false"
+        info["hasPhone"] = hasPhone ? "true" : "false"
+        if let email {
+            info["email"] = email
+        }
+        if let phone {
+            info["phone"] = phone
         }
         return logError(
             "Multi-Factor Authentication Required",

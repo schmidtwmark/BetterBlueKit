@@ -215,10 +215,18 @@ public class APIClient<Provider: APIEndpointProvider> {
         _ request: URLRequest,
         requestType: HTTPRequestType,
     ) async throws -> (Data, HTTPURLResponse) {
-        print("🚀 [APIClient] Sending \(requestType.displayName) request to \(request.url?.absoluteString ?? "unknown")")
         let startTime = Date()
         let requestHeaders = request.allHTTPHeaderFields ?? [:]
         let requestBody = request.httpBody.flatMap { String(data: $0, encoding: .utf8) }
+
+        // Detailed request logging for debugging
+        print("🚀 [APIClient] Sending \(requestType.displayName) request")
+        print("   URL: \(request.url?.absoluteString ?? "unknown")")
+        print("   Method: \(request.httpMethod ?? "unknown")")
+        print("   Headers: \(requestHeaders)")
+        if let body = requestBody {
+            print("   Body: \(body)")
+        }
 
         let context = RequestContext(
             requestType: requestType,

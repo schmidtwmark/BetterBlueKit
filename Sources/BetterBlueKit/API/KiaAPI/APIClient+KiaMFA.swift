@@ -32,4 +32,22 @@ extension APIClient where Provider == KiaAPIEndpointProvider {
 
         return try endpointProvider.parseVerifyOTPResponse(data, headers: headers)
     }
+
+    /// Complete authentication after MFA verification
+    /// Call this after verifyOTP returns rmToken and sid to get the final auth token
+    public func completeLoginWithMFA(sid: String) async throws -> AuthToken {
+        print("🛠️ [KiaMFA] completeLoginWithMFA called with sid: \(sid)")
+        // Call authUser again with rmtoken and sid headers
+        let endpoint = endpointProvider.loginEndpoint(sid: sid)
+        let request = try createRequest(from: endpoint)
+        let (data, response) = try await performLoggedRequest(request, requestType: .login)
+
+        let headers: [String: String] = response.allHeaderFields.reduce(into: [:]) { result, pair in
+            if let key = pair.key as? String, let value = pair.value as? String {
+                result[key] = value
+            }
+        }
+
+        return try endpointProvider.parseLoginResponse(data, headers: headers)
+    }
 }

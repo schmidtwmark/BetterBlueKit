@@ -9,8 +9,15 @@ import Foundation
 
 extension KiaAPIEndpointProvider: APIEndpointProvider {
     public func loginEndpoint() -> APIEndpoint {
+        loginEndpoint(sid: nil)
+    }
+
+    public func loginEndpoint(sid: String?) -> APIEndpoint {
         let loginURL = "\(apiURL)prof/authUser"
         let loginData: [String: Any] = [
+            "deviceKey": deviceId,
+            "deviceType": 2,
+            "tncFlag": 1,
             "userCredential": [
                 "userId": username,
                 "password": password
@@ -19,7 +26,10 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
 
         var headers = apiHeaders()
         if let rememberMeToken {
-            headers["rmToken"] = rememberMeToken
+            headers["rmtoken"] = rememberMeToken
+        }
+        if let sid {
+            headers["sid"] = sid
         }
 
         return APIEndpoint(
@@ -37,11 +47,14 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
         headers["notifytype"] = notifyType
         headers["xid"] = xid
 
+        // The API expects an empty JSON body {}
+        let emptyBody: [String: Any] = [:]
+
         return APIEndpoint(
             url: endpoint,
             method: .POST,
             headers: headers,
-            body: nil,
+            body: try? JSONSerialization.data(withJSONObject: emptyBody),
         )
     }
 

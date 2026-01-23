@@ -56,6 +56,13 @@ public final class KiaAPIEndpointProvider {
         // Extract host from baseURL (remove https:// prefix)
         let hostName = baseURL.replacingOccurrences(of: "https://", with: "")
 
+        // Format date like: "Fri, 23 Jan 2026 2:37:26 GMT"
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "EEE, dd MMM yyyy H:mm:ss"
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.timeZone = TimeZone(identifier: "GMT")
+        let dateString = dateFormatter.string(from: Date()) + " GMT"
+
         return [
             "content-type": "application/json;charset=UTF-8",
             "accept": "application/json, text/plain, */*",
@@ -76,7 +83,8 @@ public final class KiaAPIEndpointProvider {
             "tokentype": "A",
             "User-Agent": "KIAPrimo_iOS/37 CFNetwork/1335.0.3.4 Darwin/21.6.0",
             "deviceId": deviceId,
-            "Host": hostName
+            "Host": hostName,
+            "Date": dateString
         ]
     }
 
