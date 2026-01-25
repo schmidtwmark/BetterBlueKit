@@ -29,7 +29,7 @@ public class FakeAPIClient: APIClientProtocol {
         accountId = configuration.accountId
         self.vehicleProvider = vehicleProvider
 
-        print("🔧 [FakeAPIClient] Initialized for user '\(configuration.username)' with custom vehicle provider")
+        BBLogger.info(.fakeAPI, "Initialized for user '\(configuration.username)' with custom vehicle provider")
     }
 
     // MARK: - APIClientProtocol Implementation
@@ -37,18 +37,18 @@ public class FakeAPIClient: APIClientProtocol {
     public func login() async throws -> AuthToken {
         // Check for debug credential validation failure across all fake vehicles for this account
         if try await vehicleProvider.shouldFailCredentialValidation(accountId: accountId) {
-            print("🔴 [FakeAPI] Debug: Simulating credential validation failure")
+            BBLogger.warning(.fakeAPI, "Debug: Simulating credential validation failure")
             let message = try await vehicleProvider.getCustomCredentialErrorMessage(accountId: accountId)
             throw APIError.invalidCredentials(message, apiName: "FakeAPI")
         }
 
         // Check for debug login failure
         if try await vehicleProvider.shouldFailLogin(accountId: accountId) {
-            print("🔴 [FakeAPI] Debug: Simulating login failure")
+            BBLogger.warning(.fakeAPI, "Debug: Simulating login failure")
             throw APIError.logError("Debug: Simulated login failure", code: 500, apiName: "FakeAPI")
         }
 
-        print("🟢 [FakeAPI] Login successful for user '\(username)'")
+        BBLogger.info(.fakeAPI, "Login successful for user '\(username)'")
         return AuthToken(
             accessToken: "fake_access_token_\(UUID().uuidString)",
             refreshToken: "fake_refresh_token_\(UUID().uuidString)",
@@ -60,33 +60,32 @@ public class FakeAPIClient: APIClientProtocol {
     public func fetchVehicles(authToken _: AuthToken) async throws -> [Vehicle] {
         // Check for debug vehicle fetch failure
         if try await vehicleProvider.shouldFailVehicleFetch(accountId: accountId) {
-            print("🔴 [FakeAPI] Debug: Simulating vehicle fetch failure")
+            BBLogger.warning(.fakeAPI, "Debug: Simulating vehicle fetch failure")
             throw APIError.logError("Debug: Simulated vehicle fetch failure", code: 500, apiName: "FakeAPI")
         }
 
-        print("🚗 [FakeAPI] Fetching vehicles for user '\(username)'...")
+        BBLogger.info(.fakeAPI, "Fetching vehicles for user '\(username)'...")
         let vehicles = try await vehicleProvider.getFakeVehicles(for: username, accountId: accountId)
-        print("🟢 [FakeAPI] Fetched \(vehicles.count) fake vehicles for user '\(username)': " +
-            "[\(vehicles.map(\.vin).joined(separator: ", "))]")
+        BBLogger.info(.fakeAPI, "Fetched \(vehicles.count) fake vehicles for user '\(username)': [\(vehicles.map(\.vin).joined(separator: ", "))]")
         return vehicles
     }
 
     public func fetchVehicleStatus(for vehicle: Vehicle, authToken _: AuthToken) async throws -> VehicleStatus {
         // Check for debug status fetch failure
         if try await vehicleProvider.shouldFailStatusFetch(for: vehicle.vin, accountId: accountId) {
-            print("🔴 [FakeAPI] Debug: Simulating status fetch failure")
+            BBLogger.warning(.fakeAPI, "Debug: Simulating status fetch failure")
             throw APIError.logError("Debug: Simulated status fetch failure", code: 500, apiName: "FakeAPI")
         }
 
         let status = try await vehicleProvider.getVehicleStatus(for: vehicle.vin, accountId: accountId)
-        print("🟢 [FakeAPI] Fetched vehicle status for fake vehicle '\(vehicle.vin)'")
+        BBLogger.info(.fakeAPI, "Fetched vehicle status for fake vehicle '\(vehicle.vin)'")
         return status
     }
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken _: AuthToken) async throws {
         // Check for debug PIN validation failure
         if try await vehicleProvider.shouldFailPinValidation(for: vehicle.vin, accountId: accountId) {
-            print("🔴 [FakeAPI] Debug: Simulating PIN validation failure")
+            BBLogger.warning(.fakeAPI, "Debug: Simulating PIN validation failure")
             let errorMessage = try await vehicleProvider.getCustomPinErrorMessage(
                 for: vehicle.vin,
                 accountId: accountId,
@@ -97,12 +96,12 @@ public class FakeAPIClient: APIClientProtocol {
         // Check for debug command-specific failures
         if try await vehicleProvider.shouldFailCommand(command, for: vehicle.vin, accountId: accountId) {
             let commandName = String(describing: command).components(separatedBy: "(").first ?? "command"
-            print("🔴 [FakeAPI] Debug: Simulating \(commandName) failure")
+            BBLogger.warning(.fakeAPI, "Debug: Simulating \(commandName) failure")
             throw APIError.logError("Debug: Simulated \(commandName) failure", code: 500, apiName: "FakeAPI")
         }
 
         try await vehicleProvider.executeCommand(command, for: vehicle.vin, accountId: accountId)
-        print("🟢 [FakeAPI] Command completed successfully for fake vehicle '\(vehicle.vin)'")
+        BBLogger.info(.fakeAPI, "Command completed successfully for fake vehicle '\(vehicle.vin)'")
     }
 }
 

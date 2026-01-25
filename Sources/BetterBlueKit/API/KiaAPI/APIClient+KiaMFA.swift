@@ -9,7 +9,7 @@ import Foundation
 
 extension APIClient where Provider == KiaAPIEndpointProvider {
     public func sendOTP(otpKey: String, xid: String, notifyType: String = "SMS") async throws {
-        print("🛠️ [KiaMFA] sendOTP called - otpKey: \(otpKey), xid: \(xid), type: \(notifyType)")
+        BBLogger.info(.mfa, "sendOTP called - otpKey: \(otpKey), xid: \(xid), type: \(notifyType)")
         let endpoint = endpointProvider.sendOTPEndpoint(otpKey: otpKey, xid: xid, notifyType: notifyType)
         let request = try createRequest(from: endpoint)
         let (data, _) = try await performLoggedRequest(request, requestType: .sendMFA)
@@ -19,7 +19,7 @@ extension APIClient where Provider == KiaAPIEndpointProvider {
 
     public func verifyOTP(
         otpKey: String, xid: String, otp: String) async throws -> (rememberMeToken: String, sid: String) {
-        print("🛠️ [KiaMFA] verifyOTP called - otpKey: \(otpKey), xid: \(xid), otp: \(otp)")
+        BBLogger.info(.mfa, "verifyOTP called - otpKey: \(otpKey), xid: \(xid), otp: \(otp)")
         let endpoint = endpointProvider.verifyOTPEndpoint(otpKey: otpKey, xid: xid, otp: otp)
         let request = try createRequest(from: endpoint)
         let (data, response) = try await performLoggedRequest(request, requestType: .verifyMFA)
@@ -36,7 +36,7 @@ extension APIClient where Provider == KiaAPIEndpointProvider {
     /// Complete authentication after MFA verification
     /// Call this after verifyOTP returns rmToken and sid to get the final auth token
     public func completeLoginWithMFA(sid: String) async throws -> AuthToken {
-        print("🛠️ [KiaMFA] completeLoginWithMFA called with sid: \(sid)")
+        BBLogger.info(.mfa, "completeLoginWithMFA called with sid: \(sid)")
         // Call authUser again with rmtoken and sid headers
         let endpoint = endpointProvider.loginEndpoint(sid: sid)
         let request = try createRequest(from: endpoint)

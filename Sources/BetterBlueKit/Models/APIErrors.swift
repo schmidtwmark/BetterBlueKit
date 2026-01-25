@@ -45,10 +45,11 @@ public struct APIError: Error, Codable {
             errorType: errorType,
             userInfo: userInfo
         )
-        print("❌ [APIError] \(apiName ?? "Unknown"): \(message)")
-        if let code { print("   Status Code: \(code)") }
-        if errorType != .general { print("   Error Type: \(errorType.rawValue)") }
-        if let userInfo { print("   User Info: \(userInfo as NSDictionary)")}
+        var logMessage = "\(apiName ?? "Unknown"): \(message)"
+        if let code { logMessage += " | Status Code: \(code)" }
+        if errorType != .general { logMessage += " | Error Type: \(errorType.rawValue)" }
+        if let userInfo { logMessage += " | User Info: \(userInfo)" }
+        BBLogger.error(.api, logMessage)
         return error
     }
 

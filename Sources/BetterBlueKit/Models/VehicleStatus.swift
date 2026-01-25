@@ -113,11 +113,75 @@ public struct VehicleStatus: Codable, Hashable, Sendable {
 
     public var climateStatus: ClimateStatus, odometer: Distance?
 
+    // Additional status fields
+    public var battery12V: Int?
+    public var doorOpen: DoorStatus?
+    public var trunkOpen: Bool?
+    public var hoodOpen: Bool?
+    public var tirePressureWarning: TirePressureWarning?
+
+    public struct DoorStatus: Codable, Hashable, Sendable {
+        public var frontLeft: Bool
+        public var frontRight: Bool
+        public var backLeft: Bool
+        public var backRight: Bool
+
+        public init(frontLeft: Bool, frontRight: Bool, backLeft: Bool, backRight: Bool) {
+            (self.frontLeft, self.frontRight, self.backLeft, self.backRight) =
+                (frontLeft, frontRight, backLeft, backRight)
+        }
+
+        public var anyOpen: Bool {
+            frontLeft || frontRight || backLeft || backRight
+        }
+
+        public var openDoorsDescription: String {
+            var doors: [String] = []
+            if frontLeft { doors.append("FL") }
+            if frontRight { doors.append("FR") }
+            if backLeft { doors.append("BL") }
+            if backRight { doors.append("BR") }
+            return doors.isEmpty ? "None" : doors.joined(separator: ", ")
+        }
+    }
+
+    public struct TirePressureWarning: Codable, Hashable, Sendable {
+        public var frontLeft: Bool
+        public var frontRight: Bool
+        public var rearLeft: Bool
+        public var rearRight: Bool
+        public var all: Bool
+
+        public init(frontLeft: Bool, frontRight: Bool, rearLeft: Bool, rearRight: Bool, all: Bool) {
+            (self.frontLeft, self.frontRight, self.rearLeft, self.rearRight, self.all) =
+                (frontLeft, frontRight, rearLeft, rearRight, all)
+        }
+
+        public var hasWarning: Bool {
+            all || frontLeft || frontRight || rearLeft || rearRight
+        }
+
+        public var warningDescription: String {
+            if all { return "All tires" }
+            var tires: [String] = []
+            if frontLeft { tires.append("FL") }
+            if frontRight { tires.append("FR") }
+            if rearLeft { tires.append("RL") }
+            if rearRight { tires.append("RR") }
+            return tires.isEmpty ? "OK" : tires.joined(separator: ", ")
+        }
+    }
+
     public init(vin: String, gasRange: FuelRange? = nil, evStatus: EVStatus? = nil,
                 location: Location, lockStatus: LockStatus, climateStatus: ClimateStatus,
-                odometer: Distance? = nil, syncDate: Date? = nil) {
+                odometer: Distance? = nil, syncDate: Date? = nil,
+                battery12V: Int? = nil, doorOpen: DoorStatus? = nil,
+                trunkOpen: Bool? = nil, hoodOpen: Bool? = nil,
+                tirePressureWarning: TirePressureWarning? = nil) {
         (self.vin, self.gasRange, self.evStatus, self.location) = (vin, gasRange, evStatus, location)
         (self.lockStatus, self.climateStatus, self.odometer, self.syncDate) =
             (lockStatus, climateStatus, odometer, syncDate)
+        (self.battery12V, self.doorOpen, self.trunkOpen, self.hoodOpen, self.tirePressureWarning) =
+            (battery12V, doorOpen, trunkOpen, hoodOpen, tirePressureWarning)
     }
 }

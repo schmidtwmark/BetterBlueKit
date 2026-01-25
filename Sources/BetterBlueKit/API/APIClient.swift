@@ -49,6 +49,17 @@ public protocol APIClientProtocol {
     func fetchVehicles(authToken: AuthToken) async throws -> [Vehicle]
     func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken) async throws -> VehicleStatus
     func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws
+
+    /// Optional: Fetch EV trip details for a vehicle (not all brands/APIs support this)
+    func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]?
+}
+
+// Default implementation for optional methods
+extension APIClientProtocol {
+    public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
+        // Default implementation returns nil (not supported)
+        return nil
+    }
 }
 
 // MARK: - API Endpoint Protocol
@@ -99,6 +110,22 @@ public protocol APIEndpointProvider: Sendable {
         for vehicle: Vehicle,
     ) throws -> VehicleStatus
     func parseCommandResponse(_ data: Data) throws // Commands typically don't return data
+
+    // Optional: EV Trip Details (not all providers support this)
+    func supportsEVTripDetails() -> Bool
+    func evTripDetailsEndpoint(for vehicle: Vehicle, authToken: AuthToken) -> APIEndpoint
+    func parseEVTripDetailsResponse(_ data: Data) throws -> [EVTripDetail]
+}
+
+// Default implementations for optional APIEndpointProvider methods
+extension APIEndpointProvider {
+    public func supportsEVTripDetails() -> Bool { false }
+    public func evTripDetailsEndpoint(for vehicle: Vehicle, authToken: AuthToken) -> APIEndpoint {
+        fatalError("evTripDetailsEndpoint not implemented")
+    }
+    public func parseEVTripDetailsResponse(_ data: Data) throws -> [EVTripDetail] {
+        fatalError("parseEVTripDetailsResponse not implemented")
+    }
 }
 
 // MARK: - Generic API Client
@@ -136,7 +163,7 @@ public class APIClient<Provider: APIEndpointProvider> {
         let endpoint = endpointProvider.loginEndpoint()
         let request = try createRequest(from: endpoint)
 
-        print("📤 [APIClient] Attempting login")
+        BBLogger.info(.auth, "Attempting login")
         let (data, response) = try await performLoggedRequest(request, requestType: .login)
 
         // Extract headers for parsing
@@ -184,6 +211,20 @@ public class APIClient<Provider: APIEndpointProvider> {
         try endpointProvider.parseCommandResponse(data)
     }
 
+    public func fetchEVTripDetails(
+        for vehicle: Vehicle,
+        authToken: AuthToken
+    ) async throws -> [EVTripDetail]? {
+        guard endpointProvider.supportsEVTripDetails() else {
+            return nil
+        }
+
+        let endpoint = endpointProvider.evTripDetailsEndpoint(for: vehicle, authToken: authToken)
+        let request = try createRequest(from: endpoint)
+        let (data, _) = try await performLoggedRequest(request, requestType: .fetchEVTripDetails)
+        return try endpointProvider.parseEVTripDetailsResponse(data)
+    }
+
     // MARK: - Private Helper Methods
 
     func createRequest(from endpoint: APIEndpoint) throws -> URLRequest {
@@ -220,13 +261,14 @@ public class APIClient<Provider: APIEndpointProvider> {
         let requestBody = request.httpBody.flatMap { String(data: $0, encoding: .utf8) }
 
         // Detailed request logging for debugging
-        print("🚀 [APIClient] Sending \(requestType.displayName) request")
-        print("   URL: \(request.url?.absoluteString ?? "unknown")")
-        print("   Method: \(request.httpMethod ?? "unknown")")
-        print("   Headers: \(requestHeaders)")
+        var requestLog = "Sending \(requestType.displayName) request"
+        requestLog += " | URL: \(request.url?.absoluteString ?? "unknown")"
+        requestLog += " | Method: \(request.httpMethod ?? "unknown")"
+        requestLog += " | Headers: \(requestHeaders)"
         if let body = requestBody {
-            print("   Body: \(body)")
+            requestLog += " | Body: \(body)"
         }
+        BBLogger.debug(.api, requestLog)
 
         let context = RequestContext(
             requestType: requestType,
@@ -264,12 +306,13 @@ public class APIClient<Provider: APIEndpointProvider> {
         let responseBody = String(data: data, encoding: .utf8)
         let apiError = extractAPIError(from: data)
 
-        print("📥 [APIClient] Received response for \(context.requestType.displayName)")
-        print("   Status Code: \(httpResponse.statusCode)")
-        print("   Headers: \(responseHeaders)")
+        var responseLog = "Received response for \(context.requestType.displayName)"
+        responseLog += " | Status Code: \(httpResponse.statusCode)"
+        responseLog += " | Headers: \(responseHeaders)"
         if let responseBody {
-            print("   Body: \(responseBody)")
+            responseLog += " | Body: \(responseBody)"
         }
+        BBLogger.debug(.api, responseLog)
 
         logHTTPRequest(HTTPRequestLogData(
             requestType: context.requestType,

@@ -25,10 +25,11 @@ extension KiaAPIEndpointProvider {
             let email = payload["email"] as? String
             let phone = payload["phone"] as? String
 
-            print("🔐 [KiaAPI] MFA required - otpKey: \(otpKey), xid: \(xid)")
-            print("   Contact options - hasEmail: \(hasEmail), hasPhone: \(hasPhone)")
-            if let email { print("   Email: \(email)") }
-            if let phone { print("   Phone: \(phone)") }
+            var mfaLog = "MFA required - otpKey: \(otpKey), xid: \(xid)"
+            mfaLog += " | Contact options - hasEmail: \(hasEmail), hasPhone: \(hasPhone)"
+            if let email { mfaLog += " | Email: \(email)" }
+            if let phone { mfaLog += " | Phone: \(phone)" }
+            BBLogger.info(.mfa, mfaLog)
 
             throw APIError.requiresMFA(
                 xid: xid,
@@ -49,7 +50,7 @@ extension KiaAPIEndpointProvider {
         }
 
         let validUntil = Date().addingTimeInterval(3600) // 1 hour like Python
-        print("✅ [KiaAPI] Authentication completed successfully for user \(username), session ID: \(sessionId)")
+        BBLogger.info(.auth, "KiaAPI: Authentication completed successfully for user \(username), session ID: \(sessionId)")
 
         return AuthToken(
             accessToken: sessionId,
@@ -67,11 +68,11 @@ extension KiaAPIEndpointProvider {
         guard let rememberMeToken = headers["rmToken"] ?? headers["rmtoken"] ?? headers["RmToken"],
               let sid = headers["sid"] ?? headers["Sid"] ?? headers["SID"]
         else {
-            print("⚠️ [KiaAPI] verifyOTP response headers: \(headers)")
+            BBLogger.warning(.mfa, "KiaAPI verifyOTP response headers: \(headers)")
             throw APIError.logError("Kia API verify OTP response missing tokens", apiName: "KiaAPI")
         }
 
-        print("✅ [KiaAPI] OTP verified - rmToken: \(rememberMeToken.prefix(10))..., sid: \(sid)")
+        BBLogger.info(.mfa, "KiaAPI OTP verified - rmToken: \(rememberMeToken.prefix(10))..., sid: \(sid)")
         return (rememberMeToken, sid)
     }
 
@@ -133,6 +134,11 @@ extension KiaAPIEndpointProvider {
             climateStatus: parseKiaClimateStatus(from: vehicleStatus),
             odometer: vehicle.odometer,
             syncDate: parseKiaSyncDate(from: vehicleStatus),
+            battery12V: parseKiaBattery12V(from: vehicleStatus),
+            doorOpen: parseKiaDoorOpen(from: vehicleStatus),
+            trunkOpen: vehicleStatus["trunkOpen"] as? Bool,
+            hoodOpen: vehicleStatus["hoodOpen"] as? Bool,
+            tirePressureWarning: parseKiaTirePressureWarning(from: vehicleStatus)
         )
     }
 
@@ -249,6 +255,44 @@ extension KiaAPIEndpointProvider {
         formatter.dateFormat = "yyyyMMddHHmmss"
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         return formatter.date(from: utcString)
+    }
+
+    private func parseKiaBattery12V(from vehicleStatus: [String: Any]) -> Int? {
+        guard let batteryData = vehicleStatus["battery"] as? [String: Any],
+              let batSoc: Int = extractNumber(from: batteryData["batSoc"]) else { return nil }
+        return batSoc
+    }
+
+    private func parseKiaDoorOpen(from vehicleStatus: [String: Any]) -> VehicleStatus.DoorStatus? {
+        guard let doorData = vehicleStatus["doorOpen"] as? [String: Any] else { return nil }
+        let frontLeft: Int = extractNumber(from: doorData["frontLeft"]) ?? 0
+        let frontRight: Int = extractNumber(from: doorData["frontRight"]) ?? 0
+        let backLeft: Int = extractNumber(from: doorData["backLeft"]) ?? 0
+        let backRight: Int = extractNumber(from: doorData["backRight"]) ?? 0
+
+        return VehicleStatus.DoorStatus(
+            frontLeft: frontLeft != 0,
+            frontRight: frontRight != 0,
+            backLeft: backLeft != 0,
+            backRight: backRight != 0
+        )
+    }
+
+    private func parseKiaTirePressureWarning(from vehicleStatus: [String: Any]) -> VehicleStatus.TirePressureWarning? {
+        guard let tireData = vehicleStatus["tirePressureLamp"] as? [String: Any] else { return nil }
+        let all: Int = extractNumber(from: tireData["tirePressureWarningLampAll"]) ?? 0
+        let frontLeft: Int = extractNumber(from: tireData["tirePressureWarningLampFrontLeft"]) ?? 0
+        let frontRight: Int = extractNumber(from: tireData["tirePressureWarningLampFrontRight"]) ?? 0
+        let rearLeft: Int = extractNumber(from: tireData["tirePressureWarningLampRearLeft"]) ?? 0
+        let rearRight: Int = extractNumber(from: tireData["tirePressureWarningLampRearRight"]) ?? 0
+
+        return VehicleStatus.TirePressureWarning(
+            frontLeft: frontLeft != 0,
+            frontRight: frontRight != 0,
+            rearLeft: rearLeft != 0,
+            rearRight: rearRight != 0,
+            all: all != 0
+        )
     }
 
     public func parseCommandResponse(_ data: Data) throws {

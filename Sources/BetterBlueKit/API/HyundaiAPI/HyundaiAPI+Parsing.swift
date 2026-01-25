@@ -23,7 +23,7 @@ extension HyundaiAPIEndpointProvider {
         }
 
         let expiresAt = Date().addingTimeInterval(TimeInterval(expiresIn))
-        print("✅ [HyundaiAPI] Authentication completed successfully for user \(username)")
+        BBLogger.info(.auth, "HyundaiAPI: Authentication completed successfully for user \(username)")
         return AuthToken(
             accessToken: accessToken,
             refreshToken: refreshToken,
@@ -80,6 +80,11 @@ extension HyundaiAPIEndpointProvider {
         let lockStatus = parseLockStatus(from: statusData)
         let climateStatus = parseClimateStatus(from: statusData)
         let syncDate = parseSyncDate(from: statusData)
+        let battery12V = parseBattery12V(from: statusData)
+        let doorOpen = parseDoorOpen(from: statusData)
+        let trunkOpen = statusData["trunkOpen"] as? Bool
+        let hoodOpen = statusData["hoodOpen"] as? Bool
+        let tirePressureWarning = parseTirePressureWarning(from: statusData)
 
         return VehicleStatus(
             vin: vehicle.vin,
@@ -90,6 +95,11 @@ extension HyundaiAPIEndpointProvider {
             climateStatus: climateStatus,
             odometer: vehicle.odometer,
             syncDate: syncDate,
+            battery12V: battery12V,
+            doorOpen: doorOpen,
+            trunkOpen: trunkOpen,
+            hoodOpen: hoodOpen,
+            tirePressureWarning: tirePressureWarning
         )
     }
 
@@ -213,6 +223,44 @@ extension HyundaiAPIEndpointProvider {
     private func parseSyncDate(from statusData: [String: Any]) -> Date? {
         guard let dateTimeString = statusData["dateTime"] as? String else { return nil }
         return ISO8601DateFormatter().date(from: dateTimeString)
+    }
+
+    private func parseBattery12V(from statusData: [String: Any]) -> Int? {
+        guard let batteryData = statusData["battery"] as? [String: Any],
+              let batSoc: Int = extractNumber(from: batteryData["batSoc"]) else { return nil }
+        return batSoc
+    }
+
+    private func parseDoorOpen(from statusData: [String: Any]) -> VehicleStatus.DoorStatus? {
+        guard let doorData = statusData["doorOpen"] as? [String: Any] else { return nil }
+        let frontLeft: Int = extractNumber(from: doorData["frontLeft"]) ?? 0
+        let frontRight: Int = extractNumber(from: doorData["frontRight"]) ?? 0
+        let backLeft: Int = extractNumber(from: doorData["backLeft"]) ?? 0
+        let backRight: Int = extractNumber(from: doorData["backRight"]) ?? 0
+
+        return VehicleStatus.DoorStatus(
+            frontLeft: frontLeft != 0,
+            frontRight: frontRight != 0,
+            backLeft: backLeft != 0,
+            backRight: backRight != 0
+        )
+    }
+
+    private func parseTirePressureWarning(from statusData: [String: Any]) -> VehicleStatus.TirePressureWarning? {
+        guard let tireData = statusData["tirePressureLamp"] as? [String: Any] else { return nil }
+        let all: Int = extractNumber(from: tireData["tirePressureWarningLampAll"]) ?? 0
+        let frontLeft: Int = extractNumber(from: tireData["tirePressureWarningLampFrontLeft"]) ?? 0
+        let frontRight: Int = extractNumber(from: tireData["tirePressureWarningLampFrontRight"]) ?? 0
+        let rearLeft: Int = extractNumber(from: tireData["tirePressureWarningLampRearLeft"]) ?? 0
+        let rearRight: Int = extractNumber(from: tireData["tirePressureWarningLampRearRight"]) ?? 0
+
+        return VehicleStatus.TirePressureWarning(
+            frontLeft: frontLeft != 0,
+            frontRight: frontRight != 0,
+            rearLeft: rearLeft != 0,
+            rearRight: rearRight != 0,
+            all: all != 0
+        )
     }
 
     public func parseCommandResponse(_ data: Data) throws {

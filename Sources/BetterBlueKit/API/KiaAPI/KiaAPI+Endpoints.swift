@@ -88,7 +88,7 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
         let statusURL = "\(apiURL)cmm/gvi"
 
         // Log the vehicleKey for debugging
-        print("🔧 [KiaAPI] Fetching status for VIN: \(vehicle.vin), vehicleKey: \(vehicle.vehicleKey ?? "nil")")
+        BBLogger.debug(.api, "KiaAPI: Fetching status for VIN: \(vehicle.vin), vehicleKey: \(vehicle.vehicleKey ?? "nil")")
 
         let body: [String: Any] = [
             "vehicleConfigReq": [
