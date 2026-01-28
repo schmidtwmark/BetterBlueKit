@@ -9,10 +9,10 @@ import Foundation
 
 extension KiaAPIEndpointProvider: APIEndpointProvider {
     public func loginEndpoint() -> APIEndpoint {
-        loginEndpoint(sid: nil)
+        loginEndpoint(sid: nil, rmToken: nil)
     }
 
-    public func loginEndpoint(sid: String?) -> APIEndpoint {
+    public func loginEndpoint(sid: String?, rmToken: String? = nil) -> APIEndpoint {
         let loginURL = "\(apiURL)prof/authUser"
         let loginData: [String: Any] = [
             "deviceKey": deviceId,
@@ -25,8 +25,9 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
         ]
 
         var headers = apiHeaders()
-        if let rememberMeToken {
-            headers["rmtoken"] = rememberMeToken
+        // Use rmToken parameter if provided, otherwise fall back to stored rememberMeToken
+        if let token = rmToken ?? rememberMeToken {
+            headers["rmtoken"] = token
         }
         if let sid {
             headers["sid"] = sid
@@ -88,7 +89,8 @@ extension KiaAPIEndpointProvider: APIEndpointProvider {
         let statusURL = "\(apiURL)cmm/gvi"
 
         // Log the vehicleKey for debugging
-        BBLogger.debug(.api, "KiaAPI: Fetching status for VIN: \(vehicle.vin), vehicleKey: \(vehicle.vehicleKey ?? "nil")")
+        BBLogger.debug(.api, "KiaAPI: Fetching status for VIN: \(vehicle.vin)," +
+                       "vehicleKey: \(vehicle.vehicleKey ?? "nil")")
 
         let body: [String: Any] = [
             "vehicleConfigReq": [

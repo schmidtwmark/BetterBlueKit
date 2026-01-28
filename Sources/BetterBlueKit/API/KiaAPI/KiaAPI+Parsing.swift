@@ -24,11 +24,13 @@ extension KiaAPIEndpointProvider {
             let hasPhone = payload["hasPhone"] as? Bool ?? false
             let email = payload["email"] as? String
             let phone = payload["phone"] as? String
+            let rmTokenExpired = payload["rmTokenExpired"] as? Bool ?? false
 
             var mfaLog = "MFA required - otpKey: \(otpKey), xid: \(xid)"
             mfaLog += " | Contact options - hasEmail: \(hasEmail), hasPhone: \(hasPhone)"
             if let email { mfaLog += " | Email: \(email)" }
             if let phone { mfaLog += " | Phone: \(phone)" }
+            if rmTokenExpired { mfaLog += " | rmTokenExpired: true" }
             BBLogger.info(.mfa, mfaLog)
 
             throw APIError.requiresMFA(
@@ -38,6 +40,7 @@ extension KiaAPIEndpointProvider {
                 hasPhone: hasPhone,
                 email: email,
                 phone: phone,
+                rmTokenExpired: rmTokenExpired,
                 apiName: "KiaAPI"
             )
         }
@@ -50,7 +53,8 @@ extension KiaAPIEndpointProvider {
         }
 
         let validUntil = Date().addingTimeInterval(3600) // 1 hour like Python
-        BBLogger.info(.auth, "KiaAPI: Authentication completed successfully for user \(username), session ID: \(sessionId)")
+        BBLogger.info(.auth, "KiaAPI: Authentication completed successfully for user \(username)" +
+                      ", session ID: \(sessionId)")
 
         return AuthToken(
             accessToken: sessionId,
@@ -125,6 +129,9 @@ extension KiaAPIEndpointProvider {
         let lastVehicleInfo = try extractLastVehicleInfo(from: data)
         let vehicleStatus = try extractVehicleStatus(from: lastVehicleInfo)
 
+        // Extract hood/trunk from doorStatus (newer format) or direct fields (older format)
+        let (trunkOpen, hoodOpen) = parseKiaHoodTrunk(from: vehicleStatus)
+
         return VehicleStatus(
             vin: vehicle.vin,
             gasRange: parseKiaGasRange(from: vehicleStatus),
@@ -136,8 +143,8 @@ extension KiaAPIEndpointProvider {
             syncDate: parseKiaSyncDate(from: vehicleStatus),
             battery12V: parseKiaBattery12V(from: vehicleStatus),
             doorOpen: parseKiaDoorOpen(from: vehicleStatus),
-            trunkOpen: vehicleStatus["trunkOpen"] as? Bool,
-            hoodOpen: vehicleStatus["hoodOpen"] as? Bool,
+            trunkOpen: trunkOpen,
+            hoodOpen: hoodOpen,
             tirePressureWarning: parseKiaTirePressureWarning(from: vehicleStatus)
         )
     }
@@ -257,42 +264,103 @@ extension KiaAPIEndpointProvider {
         return formatter.date(from: utcString)
     }
 
+    private func parseKiaHoodTrunk(from vehicleStatus: [String: Any]) -> (trunkOpen: Bool?, hoodOpen: Bool?) {
+        // Try the newer format: doorStatus contains hood and trunk
+        if let doorStatus = vehicleStatus["doorStatus"] as? [String: Any] {
+            let trunk: Int? = extractNumber(from: doorStatus["trunk"])
+            let hood: Int? = extractNumber(from: doorStatus["hood"])
+            return (
+                trunkOpen: trunk.map { $0 != 0 },
+                hoodOpen: hood.map { $0 != 0 }
+            )
+        }
+        // Fall back to older format: direct fields
+        return (
+            trunkOpen: vehicleStatus["trunkOpen"] as? Bool,
+            hoodOpen: vehicleStatus["hoodOpen"] as? Bool
+        )
+    }
+
     private func parseKiaBattery12V(from vehicleStatus: [String: Any]) -> Int? {
-        guard let batteryData = vehicleStatus["battery"] as? [String: Any],
-              let batSoc: Int = extractNumber(from: batteryData["batSoc"]) else { return nil }
-        return batSoc
+        // Try the newer format first: batteryStatus.stateOfCharge
+        if let batteryStatus = vehicleStatus["batteryStatus"] as? [String: Any],
+           let stateOfCharge: Int = extractNumber(from: batteryStatus["stateOfCharge"]) {
+            return stateOfCharge
+        }
+        // Fall back to older format: battery.batSoc
+        if let batteryData = vehicleStatus["battery"] as? [String: Any],
+           let batSoc: Int = extractNumber(from: batteryData["batSoc"]) {
+            return batSoc
+        }
+        return nil
     }
 
     private func parseKiaDoorOpen(from vehicleStatus: [String: Any]) -> VehicleStatus.DoorStatus? {
-        guard let doorData = vehicleStatus["doorOpen"] as? [String: Any] else { return nil }
-        let frontLeft: Int = extractNumber(from: doorData["frontLeft"]) ?? 0
-        let frontRight: Int = extractNumber(from: doorData["frontRight"]) ?? 0
-        let backLeft: Int = extractNumber(from: doorData["backLeft"]) ?? 0
-        let backRight: Int = extractNumber(from: doorData["backRight"]) ?? 0
+        // Try the newer format: doorStatus
+        if let doorData = vehicleStatus["doorStatus"] as? [String: Any] {
+            let frontLeft: Int = extractNumber(from: doorData["frontLeft"]) ?? 0
+            let frontRight: Int = extractNumber(from: doorData["frontRight"]) ?? 0
+            let backLeft: Int = extractNumber(from: doorData["backLeft"]) ?? 0
+            let backRight: Int = extractNumber(from: doorData["backRight"]) ?? 0
 
-        return VehicleStatus.DoorStatus(
-            frontLeft: frontLeft != 0,
-            frontRight: frontRight != 0,
-            backLeft: backLeft != 0,
-            backRight: backRight != 0
-        )
+            return VehicleStatus.DoorStatus(
+                frontLeft: frontLeft != 0,
+                frontRight: frontRight != 0,
+                backLeft: backLeft != 0,
+                backRight: backRight != 0
+            )
+        }
+        // Fall back to older format: doorOpen
+        if let doorData = vehicleStatus["doorOpen"] as? [String: Any] {
+            let frontLeft: Int = extractNumber(from: doorData["frontLeft"]) ?? 0
+            let frontRight: Int = extractNumber(from: doorData["frontRight"]) ?? 0
+            let backLeft: Int = extractNumber(from: doorData["backLeft"]) ?? 0
+            let backRight: Int = extractNumber(from: doorData["backRight"]) ?? 0
+
+            return VehicleStatus.DoorStatus(
+                frontLeft: frontLeft != 0,
+                frontRight: frontRight != 0,
+                backLeft: backLeft != 0,
+                backRight: backRight != 0
+            )
+        }
+        return nil
     }
 
     private func parseKiaTirePressureWarning(from vehicleStatus: [String: Any]) -> VehicleStatus.TirePressureWarning? {
-        guard let tireData = vehicleStatus["tirePressureLamp"] as? [String: Any] else { return nil }
-        let all: Int = extractNumber(from: tireData["tirePressureWarningLampAll"]) ?? 0
-        let frontLeft: Int = extractNumber(from: tireData["tirePressureWarningLampFrontLeft"]) ?? 0
-        let frontRight: Int = extractNumber(from: tireData["tirePressureWarningLampFrontRight"]) ?? 0
-        let rearLeft: Int = extractNumber(from: tireData["tirePressureWarningLampRearLeft"]) ?? 0
-        let rearRight: Int = extractNumber(from: tireData["tirePressureWarningLampRearRight"]) ?? 0
+        // Try the newer format: tirePressure with simple keys
+        if let tireData = vehicleStatus["tirePressure"] as? [String: Any] {
+            let all: Int = extractNumber(from: tireData["all"]) ?? 0
+            let frontLeft: Int = extractNumber(from: tireData["frontLeft"]) ?? 0
+            let frontRight: Int = extractNumber(from: tireData["frontRight"]) ?? 0
+            let rearLeft: Int = extractNumber(from: tireData["rearLeft"]) ?? 0
+            let rearRight: Int = extractNumber(from: tireData["rearRight"]) ?? 0
 
-        return VehicleStatus.TirePressureWarning(
-            frontLeft: frontLeft != 0,
-            frontRight: frontRight != 0,
-            rearLeft: rearLeft != 0,
-            rearRight: rearRight != 0,
-            all: all != 0
-        )
+            return VehicleStatus.TirePressureWarning(
+                frontLeft: frontLeft != 0,
+                frontRight: frontRight != 0,
+                rearLeft: rearLeft != 0,
+                rearRight: rearRight != 0,
+                all: all != 0
+            )
+        }
+        // Fall back to older format: tirePressureLamp with long keys
+        if let tireData = vehicleStatus["tirePressureLamp"] as? [String: Any] {
+            let all: Int = extractNumber(from: tireData["tirePressureWarningLampAll"]) ?? 0
+            let frontLeft: Int = extractNumber(from: tireData["tirePressureWarningLampFrontLeft"]) ?? 0
+            let frontRight: Int = extractNumber(from: tireData["tirePressureWarningLampFrontRight"]) ?? 0
+            let rearLeft: Int = extractNumber(from: tireData["tirePressureWarningLampRearLeft"]) ?? 0
+            let rearRight: Int = extractNumber(from: tireData["tirePressureWarningLampRearRight"]) ?? 0
+
+            return VehicleStatus.TirePressureWarning(
+                frontLeft: frontLeft != 0,
+                frontRight: frontRight != 0,
+                rearLeft: rearLeft != 0,
+                rearRight: rearRight != 0,
+                all: all != 0
+            )
+        }
+        return nil
     }
 
     public func parseCommandResponse(_ data: Data) throws {

@@ -60,6 +60,7 @@ public struct APIError: Error, Codable {
         hasPhone: Bool = false,
         email: String? = nil,
         phone: String? = nil,
+        rmTokenExpired: Bool = false,
         apiName: String? = nil
     ) -> APIError {
         var info = ["xid": xid]
@@ -74,8 +75,16 @@ public struct APIError: Error, Codable {
         if let phone {
             info["phone"] = phone
         }
+        if rmTokenExpired {
+            info["rmTokenExpired"] = "true"
+        }
+
+        let message = rmTokenExpired
+            ? "Session expired - verification required"
+            : "Multi-Factor Authentication Required"
+
         return logError(
-            "Multi-Factor Authentication Required",
+            message,
             apiName: apiName,
             errorType: .requiresMFA,
             userInfo: info

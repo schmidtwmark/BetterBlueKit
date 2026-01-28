@@ -12,6 +12,10 @@ let package = Package(
         .library(
             name: "BetterBlueKit",
             targets: ["BetterBlueKit"],
+        ),
+        .executable(
+            name: "bbcli",
+            targets: ["BBCLI"]
         )
     ],
     dependencies: [
@@ -27,6 +31,11 @@ let package = Package(
                 .define("RELEASE", .when(configuration: .release))
             ],
             plugins: [.plugin(name: "SwiftLintBuildToolPlugin", package: "SwiftLintPlugins")],
+        ),
+        .executableTarget(
+            name: "BBCLI",
+            dependencies: ["BetterBlueKit"],
+            path: "Sources/BBCLI"
         ),
         .testTarget(
             name: "BetterBlueKitTests",

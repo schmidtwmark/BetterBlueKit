@@ -35,10 +35,10 @@ extension APIClient where Provider == KiaAPIEndpointProvider {
 
     /// Complete authentication after MFA verification
     /// Call this after verifyOTP returns rmToken and sid to get the final auth token
-    public func completeLoginWithMFA(sid: String) async throws -> AuthToken {
-        BBLogger.info(.mfa, "completeLoginWithMFA called with sid: \(sid)")
+    public func completeLoginWithMFA(sid: String, rmToken: String) async throws -> AuthToken {
+        BBLogger.info(.mfa, "completeLoginWithMFA called with sid: \(sid), rmToken: \(rmToken.prefix(10))...")
         // Call authUser again with rmtoken and sid headers
-        let endpoint = endpointProvider.loginEndpoint(sid: sid)
+        let endpoint = endpointProvider.loginEndpoint(sid: sid, rmToken: rmToken)
         let request = try createRequest(from: endpoint)
         let (data, response) = try await performLoggedRequest(request, requestType: .login)
 

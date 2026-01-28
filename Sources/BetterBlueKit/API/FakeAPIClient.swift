@@ -66,7 +66,11 @@ public class FakeAPIClient: APIClientProtocol {
 
         BBLogger.info(.fakeAPI, "Fetching vehicles for user '\(username)'...")
         let vehicles = try await vehicleProvider.getFakeVehicles(for: username, accountId: accountId)
-        BBLogger.info(.fakeAPI, "Fetched \(vehicles.count) fake vehicles for user '\(username)': [\(vehicles.map(\.vin).joined(separator: ", "))]")
+        let vinsList = vehicles.map(\.vin).joined(separator: ", ")
+        BBLogger.info(
+            .fakeAPI,
+            "Fetched \(vehicles.count) fake vehicles for user '\(username)': [\(vinsList)]"
+        )
         return vehicles
     }
 
