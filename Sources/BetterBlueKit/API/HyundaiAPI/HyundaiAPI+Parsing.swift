@@ -165,9 +165,9 @@ extension HyundaiAPIEndpointProvider {
 
         for target in targetSocList {
             if let plugType = target["plugType"] as? Int, let soc = target["targetSOClevel"] as? Double {
-                if plugType == 0 {
+                if plugType == 1 {
                     targetSocAC = soc
-                } else if plugType == 1 {
+                } else if plugType == 0 {
                     targetSocDC = soc
                 }
             }

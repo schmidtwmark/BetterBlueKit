@@ -113,8 +113,8 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
             body["chargeRatio"] = 100
         } else if case let .setTargetSOC(acLevel, dcLevel) = command {
             body["targetSOClist"] = [
-                ["targetSOClevel": acLevel, "plugType": 0],
-                ["targetSOClevel": dcLevel, "plugType": 1]
+                ["targetSOClevel": acLevel, "plugType": 1],
+                ["targetSOClevel": dcLevel, "plugType": 0]
             ]
         }
         return body
