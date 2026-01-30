@@ -1,14 +1,20 @@
 //
-//  HyundaiAPI+Endpoints.swift
+//  HyundaiUSA.swift
 //  BetterBlueKit
 //
-//  Created by Mark Schmidt on 12/26/25.
+//  Hyundai USA API Endpoint Provider
 //
 
 import Foundation
 
-extension HyundaiAPIEndpointProvider: APIEndpointProvider {
-    public func loginEndpoint() -> APIEndpoint {
+// MARK: - Hyundai USA API Endpoint Provider
+
+@MainActor
+public final class HyundaiAPIEndpointProviderUSA: HyundaiAPIEndpointProviderBase {
+
+    // MARK: - Endpoints
+
+    public override func loginEndpoint() -> APIEndpoint {
         let loginURL = "\(region.apiBaseURL(for: .hyundai))/v2/ac/oauth/token"
         let loginData = [
             "username": username,
@@ -19,34 +25,34 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
             url: loginURL,
             method: .POST,
             headers: getHeaders(),
-            body: try? JSONSerialization.data(withJSONObject: loginData),
+            body: try? JSONSerialization.data(withJSONObject: loginData)
         )
     }
 
-    public func fetchVehiclesEndpoint(authToken: AuthToken) -> APIEndpoint {
+    public override func fetchVehiclesEndpoint(authToken: AuthToken) -> APIEndpoint {
         let vehiclesURL = "\(region.apiBaseURL(for: .hyundai))/ac/v2/enrollment/details/\(username)"
 
         return APIEndpoint(
             url: vehiclesURL,
             method: .GET,
-            headers: getAuthorizedHeaders(authToken: authToken),
+            headers: getAuthorizedHeaders(authToken: authToken)
         )
     }
 
-    public func fetchVehicleStatusEndpoint(for vehicle: Vehicle, authToken: AuthToken) -> APIEndpoint {
+    public override func fetchVehicleStatusEndpoint(for vehicle: Vehicle, authToken: AuthToken) -> APIEndpoint {
         let statusURL = "\(region.apiBaseURL(for: .hyundai))/ac/v2/rcs/rvs/vehicleStatus"
 
         return APIEndpoint(
             url: statusURL,
             method: .GET,
-            headers: getAuthorizedHeaders(authToken: authToken, vehicle: vehicle),
+            headers: getAuthorizedHeaders(authToken: authToken, vehicle: vehicle)
         )
     }
 
-    public func sendCommandEndpoint(
+    public override func sendCommandEndpoint(
         for vehicle: Vehicle,
         command: VehicleCommand,
-        authToken: AuthToken,
+        authToken: AuthToken
     ) -> APIEndpoint {
         let endpoint = getEndpointForCommand(command: command, vehicle: vehicle)
         let requestBody = getBodyForCommand(command: command, vehicle: vehicle)
@@ -55,7 +61,7 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
             url: endpoint.absoluteString,
             method: .POST,
             headers: getAuthorizedHeaders(authToken: authToken, vehicle: vehicle),
-            body: try? JSONSerialization.data(withJSONObject: requestBody),
+            body: try? JSONSerialization.data(withJSONObject: requestBody)
         )
     }
 
@@ -88,46 +94,13 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
         }
     }
 
-    public func getBodyForCommand(command: VehicleCommand, vehicle: Vehicle) -> [String: Any] {
-        var body: [String: Any] = [:]
-        if case let .startClimate(options) = command {
-            if vehicle.isElectric {
-                body = ["airCtrl": options.climate ? 1 : 0,
-                        "airTemp": ["value": String(Int(options.temperature.value)),
-                                    "unit": options.temperature.units.integer()],
-                        "defrost": options.defrost, "heating1": options.heatValue]
-                if vehicle.generation >= 3 {
-                    body["igniOnDuration"] = options.duration
-                    body["seatHeaterVentInfo"] = options.getSeatHeaterVentInfo()
-                }
-            } else {
-                body = ["Ims": 0, "airCtrl": options.climate ? 1 : 0,
-                        "airTemp": ["unit": options.temperature.units.integer(),
-                                    "value": Int(options.temperature.value)],
-                        "defrost": options.defrost, "heating1": options.heatValue,
-                        "igniOnDuration": options.duration,
-                        "seatHeaterVentInfo": options.getSeatHeaterVentInfo(),
-                        "username": username, "vin": vehicle.vin]
-            }
-        } else if case .startCharge = command {
-            body["chargeRatio"] = 100
-        } else if case let .setTargetSOC(acLevel, dcLevel) = command {
-            body["targetSOClist"] = [
-                ["targetSOClevel": acLevel, "plugType": 1],
-                ["targetSOClevel": dcLevel, "plugType": 0]
-            ]
-        }
-        return body
+    // MARK: - EV Trip Details (USA supports this)
+
+    public override func supportsEVTripDetails() -> Bool {
+        true
     }
 
-    // MARK: - EV Trip Details (Optional Feature)
-
-    public func supportsEVTripDetails() -> Bool {
-        // Only USA region supports trip details for now
-        region == .usa
-    }
-
-    public func evTripDetailsEndpoint(for vehicle: Vehicle, authToken: AuthToken) -> APIEndpoint {
+    public override func evTripDetailsEndpoint(for vehicle: Vehicle, authToken: AuthToken) -> APIEndpoint {
         let url = "\(region.apiBaseURL(for: .hyundai))/ac/v2/ts/alerts/maintenance/evTripDetails"
 
         // Trip details endpoint uses slightly different header names than other endpoints
@@ -142,7 +115,7 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
         )
     }
 
-    public func parseEVTripDetailsResponse(_ data: Data) throws -> [EVTripDetail] {
+    public override func parseEVTripDetailsResponse(_ data: Data) throws -> [EVTripDetail] {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tripDetails = json["tripdetails"] as? [[String: Any]]
         else {
@@ -193,3 +166,8 @@ extension HyundaiAPIEndpointProvider: APIEndpointProvider {
         }
     }
 }
+
+// MARK: - Type Aliases for Convenience
+
+public typealias HyundaiAPIClient = APIClient<HyundaiAPIEndpointProviderUSA>
+public typealias HyundaiAPIClientUSA = APIClient<HyundaiAPIEndpointProviderUSA>

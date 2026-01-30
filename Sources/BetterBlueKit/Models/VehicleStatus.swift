@@ -41,11 +41,9 @@ public struct VehicleStatus: Codable, Hashable, Sendable {
 
     public struct EVStatus: Codable, Hashable, Sendable {
         public var charging: Bool, chargeSpeed: Double
-        @available(*, deprecated, message: "Use plugType != .unplugged instead")
-        public var deprecatedPluggedInField: Bool?
         public var pluggedIn: Bool { plugType != .unplugged }
         public var evRange: FuelRange
-        public var maybePlugType: PlugType?
+        private var maybePlugType: PlugType?
         public var plugType: PlugType { maybePlugType ?? .unplugged }
         private var maybeChargeTimeSeconds: Int64?
         public var chargeTime: Duration { .seconds(maybeChargeTimeSeconds ?? 0 ) }
@@ -66,15 +64,14 @@ public struct VehicleStatus: Codable, Hashable, Sendable {
         public init(
             charging: Bool,
             chargeSpeed: Double,
-            pluggedIn: Bool = false,
             evRange: FuelRange,
             plugType: PlugType = .unplugged,
             chargeTime: Duration,
             targetSocAC: Double? = nil,
             targetSocDC: Double? = nil
         ) {
-            (self.charging, self.chargeSpeed, self.deprecatedPluggedInField, self.evRange, self.maybePlugType,
-             self.maybeChargeTimeSeconds) = (charging, chargeSpeed, pluggedIn, evRange, plugType,
+            (self.charging, self.chargeSpeed, self.evRange, self.maybePlugType,
+             self.maybeChargeTimeSeconds) = (charging, chargeSpeed, evRange, plugType,
                                               chargeTime.components.seconds)
             (self.targetSocAC, self.targetSocDC) = (targetSocAC, targetSocDC)
         }

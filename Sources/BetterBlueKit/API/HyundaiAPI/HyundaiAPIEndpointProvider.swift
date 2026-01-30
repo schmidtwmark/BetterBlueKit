@@ -2,52 +2,53 @@
 //  HyundaiAPIEndpointProvider.swift
 //  BetterBlueKit
 //
-//  Hyundai API Client Implementation
+//  Hyundai API Endpoint Provider Base Class
 //
 
 import Foundation
 
-// MARK: - Hyundai API Endpoint Provider
+// MARK: - Hyundai API Endpoint Provider Base
 
+/// Base class for Hyundai API endpoint providers.
+/// Subclasses should override endpoint methods for region-specific URLs.
+/// Parsing methods are shared across all regions.
 @MainActor
-public final class HyundaiAPIEndpointProvider {
-    let region: Region
-    let username: String
-    let password: String
-    let pin: String
-    let accountId: UUID
+open class HyundaiAPIEndpointProviderBase: APIEndpointProvider {
+    public let username: String
+    public let password: String
+    public let pin: String
+    public let accountId: UUID
+    public let region: Region
 
     public init(configuration: APIClientConfiguration) {
-        region = configuration.region
         username = configuration.username
         password = configuration.password
         pin = configuration.pin
         accountId = configuration.accountId
+        region = configuration.region
     }
 
-    var clientId: String {
-        switch region {
-        case .usa:
-            "m66129Bb-em93-SPAHYN-bZ91-am4540zp19920"
-        default:
-            "m0na2res08hlm125puuhqzpv"
-        }
+    // MARK: - Common Constants (can be overridden)
+
+    open var clientId: String {
+        "m66129Bb-em93-SPAHYN-bZ91-am4540zp19920"
     }
 
-    var clientSecret: String {
-        switch region {
-        case .usa:
-            "v558o935-6nne-423i-baa8"
-        default:
-            "PPaX5NpW4Dqono3oNoz9K5mZbK9RG5u2"
-        }
+    open var clientSecret: String {
+        "v558o935-6nne-423i-baa8"
     }
 
-    func getHeaders() -> [String: String] {
+    open var apiHost: String {
+        "api.telematics.hyundaiusa.com"
+    }
+
+    // MARK: - Common Header Helpers
+
+    open func getHeaders() -> [String: String] {
         [
             "client_id": clientId,
             "clientSecret": clientSecret,
-            "Host": "api.telematics.hyundaiusa.com",
+            "Host": apiHost,
             "User-Agent": "okhttp/3.12.0",
             "Content-Type": "application/json",
             "Accept": "application/json, text/plain, */*",
@@ -57,7 +58,7 @@ public final class HyundaiAPIEndpointProvider {
         ]
     }
 
-    func getAuthorizedHeaders(authToken: AuthToken, vehicle: Vehicle? = nil) -> [String: String] {
+    open func getAuthorizedHeaders(authToken: AuthToken, vehicle: Vehicle? = nil) -> [String: String] {
         var headers = getHeaders()
         headers["accessToken"] = authToken.accessToken
         headers["language"] = "0"
@@ -72,8 +73,8 @@ public final class HyundaiAPIEndpointProvider {
             headers["APPCLOUD-VIN"] = vehicle.vin
         }
         headers["brandIndicator"] = "H"
-        headers["origin"] = "https://api.telematics.hyundaiusa.com"
-        headers["referer"] = "https://api.telematics.hyundaiusa.com/login"
+        headers["origin"] = "https://\(apiHost)"
+        headers["referer"] = "https://\(apiHost)/login"
         headers["sec-fetch-dest"] = "empty"
         headers["sec-fetch-mode"] = "cors"
         headers["sec-fetch-site"] = "same-origin"
@@ -90,8 +91,77 @@ public final class HyundaiAPIEndpointProvider {
 
         return headers
     }
+
+    // MARK: - APIEndpointProvider Protocol (Overridable Endpoints)
+
+    /// Subclasses must override to provide region-specific login endpoint
+    open func loginEndpoint() -> APIEndpoint {
+        fatalError("Subclasses must override loginEndpoint()")
+    }
+
+    /// Subclasses must override to provide region-specific vehicles endpoint
+    open func fetchVehiclesEndpoint(authToken: AuthToken) -> APIEndpoint {
+        fatalError("Subclasses must override fetchVehiclesEndpoint(authToken:)")
+    }
+
+    /// Subclasses must override to provide region-specific status endpoint
+    open func fetchVehicleStatusEndpoint(for vehicle: Vehicle, authToken: AuthToken) -> APIEndpoint {
+        fatalError("Subclasses must override fetchVehicleStatusEndpoint(for:authToken:)")
+    }
+
+    /// Subclasses must override to provide region-specific command endpoint
+    open func sendCommandEndpoint(
+        for vehicle: Vehicle,
+        command: VehicleCommand,
+        authToken: AuthToken
+    ) -> APIEndpoint {
+        fatalError("Subclasses must override sendCommandEndpoint(for:command:authToken:)")
+    }
+
+    /// Override to provide region-specific command body if needed
+    open func getBodyForCommand(command: VehicleCommand, vehicle: Vehicle) -> [String: Any] {
+        var body: [String: Any] = [:]
+        if case let .startClimate(options) = command {
+            if vehicle.isElectric {
+                body = ["airCtrl": options.climate ? 1 : 0,
+                        "airTemp": ["value": String(Int(options.temperature.value)),
+                                    "unit": options.temperature.units.integer()],
+                        "defrost": options.defrost, "heating1": options.heatValue]
+                if vehicle.generation >= 3 {
+                    body["igniOnDuration"] = options.duration
+                    body["seatHeaterVentInfo"] = options.getSeatHeaterVentInfo()
+                }
+            } else {
+                body = ["Ims": 0, "airCtrl": options.climate ? 1 : 0,
+                        "airTemp": ["unit": options.temperature.units.integer(),
+                                    "value": Int(options.temperature.value)],
+                        "defrost": options.defrost, "heating1": options.heatValue,
+                        "igniOnDuration": options.duration,
+                        "seatHeaterVentInfo": options.getSeatHeaterVentInfo(),
+                        "username": username, "vin": vehicle.vin]
+            }
+        } else if case .startCharge = command {
+            body["chargeRatio"] = 100
+        } else if case let .setTargetSOC(acLevel, dcLevel) = command {
+            body["targetSOClist"] = [
+                ["targetSOClevel": acLevel, "plugType": 1],
+                ["targetSOClevel": dcLevel, "plugType": 0]
+            ]
+        }
+        return body
+    }
+
+    // MARK: - EV Trip Details (Optional Feature - Override in subclass)
+
+    open func supportsEVTripDetails() -> Bool {
+        false
+    }
+
+    open func evTripDetailsEndpoint(for vehicle: Vehicle, authToken: AuthToken) -> APIEndpoint {
+        fatalError("evTripDetailsEndpoint not implemented for this region")
+    }
+
+    open func parseEVTripDetailsResponse(_ data: Data) throws -> [EVTripDetail] {
+        fatalError("parseEVTripDetailsResponse not implemented for this region")
+    }
 }
-
-// MARK: - Type Alias for Convenience
-
-public typealias HyundaiAPIClient = APIClient<HyundaiAPIEndpointProvider>

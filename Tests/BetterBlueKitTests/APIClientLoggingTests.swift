@@ -77,6 +77,7 @@ struct APIClientLoggingTests {
         let json: [String: Any] = [
             "status": ["errorCode": 123, "errorMessage": "Something went wrong"]
         ]
+        // swiftlint:disable:next force_try
         let data = try! JSONSerialization.data(withJSONObject: json)
         let result = client.extractAPIError(from: data)
         #expect(result?.contains("API Error 123") == true)
@@ -87,6 +88,7 @@ struct APIClientLoggingTests {
     func testExtractAPIError401() {
         let client = DummyAPIClient()
         let json: [String: Any] = ["errorCode": 401, "errorMessage": "Auth fail"]
+        // swiftlint:disable:next force_try
         let data = try! JSONSerialization.data(withJSONObject: json)
         let result = client.extractAPIError(from: data)
         #expect(result?.contains("API Error 401") == true)
@@ -97,6 +99,7 @@ struct APIClientLoggingTests {
     func testExtractAPIError502() {
         let client = DummyAPIClient()
         let json: [String: Any] = ["errorCode": 502, "errorMessage": "Server fail"]
+        // swiftlint:disable:next force_try
         let data = try! JSONSerialization.data(withJSONObject: json)
         let result = client.extractAPIError(from: data)
         #expect(result?.contains("API Error 502") == true)
@@ -107,6 +110,7 @@ struct APIClientLoggingTests {
     func testExtractAPIErrorString() {
         let client = DummyAPIClient()
         let json: [String: Any] = ["error": "Something bad"]
+        // swiftlint:disable:next force_try
         let data = try! JSONSerialization.data(withJSONObject: json)
         let result = client.extractAPIError(from: data)
         #expect(result?.contains("API Error: Something bad") == true)
@@ -116,6 +120,7 @@ struct APIClientLoggingTests {
     func testExtractAPIErrorMessageSuccessFalse() {
         let client = DummyAPIClient()
         let json: [String: Any] = ["message": "Failed", "success": false]
+        // swiftlint:disable:next force_try
         let data = try! JSONSerialization.data(withJSONObject: json)
         let result = client.extractAPIError(from: data)
         #expect(result?.contains("API Error: Failed") == true)

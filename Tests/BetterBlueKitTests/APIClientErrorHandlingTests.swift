@@ -79,6 +79,7 @@ struct APIClientErrorHandlingTests {
     func testShouldRetryWithReinitJSON401() {
         let client = DummyAPIClient()
         let json: [String: Any] = ["errorCode": 401]
+        // swiftlint:disable:next force_try
         let data = try! JSONSerialization.data(withJSONObject: json)
         let shouldRetry = client.shouldRetryWithReinitialization(data: data, httpStatusCode: 400)
         #expect(shouldRetry == true)

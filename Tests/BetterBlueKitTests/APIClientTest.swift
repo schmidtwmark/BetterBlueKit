@@ -2,7 +2,7 @@
 // swiftlint:disable:next concurrency_safety
 // MARK: - Global Helper Functions
 
-@MainActor func makeHyundaiProvider(region: Region = .usa) -> HyundaiAPIEndpointProvider {
+@MainActor func makeHyundaiProvider(region: Region = .usa) -> HyundaiAPIEndpointProviderUSA {
     let config = APIClientConfiguration(
         region: region,
         brand: .hyundai,
@@ -11,10 +11,10 @@
         pin: "1234",
         accountId: UUID()
     )
-    return HyundaiAPIEndpointProvider(configuration: config)
+    return HyundaiAPIEndpointProviderUSA(configuration: config)
 }
 
-@MainActor func makeKiaProvider(region: Region = .usa) -> KiaAPIEndpointProvider {
+@MainActor func makeKiaProvider(region: Region = .usa) -> KiaAPIEndpointProviderUSA {
     let config = APIClientConfiguration(
         region: region,
         brand: .kia,
@@ -23,7 +23,7 @@
         pin: "1234",
         accountId: UUID()
     )
-    return KiaAPIEndpointProvider(configuration: config)
+    return KiaAPIEndpointProviderUSA(configuration: config)
 }
 
 @MainActor func makeConfiguration(region: Region = .usa, brand: Brand = .hyundai) -> APIClientConfiguration {
@@ -245,7 +245,7 @@ struct TestProvider: APIEndpointProvider {
         return VehicleStatus(
             vin: vehicle.vin,
             gasRange: nil,
-            evStatus: .init(charging: false, chargeSpeed: 0, pluggedIn: false, evRange: .init(range: Distance(length: 100, units: .miles), percentage: 80), chargeTime: .zero),
+            evStatus: .init(charging: false, chargeSpeed: 0, evRange: .init(range: Distance(length: 100, units: .miles), percentage: 80), plugType: .unplugged, chargeTime: .zero),
             location: .init(latitude: 37.7749, longitude: -122.4194),
             lockStatus: .locked,
             climateStatus: .init(defrostOn: false, airControlOn: false, steeringWheelHeatingOn: false, temperature: Temperature(value: 70, units: .fahrenheit)),
@@ -377,7 +377,6 @@ struct APIClientTests {
     @MainActor func testAPIClientInitialization() {
         let client = makeClient()
 
-        #expect(client.region == .usa)
         #expect(client.brand == .hyundai)
         #expect(client.username == "test@example.com")
         #expect(client.password == "password123")
@@ -408,7 +407,7 @@ struct APIClientTests {
 @Suite("Hyundai API Client Tests")
 struct HyundaiAPIClientTests {
 
-    @MainActor private func makeHyundaiProvider(region: Region = .usa) -> HyundaiAPIEndpointProvider {
+    @MainActor private func makeHyundaiProvider(region: Region = .usa) -> HyundaiAPIEndpointProviderUSA {
         let config = APIClientConfiguration(
             region: region,
             brand: .hyundai,
@@ -417,10 +416,10 @@ struct HyundaiAPIClientTests {
             pin: "1234",
             accountId: UUID()
         )
-        return HyundaiAPIEndpointProvider(configuration: config)
+        return HyundaiAPIEndpointProviderUSA(configuration: config)
     }
 
-    @Test("HyundaiAPIEndpointProvider initialization")
+    @Test("HyundaiAPIEndpointProviderUSA initialization")
     @MainActor func testHyundaiProviderInitialization() {
         let provider = makeHyundaiProvider()
         // Test that provider was created successfully
@@ -778,7 +777,7 @@ struct HyundaiAPIClientTests {
 @Suite("Kia API Client Tests")
 struct KiaAPIClientTests {
 
-    @MainActor private func makeKiaProvider(region: Region = .usa) -> KiaAPIEndpointProvider {
+    @MainActor private func makeKiaProvider(region: Region = .usa) -> KiaAPIEndpointProviderUSA {
         let config = APIClientConfiguration(
             region: region,
             brand: .kia,
@@ -787,10 +786,10 @@ struct KiaAPIClientTests {
             pin: "5678",
             accountId: UUID()
         )
-        return KiaAPIEndpointProvider(configuration: config)
+        return KiaAPIEndpointProviderUSA(configuration: config)
     }
 
-    @Test("KiaAPIEndpointProvider initialization")
+    @Test("KiaAPIEndpointProviderUSA initialization")
     @MainActor func testKiaProviderInitialization() {
         let provider = makeKiaProvider()
         let endpoint = provider.loginEndpoint()
@@ -1290,7 +1289,7 @@ struct APIClientEdgeCasesTests {
         let body = "test body"
         let startTime = Date()
 
-        let context = APIClient<HyundaiAPIEndpointProvider>.RequestContext(
+        let context = APIClient<HyundaiAPIEndpointProviderUSA>.RequestContext(
             requestType: .login,
             request: request,
             requestHeaders: headers,
@@ -1312,7 +1311,7 @@ struct APIClientEdgeCasesTests {
 
         // Should conform to APIClientProtocol
         let protocolClient: APIClientProtocol = client
-        #expect(protocolClient is APIClient<HyundaiAPIEndpointProvider>)
+        #expect(protocolClient is APIClient<HyundaiAPIEndpointProviderUSA>)
     }
 }
 
@@ -1377,7 +1376,7 @@ struct APIClientLoggingEdgeCasesTests {
         let request = URLRequest(url: URL(string: "https://test.com")!)
         let startTime = Date()
 
-        let logData = APIClient<HyundaiAPIEndpointProvider>.HTTPRequestLogData(
+        let logData = APIClient<HyundaiAPIEndpointProviderUSA>.HTTPRequestLogData(
             requestType: .login,
             request: request,
             requestHeaders: ["Authorization": "Bearer test"],
@@ -1411,7 +1410,7 @@ struct APIClientLoggingEdgeCasesTests {
         var request = URLRequest(url: URL(string: "https://test.com")!)
         request.url = nil // This creates the nil URL scenario
 
-        let logData = APIClient<HyundaiAPIEndpointProvider>.HTTPRequestLogData(
+        let logData = APIClient<HyundaiAPIEndpointProviderUSA>.HTTPRequestLogData(
             requestType: .login,
             request: request,
             requestHeaders: [:],
@@ -1437,7 +1436,7 @@ struct APIClientLoggingEdgeCasesTests {
         var request = URLRequest(url: URL(string: "https://test.com")!)
         request.httpMethod = nil // This creates the nil method scenario
 
-        let logData = APIClient<HyundaiAPIEndpointProvider>.HTTPRequestLogData(
+        let logData = APIClient<HyundaiAPIEndpointProviderUSA>.HTTPRequestLogData(
             requestType: .login,
             request: request,
             requestHeaders: [:],

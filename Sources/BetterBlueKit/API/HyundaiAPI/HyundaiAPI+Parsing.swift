@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension HyundaiAPIEndpointProvider {
+extension HyundaiAPIEndpointProviderBase {
     public func parseLoginResponse(_ data: Data, headers _: [String: String]) throws -> AuthToken {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let accessToken = json["access_token"] as? String,

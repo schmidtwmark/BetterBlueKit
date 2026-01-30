@@ -438,7 +438,7 @@ struct AdvancedErrorHandlingTests {
 
     // MARK: - Helper Methods
 
-    @MainActor private func makeKiaProvider() -> KiaAPIEndpointProvider {
+    @MainActor private func makeKiaProvider() -> KiaAPIEndpointProviderUSA {
         let config = APIClientConfiguration(
             region: .usa,
             brand: .kia,
@@ -447,7 +447,7 @@ struct AdvancedErrorHandlingTests {
             pin: "0000",
             accountId: UUID()
         )
-        return KiaAPIEndpointProvider(configuration: config)
+        return KiaAPIEndpointProviderUSA(configuration: config)
     }
 
     private func makeTestVehicle() -> Vehicle {

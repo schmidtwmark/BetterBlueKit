@@ -7,14 +7,19 @@
 
 import Foundation
 
-extension KiaAPIEndpointProvider {
+extension KiaAPIEndpointProviderBase {
     public func parseLoginResponse(_ data: Data, headers: [String: String]) throws -> AuthToken {
         // Check for Kia-specific errors in the response body
         try checkForKiaSpecificErrors(data: data)
 
         // Parse JSON response to check for MFA requirement
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let payload = json["payload"] as? [String: Any],
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            BBLogger.error(.auth, "KiaAPI: Failed to parse login response as JSON")
+            throw APIError.logError("Failed to parse login response", apiName: "KiaAPI")
+        }
+
+        // Check for MFA requirement - otpKey in payload indicates MFA is needed
+        if let payload = json["payload"] as? [String: Any],
            let otpKey = payload["otpKey"] as? String {
             // MFA required - extract xid from response headers
             let xid = headers["xid"] ?? headers["Xid"] ?? headers["XID"] ?? ""
@@ -46,6 +51,10 @@ extension KiaAPIEndpointProvider {
         }
 
         let sid = headers["sid"] ?? headers["Sid"] ?? headers["SID"]
+
+        // Log what we found in the response for debugging
+        let payloadKeys = (json["payload"] as? [String: Any])?.keys.joined(separator: ", ") ?? "nil"
+        BBLogger.debug(.auth, "KiaAPI: Login response - payload keys: \(payloadKeys), sid header: \(sid ?? "nil")")
 
         // Extract session ID from response headers - Kia API returns 'sid' header
         guard let sessionId = sid else {
@@ -81,6 +90,9 @@ extension KiaAPIEndpointProvider {
     }
 
     public func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] {
+        // Check for Kia-specific errors first (e.g., session expired)
+        try checkForKiaSpecificErrors(data: data)
+
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let payload = json["payload"] as? [String: Any],
               let vehicleSummary = payload["vehicleSummary"] as? [[String: Any]]

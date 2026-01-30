@@ -135,7 +135,7 @@ struct RegionSpecificTests {
                 accountId: UUID()
             )
 
-            let provider = KiaAPIEndpointProvider(configuration: config)
+            let provider = KiaAPIEndpointProviderUSA(configuration: config)
             let endpoint = provider.loginEndpoint()
 
             // Verify region-specific host header
@@ -169,7 +169,7 @@ struct RegionSpecificTests {
                 accountId: UUID()
             )
 
-            let provider = KiaAPIEndpointProvider(configuration: config)
+            let provider = KiaAPIEndpointProviderUSA(configuration: config)
             let endpoint = provider.loginEndpoint()
 
             // Verify offset header exists and is a valid integer
@@ -239,7 +239,7 @@ struct RegionSpecificTests {
                 accountId: UUID()
             )
 
-            let provider = KiaAPIEndpointProvider(configuration: config)
+            let provider = KiaAPIEndpointProviderUSA(configuration: config)
             let vehicle = Vehicle(
                 vin: "TEST_REGIONAL_VIN",
                 regId: "REG_REGIONAL",
@@ -333,11 +333,11 @@ struct RegionSpecificTests {
 
                 // Should be able to create providers for all combinations
                 if brand == .kia {
-                    let provider = KiaAPIEndpointProvider(configuration: config)
+                    let provider = KiaAPIEndpointProviderUSA(configuration: config)
                     let endpoint = provider.loginEndpoint()
                     #expect(endpoint.url.hasPrefix("https://"))
                 } else if brand == .hyundai {
-                    let provider = HyundaiAPIEndpointProvider(configuration: config)
+                    let provider = HyundaiAPIEndpointProviderUSA(configuration: config)
                     let endpoint = provider.loginEndpoint()
                     #expect(endpoint.url.hasPrefix("https://"))
                 }

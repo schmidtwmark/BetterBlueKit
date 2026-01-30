@@ -52,6 +52,20 @@ public protocol APIClientProtocol {
 
     /// Optional: Fetch EV trip details for a vehicle (not all brands/APIs support this)
     func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]?
+
+    // MARK: - MFA Support (Optional)
+
+    /// Returns true if this API client supports MFA (Multi-Factor Authentication)
+    func supportsMFA() -> Bool
+
+    /// Send OTP code via the specified method (SMS or email)
+    func sendMFACode(otpKey: String, xid: String, notifyType: String) async throws
+
+    /// Verify the OTP code and get tokens for completing login
+    func verifyMFACode(otpKey: String, xid: String, otp: String) async throws -> (rememberMeToken: String, sid: String)
+
+    /// Complete login after MFA verification
+    func completeMFALogin(sid: String, rmToken: String) async throws -> AuthToken
 }
 
 // Default implementation for optional methods
@@ -59,6 +73,23 @@ extension APIClientProtocol {
     public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
         // Default implementation returns nil (not supported)
         return nil
+    }
+
+    public func supportsMFA() -> Bool {
+        false
+    }
+
+    public func sendMFACode(otpKey: String, xid: String, notifyType: String) async throws {
+        throw APIError(message: "MFA not supported for this API", apiName: "APIClient")
+    }
+
+    public func verifyMFACode(otpKey: String, xid: String, otp: String) async throws ->
+       (rememberMeToken: String, sid: String) {
+        throw APIError(message: "MFA not supported for this API", apiName: "APIClient")
+    }
+
+    public func completeMFALogin(sid: String, rmToken: String) async throws -> AuthToken {
+        throw APIError(message: "MFA not supported for this API", apiName: "APIClient")
     }
 }
 
@@ -115,6 +146,14 @@ public protocol APIEndpointProvider: Sendable {
     func supportsEVTripDetails() -> Bool
     func evTripDetailsEndpoint(for vehicle: Vehicle, authToken: AuthToken) -> APIEndpoint
     func parseEVTripDetailsResponse(_ data: Data) throws -> [EVTripDetail]
+
+    // Optional: MFA Support (not all providers support this)
+    func supportsMFA() -> Bool
+    func loginEndpoint(sid: String?, rmToken: String?) -> APIEndpoint
+    func sendOTPEndpoint(otpKey: String, xid: String, notifyType: String) -> APIEndpoint
+    func verifyOTPEndpoint(otpKey: String, xid: String, otp: String) -> APIEndpoint
+    func parseVerifyOTPResponse(_ data: Data, headers: [String: String]) throws ->
+        (rememberMeToken: String, sid: String)
 }
 
 // Default implementations for optional APIEndpointProvider methods
@@ -126,13 +165,27 @@ extension APIEndpointProvider {
     public func parseEVTripDetailsResponse(_ data: Data) throws -> [EVTripDetail] {
         fatalError("parseEVTripDetailsResponse not implemented")
     }
+
+    public func supportsMFA() -> Bool { false }
+    public func loginEndpoint(sid: String?, rmToken: String?) -> APIEndpoint {
+        fatalError("MFA login endpoint not implemented")
+    }
+    public func sendOTPEndpoint(otpKey: String, xid: String, notifyType: String) -> APIEndpoint {
+        fatalError("sendOTPEndpoint not implemented")
+    }
+    public func verifyOTPEndpoint(otpKey: String, xid: String, otp: String) -> APIEndpoint {
+        fatalError("verifyOTPEndpoint not implemented")
+    }
+    public func parseVerifyOTPResponse(_ data: Data, headers: [String: String]) throws ->
+        (rememberMeToken: String, sid: String) {
+        fatalError("parseVerifyOTPResponse not implemented")
+    }
 }
 
 // MARK: - Generic API Client
 
 @MainActor
 public class APIClient<Provider: APIEndpointProvider> {
-    let region: Region
     let brand: Brand
     let username: String
     let password: String
@@ -148,7 +201,6 @@ public class APIClient<Provider: APIEndpointProvider> {
         endpointProvider: Provider,
         urlSession: URLSession = .shared
     ) {
-        region = configuration.region
         brand = configuration.brand
         username = configuration.username
         password = configuration.password
@@ -157,72 +209,6 @@ public class APIClient<Provider: APIEndpointProvider> {
         self.endpointProvider = endpointProvider
         logSink = configuration.logSink
         self.urlSession = urlSession
-    }
-
-    public func login() async throws -> AuthToken {
-        let endpoint = endpointProvider.loginEndpoint()
-        let request = try createRequest(from: endpoint)
-
-        BBLogger.info(.auth, "Attempting login")
-        let (data, response) = try await performLoggedRequest(request, requestType: .login)
-
-        // Extract headers for parsing
-        let headers: [String: String] = response.allHeaderFields.reduce(into: [:]) { result, pair in
-            if let key = pair.key as? String, let value = pair.value as? String {
-                result[key] = value
-            }
-        }
-
-        return try endpointProvider.parseLoginResponse(data, headers: headers)
-    }
-
-    public func fetchVehicles(authToken: AuthToken) async throws -> [Vehicle] {
-        let endpoint = endpointProvider.fetchVehiclesEndpoint(authToken: authToken)
-        let request = try createRequest(from: endpoint)
-        let (data, _) = try await performLoggedRequest(request, requestType: .fetchVehicles)
-        return try endpointProvider.parseVehiclesResponse(data)
-    }
-
-    public func fetchVehicleStatus(
-        for vehicle: Vehicle,
-        authToken: AuthToken,
-    ) async throws -> VehicleStatus {
-        let endpoint = endpointProvider.fetchVehicleStatusEndpoint(
-            for: vehicle,
-            authToken: authToken,
-        )
-        let request = try createRequest(from: endpoint)
-        let (data, _) = try await performLoggedRequest(request, requestType: .fetchVehicleStatus)
-        return try endpointProvider.parseVehicleStatusResponse(data, for: vehicle)
-    }
-
-    public func sendCommand(
-        for vehicle: Vehicle,
-        command: VehicleCommand,
-        authToken: AuthToken,
-    ) async throws {
-        let endpoint = endpointProvider.sendCommandEndpoint(
-            for: vehicle,
-            command: command,
-            authToken: authToken,
-        )
-        let request = try createRequest(from: endpoint)
-        let (data, _) = try await performLoggedRequest(request, requestType: .sendCommand)
-        try endpointProvider.parseCommandResponse(data)
-    }
-
-    public func fetchEVTripDetails(
-        for vehicle: Vehicle,
-        authToken: AuthToken
-    ) async throws -> [EVTripDetail]? {
-        guard endpointProvider.supportsEVTripDetails() else {
-            return nil
-        }
-
-        let endpoint = endpointProvider.evTripDetailsEndpoint(for: vehicle, authToken: authToken)
-        let request = try createRequest(from: endpoint)
-        let (data, _) = try await performLoggedRequest(request, requestType: .fetchEVTripDetails)
-        return try endpointProvider.parseEVTripDetailsResponse(data)
     }
 
     // MARK: - Private Helper Methods

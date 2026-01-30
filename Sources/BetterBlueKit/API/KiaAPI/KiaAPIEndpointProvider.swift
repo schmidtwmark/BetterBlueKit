@@ -1,46 +1,52 @@
 //
 //  KiaAPIEndpointProvider.swift
-//  BetterBlue
+//  BetterBlueKit
 //
-//  Created by Mark Schmidt on 7/23/25.
+//  Kia API Endpoint Provider Base Class
 //
 
 import CryptoKit
 import Foundation
 
+// MARK: - Kia API Endpoint Provider Base
+
+/// Base class for Kia API endpoint providers.
+/// Subclasses should override endpoint methods for region-specific URLs.
+/// Parsing methods are shared across all regions.
 @MainActor
-public final class KiaAPIEndpointProvider {
-    let region: Region
-    let username: String
-    let password: String
-    let pin: String
-    let accountId: UUID
-    let rememberMeToken: String?
+open class KiaAPIEndpointProviderBase: APIEndpointProvider {
+    public let username: String
+    public let password: String
+    public let pin: String
+    public let accountId: UUID
+    public let region: Region
+    public let rememberMeToken: String?
 
     public init(configuration: APIClientConfiguration) {
-        region = configuration.region
         username = configuration.username
         password = configuration.password
         pin = configuration.pin
         accountId = configuration.accountId
+        region = configuration.region
         rememberMeToken = configuration.rememberMeToken
     }
 
-    // Use region-specific base URL
-    var baseURL: String {
+    // MARK: - Common Constants (can be overridden)
+
+    open var baseURL: String {
         region.apiBaseURL(for: .kia)
     }
 
-    var apiURL: String {
+    open var apiURL: String {
         "\(baseURL)/apigw/v1/"
     }
 
     // Device ID is a simple uppercase UUID (matches Python: str(uuid.uuid4()).upper())
-    let deviceId: String = UUID().uuidString.uppercased()
+    public let deviceId: String = UUID().uuidString.uppercased()
 
     // Client UUID is a UUID5 hash of device_id using DNS namespace
     // (matches Python: str(uuid.uuid5(uuid.NAMESPACE_DNS, self.device_id)))
-    var clientUUID: String {
+    public var clientUUID: String {
         // UUID5 uses SHA-1 hash of namespace + name
         // DNS namespace UUID is 6ba7b810-9dad-11d1-80b4-00c04fd430c8
         let namespaceUUID = UUID(uuidString: "6ba7b810-9dad-11d1-80b4-00c04fd430c8")!
@@ -78,9 +84,9 @@ public final class KiaAPIEndpointProvider {
         ))
     }
 
-    // MARK: - Helper Methods
+    // MARK: - Common Header Helpers
 
-    func apiHeaders() -> [String: String] {
+    open func apiHeaders() -> [String: String] {
         // Offset as integer (no + sign for positive), matches Python: str(int(offset))
         let offset = TimeZone.current.secondsFromGMT() / 3600
 
@@ -121,7 +127,7 @@ public final class KiaAPIEndpointProvider {
         ]
     }
 
-    func authedApiHeaders(authToken: AuthToken, vehicleKey: String?) -> [String: String] {
+    open func authedApiHeaders(authToken: AuthToken, vehicleKey: String?) -> [String: String] {
         var headers = apiHeaders()
         headers["sid"] = authToken.accessToken
         if let key = vehicleKey {
@@ -130,7 +136,9 @@ public final class KiaAPIEndpointProvider {
         return headers
     }
 
-    func checkForKiaSpecificErrors(data: Data) throws {
+    // MARK: - Error Handling
+
+    public func checkForKiaSpecificErrors(data: Data) throws {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let status = json["status"] as? [String: Any],
               let errorCode: Int = extractNumber(from: status["errorCode"]),
@@ -174,8 +182,115 @@ public final class KiaAPIEndpointProvider {
             throw APIError.serverError("Service unavailable", apiName: "KiaAPI")
         }
     }
+
+    // MARK: - APIEndpointProvider Protocol (Overridable Endpoints)
+
+    /// Kia supports MFA (Multi-Factor Authentication)
+    open func supportsMFA() -> Bool {
+        true
+    }
+
+    /// Subclasses must override to provide region-specific login endpoint
+    open func loginEndpoint() -> APIEndpoint {
+        fatalError("Subclasses must override loginEndpoint()")
+    }
+
+    /// Login endpoint with optional MFA parameters
+    open func loginEndpoint(sid: String?, rmToken: String?) -> APIEndpoint {
+        fatalError("Subclasses must override loginEndpoint(sid:rmToken:)")
+    }
+
+    /// OTP send endpoint for MFA
+    open func sendOTPEndpoint(otpKey: String, xid: String, notifyType: String) -> APIEndpoint {
+        fatalError("Subclasses must override sendOTPEndpoint(otpKey:xid:notifyType:)")
+    }
+
+    /// OTP verify endpoint for MFA
+    open func verifyOTPEndpoint(otpKey: String, xid: String, otp: String) -> APIEndpoint {
+        fatalError("Subclasses must override verifyOTPEndpoint(otpKey:xid:otp:)")
+    }
+
+    /// Subclasses must override to provide region-specific vehicles endpoint
+    open func fetchVehiclesEndpoint(authToken: AuthToken) -> APIEndpoint {
+        fatalError("Subclasses must override fetchVehiclesEndpoint(authToken:)")
+    }
+
+    /// Subclasses must override to provide region-specific status endpoint
+    open func fetchVehicleStatusEndpoint(for vehicle: Vehicle, authToken: AuthToken) -> APIEndpoint {
+        fatalError("Subclasses must override fetchVehicleStatusEndpoint(for:authToken:)")
+    }
+
+    /// Subclasses must override to provide region-specific command endpoint
+    open func sendCommandEndpoint(
+        for vehicle: Vehicle,
+        command: VehicleCommand,
+        authToken: AuthToken
+    ) -> APIEndpoint {
+        fatalError("Subclasses must override sendCommandEndpoint(for:command:authToken:)")
+    }
+
+    /// Override to provide region-specific command body if needed
+    open func getBodyForCommand(command: VehicleCommand, vehicle: Vehicle) -> [String: Any] {
+        var body: [String: Any] = [:]
+
+        switch command {
+        case .startClimate(let options):
+            let heatingAccessory: [String: Int] = [
+                "steeringWheel": options.steeringWheel > 0 ? 1 : 0,
+                "rearWindow": options.rearDefrostEnabled ? 1 : 0,
+                "sideMirror": options.rearDefrostEnabled ? 1 : 0
+            ]
+
+            var remoteClimate: [String: Any] = [
+                "airCtrl": options.climate,
+                "defrost": options.defrost,
+                "airTemp": [
+                    "value": String(Int(options.temperature.value)),
+                    "unit": options.temperature.units.integer()
+                ],
+                "ignitionOnDuration": [
+                    "unit": 4,
+                    "value": options.duration
+                ],
+                "heatingAccessory": heatingAccessory
+            ]
+
+            // Seat configuration
+            let seats: [String: Int] = [
+                "driverSeat": convertSeatSetting(options.frontLeftSeat, options.frontLeftVentilationEnabled),
+                "passengerSeat": convertSeatSetting(options.frontRightSeat, options.frontRightVentilationEnabled),
+                "rearLeftSeat": convertSeatSetting(options.rearLeftSeat, options.rearLeftVentilationEnabled),
+                "rearRightSeat": convertSeatSetting(options.rearRightSeat, options.rearRightVentilationEnabled)
+            ]
+
+            remoteClimate["heatVentSeat"] = seats
+
+            body = ["remoteClimate": remoteClimate]
+        case .startCharge:
+            body = ["chargeRatio": 100]
+        case .setTargetSOC(let acLevel, let dcLevel):
+            body["targetSOClist"] = [
+                ["targetSOClevel": acLevel, "plugType": 0],
+                ["targetSOClevel": dcLevel, "plugType": 1]
+            ]
+        case .stopCharge, .stopClimate, .lock, .unlock:
+            break
+        }
+
+        return body
+    }
+
+    // MARK: - EV Trip Details (Optional Feature - Override in subclass)
+
+    open func supportsEVTripDetails() -> Bool {
+        false
+    }
+
+    open func evTripDetailsEndpoint(for vehicle: Vehicle, authToken: AuthToken) -> APIEndpoint {
+        fatalError("evTripDetailsEndpoint not implemented for this region")
+    }
+
+    open func parseEVTripDetailsResponse(_ data: Data) throws -> [EVTripDetail] {
+        fatalError("parseEVTripDetailsResponse not implemented for this region")
+    }
 }
-
-// MARK: - Type Alias for Convenience
-
-public typealias KiaAPIClient = APIClient<KiaAPIEndpointProvider>

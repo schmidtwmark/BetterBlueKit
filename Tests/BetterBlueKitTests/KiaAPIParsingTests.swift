@@ -421,7 +421,7 @@ struct KiaAPIParsingTests {
 
     // MARK: - Helper Methods
 
-    @MainActor private func makeKiaProvider() -> KiaAPIEndpointProvider {
+    @MainActor private func makeKiaProvider() -> KiaAPIEndpointProviderUSA {
         let config = APIClientConfiguration(
             region: .usa,
             brand: .kia,
@@ -430,7 +430,7 @@ struct KiaAPIParsingTests {
             pin: "0000",
             accountId: UUID()
         )
-        return KiaAPIEndpointProvider(configuration: config)
+        return KiaAPIEndpointProviderUSA(configuration: config)
     }
 
     private func makeTestVehicle() -> Vehicle {

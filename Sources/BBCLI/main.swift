@@ -13,14 +13,13 @@ import Foundation
 // Use a simple class for state since we're single-threaded CLI
 @MainActor
 final class CLIState {
-    var kiaClient: KiaAPIClient?
-    var hyundaiClient: HyundaiAPIClient?
+    var client: (any APIClientProtocol)?
     var authToken: AuthToken?
     var vehicles: [Vehicle] = []
     var username: String = ""
     var password: String = ""
     var pin: String = ""
-    
+
     var brand: Brand = .hyundai
     var region: Region = .usa
 }
@@ -59,47 +58,47 @@ func prompt(_ message: String) -> String {
 @MainActor
 func parseArguments() {
     let args = CommandLine.arguments
-    var i = 1
+    var argIndex = 1
 
-    while i < args.count {
-        switch args[i] {
+    while argIndex < args.count {
+        switch args[argIndex] {
         case "-u", "--username":
-            if i + 1 < args.count {
-                state.username = args[i + 1]
-                i += 1
+            if argIndex + 1 < args.count {
+                state.username = args[argIndex + 1]
+                argIndex += 1
             }
         case "-p", "--password":
-            if i + 1 < args.count {
-                state.password = args[i + 1]
-                i += 1
+            if argIndex + 1 < args.count {
+                state.password = args[argIndex + 1]
+                argIndex += 1
             }
         case "--pin":
-            if i + 1 < args.count {
-                state.pin = args[i + 1]
-                i += 1
+            if argIndex + 1 < args.count {
+                state.pin = args[argIndex + 1]
+                argIndex += 1
             }
         case "-b", "--brand":
-            if i + 1 < args.count {
-                let brandArg = args[i + 1].lowercased()
+            if argIndex + 1 < args.count {
+                let brandArg = args[argIndex + 1].lowercased()
                 if let brand = Brand(rawValue: brandArg) {
                     state.brand = brand
                 } else {
-                    printError("Unknown brand: \(args[i + 1]). Use 'hyundai' or 'kia'.")
+                    printError("Unknown brand: \(args[argIndex + 1]). Use 'hyundai' or 'kia'.")
                     exit(1)
                 }
-                i += 1
+                argIndex += 1
             }
         case "-r", "--region":
-            if i + 1 < args.count {
-                let regionArg = args[i + 1]
+            if argIndex + 1 < args.count {
+                let regionArg = args[argIndex + 1]
                 print("Region arg: '\(regionArg)'")
-                if let r = Region(rawValue: regionArg.uppercased()) {
-                    state.region = r
+                if let parsedRegion = Region(rawValue: regionArg.uppercased()) {
+                    state.region = parsedRegion
                 } else {
-                    printError("Unknown region: \(args[i + 1]). Use \(Region.allCases).")
+                    printError("Unknown region: \(args[argIndex + 1]). Use \(Region.allCases.map { $0.rawValue }).")
                     exit(1)
                 }
-                i += 1
+                argIndex += 1
             }
         case "-h", "--help":
             printUsage()
@@ -107,7 +106,7 @@ func parseArguments() {
         default:
             break
         }
-        i += 1
+        argIndex += 1
     }
 }
 
@@ -158,39 +157,34 @@ func performLogin() async throws {
         accountId: UUID()
     )
 
+    let client: any APIClientProtocol
     if brand == .kia {
-        let endpointProvider = KiaAPIEndpointProvider(configuration: config)
-        let client = KiaAPIClient(configuration: config, endpointProvider: endpointProvider)
-        state.kiaClient = client
-
-        do {
-            print("Attempting login...")
-            let token = try await client.login()
-            state.authToken = token
-            printSuccess("Login successful!")
-            print("Auth token received (expires: \(token.expiresAt))")
-        } catch let error as APIError {
-            if error.errorType == .requiresMFA {
-                try await handleKiaMFA(client: client, error: error)
-            } else {
-                throw error
-            }
-        }
+        let endpointProvider = KiaAPIEndpointProviderUSA(configuration: config)
+        client = KiaAPIClientUSA(configuration: config, endpointProvider: endpointProvider)
     } else {
-        let endpointProvider = HyundaiAPIEndpointProvider(configuration: config)
-        let client = HyundaiAPIClient(configuration: config, endpointProvider: endpointProvider)
-        state.hyundaiClient = client
+        let endpointProvider = HyundaiAPIEndpointProviderUSA(configuration: config)
+        client = HyundaiAPIClientUSA(configuration: config, endpointProvider: endpointProvider)
+    }
 
+    state.client = client
+
+    do {
         print("Attempting login...")
         let token = try await client.login()
         state.authToken = token
         printSuccess("Login successful!")
         print("Auth token received (expires: \(token.expiresAt))")
+    } catch let error as APIError {
+        if error.errorType == .requiresMFA, client.supportsMFA() {
+            try await handleMFA(client: client, error: error)
+        } else {
+            throw error
+        }
     }
 }
 
 @MainActor
-func handleKiaMFA(client: KiaAPIClient, error: APIError) async throws {
+func handleMFA(client: any APIClientProtocol, error: APIError) async throws {
     printSubheader("MFA Required")
 
     guard let userInfo = error.userInfo else {
@@ -214,7 +208,7 @@ func handleKiaMFA(client: KiaAPIClient, error: APIError) async throws {
     let notifyType = methodChoice == "2" ? "SMS" : "EMAIL"
 
     print("Sending MFA code via \(notifyType)...")
-    try await client.sendOTP(otpKey: otpKey, xid: xid, notifyType: notifyType)
+    try await client.sendMFACode(otpKey: otpKey, xid: xid, notifyType: notifyType)
     printSuccess("MFA code sent!")
 
     let rawCode = prompt("Enter verification code: ")
@@ -231,11 +225,11 @@ func handleKiaMFA(client: KiaAPIClient, error: APIError) async throws {
     }
 
     print("Verifying MFA code...")
-    let (rmToken, sid) = try await client.verifyOTP(otpKey: otpKey, xid: xid, otp: code)
+    let (rmToken, sid) = try await client.verifyMFACode(otpKey: otpKey, xid: xid, otp: code)
     printSuccess("MFA verification successful!")
 
     print("Completing login...")
-    let token = try await client.completeLoginWithMFA(sid: sid, rmToken: rmToken)
+    let token = try await client.completeMFALogin(sid: sid, rmToken: rmToken)
     state.authToken = token
     printSuccess("Login completed!")
     print("Auth token received (expires: \(token.expiresAt))")
@@ -251,17 +245,11 @@ func fetchVehicles() async throws {
         throw APIError(message: "Not logged in")
     }
 
-    let brand = state.brand
-    let vehicles: [Vehicle]
-
-    if brand == .kia, let client = state.kiaClient {
-        vehicles = try await client.fetchVehicles(authToken: token)
-    } else if let client = state.hyundaiClient {
-        vehicles = try await client.fetchVehicles(authToken: token)
-    } else {
+    guard let client = state.client else {
         throw APIError(message: "No API client initialized")
     }
 
+    let vehicles = try await client.fetchVehicles(authToken: token)
     state.vehicles = vehicles
 
     printSuccess("Found \(vehicles.count) vehicle(s)")
@@ -321,18 +309,13 @@ func fetchVehicleStatus() async throws {
         throw APIError(message: "Not logged in")
     }
 
-    printSubheader("Fetching Status for \(vehicle.model)")
-
-    let brand = state.brand
-    let status: VehicleStatus
-
-    if brand == .kia, let client = state.kiaClient {
-        status = try await client.fetchVehicleStatus(for: vehicle, authToken: token)
-    } else if let client = state.hyundaiClient {
-        status = try await client.fetchVehicleStatus(for: vehicle, authToken: token)
-    } else {
+    guard let client = state.client else {
         throw APIError(message: "No API client initialized")
     }
+
+    printSubheader("Fetching Status for \(vehicle.model)")
+
+    let status = try await client.fetchVehicleStatus(for: vehicle, authToken: token)
 
     printSuccess("Status fetched successfully")
 
@@ -379,17 +362,13 @@ func sendCommand(_ command: VehicleCommand, description: String) async throws {
         throw APIError(message: "Not logged in")
     }
 
-    printSubheader("Sending \(description) to \(vehicle.model)")
-
-    let brand = state.brand
-
-    if brand == .kia, let client = state.kiaClient {
-        try await client.sendCommand(for: vehicle, command: command, authToken: token)
-    } else if let client = state.hyundaiClient {
-        try await client.sendCommand(for: vehicle, command: command, authToken: token)
-    } else {
+    guard let client = state.client else {
         throw APIError(message: "No API client initialized")
     }
+
+    printSubheader("Sending \(description) to \(vehicle.model)")
+
+    try await client.sendCommand(for: vehicle, command: command, authToken: token)
 
     printSuccess("\(description) command sent successfully!")
 }
@@ -401,18 +380,13 @@ func fetchEVTripDetails() async throws {
         throw APIError(message: "Not logged in")
     }
 
-    printSubheader("Fetching EV Trip Details for \(vehicle.model)")
-
-    let brand = state.brand
-    let trips: [EVTripDetail]
-
-    if brand == .kia, let client = state.kiaClient {
-        trips = try await client.fetchEVTripDetails(for: vehicle, authToken: token) ?? []
-    } else if let client = state.hyundaiClient {
-        trips = try await client.fetchEVTripDetails(for: vehicle, authToken: token) ?? []
-    } else {
+    guard let client = state.client else {
         throw APIError(message: "No API client initialized")
     }
+
+    printSubheader("Fetching EV Trip Details for \(vehicle.model)")
+
+    let trips = try await client.fetchEVTripDetails(for: vehicle, authToken: token) ?? []
 
     printSuccess("Found \(trips.count) trip(s)")
 

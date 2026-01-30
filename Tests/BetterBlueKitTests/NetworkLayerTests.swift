@@ -49,7 +49,7 @@ struct NetworkLayerTests {
             accountId: UUID()
         )
 
-        let provider = KiaAPIEndpointProvider(configuration: config)
+        let provider = KiaAPIEndpointProviderUSA(configuration: config)
 
         // Test login endpoint
         let loginEndpoint = provider.loginEndpoint()
@@ -157,7 +157,7 @@ struct NetworkLayerTests {
             accountId: UUID()
         )
 
-        let provider = KiaAPIEndpointProvider(configuration: config)
+        let provider = KiaAPIEndpointProviderUSA(configuration: config)
         let endpoint = provider.loginEndpoint()
 
         let requiredHeaders = [
@@ -199,7 +199,7 @@ struct NetworkLayerTests {
             accountId: UUID()
         )
 
-        let provider = KiaAPIEndpointProvider(configuration: config)
+        let provider = KiaAPIEndpointProviderUSA(configuration: config)
         let endpoint = provider.loginEndpoint()
 
         // Validate specific header formats
@@ -237,7 +237,7 @@ struct NetworkLayerTests {
             accountId: UUID()
         )
 
-        let provider = KiaAPIEndpointProvider(configuration: config)
+        let provider = KiaAPIEndpointProviderUSA(configuration: config)
         let endpoint = provider.loginEndpoint()
 
         #expect(endpoint.body != nil)

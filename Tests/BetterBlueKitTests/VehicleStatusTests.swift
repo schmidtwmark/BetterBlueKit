@@ -51,14 +51,15 @@ struct VehicleStatusTests {
         let evStatus = VehicleStatus.EVStatus(
             charging: true,
             chargeSpeed: 50.0,
-            pluggedIn: true,
             evRange: evRange,
+            plugType: .acCharger,
             chargeTime: .zero
         )
 
         #expect(evStatus.charging == true)
         #expect(evStatus.chargeSpeed == 50.0)
         #expect(evStatus.pluggedIn == true)
+        #expect(evStatus.plugType == .acCharger)
         #expect(evStatus.evRange.percentage == 85.0)
         #expect(evStatus.evRange.range.length == 200.0)
     }
@@ -68,11 +69,11 @@ struct VehicleStatusTests {
         let original = VehicleStatus.EVStatus(
             charging: false,
             chargeSpeed: 0.0,
-            pluggedIn: false,
             evRange: VehicleStatus.FuelRange(
                 range: Distance(length: 150.0, units: .kilometers),
                 percentage: 40.0
             ),
+            plugType: .unplugged,
             chargeTime: .zero
         )
 
@@ -206,8 +207,8 @@ struct VehicleStatusTests {
         let evStatus = VehicleStatus.EVStatus(
             charging: false,
             chargeSpeed: 0.0,
-            pluggedIn: true,
             evRange: evRange,
+            plugType: .acCharger,
             chargeTime: .zero
         )
         let location = VehicleStatus.Location(latitude: 37.7749, longitude: -122.4194)

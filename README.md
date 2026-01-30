@@ -43,41 +43,45 @@ let config = APIClientConfiguration(
     accountId: UUID() // Your account identifier
 )
 
-// Initialize the appropriate API client
-let hyundaiClient = HyundaiAPIClient(config: config)
-// or for Kia:
-// let kiaClient = KiaAPIClient(config: config)
+// Initialize the appropriate API client for your region and brand
+// For Hyundai USA:
+let endpointProvider = HyundaiAPIEndpointProviderUSA(configuration: config)
+let client = HyundaiAPIClientUSA(configuration: config, endpointProvider: endpointProvider)
+
+// For Kia USA:
+// let endpointProvider = KiaAPIEndpointProviderUSA(configuration: config)
+// let client = KiaAPIClientUSA(configuration: config, endpointProvider: endpointProvider)
 
 // Use async/await to interact with your vehicle
 Task {
     do {
         // Authenticate and get token
-        let authToken = try await hyundaiClient.login()
-        
+        let authToken = try await client.login()
+
         // Fetch your vehicles
-        let vehicles = try await hyundaiClient.fetchVehicles(authToken: authToken)
+        let vehicles = try await client.fetchVehicles(authToken: authToken)
         guard let vehicle = vehicles.first else {
             print("No vehicles found")
             return
         }
-        
+
         // Get vehicle status
-        let status = try await hyundaiClient.fetchVehicleStatus(
-            for: vehicle, 
+        let status = try await client.fetchVehicleStatus(
+            for: vehicle,
             authToken: authToken
         )
         print("Battery: \(status.evStatus?.evRange.percentage ?? 0)%")
         print("Range: \(status.evStatus?.evRange.range.length ?? 0) miles")
-        
+
         // Send commands to your vehicle
         let lockCommand = VehicleCommand.lock
-        try await hyundaiClient.sendCommand(
+        try await client.sendCommand(
             for: vehicle,
             command: lockCommand,
             authToken: authToken
         )
         print("Vehicle locked successfully")
-        
+
         // Start climate with custom options
         let climateOptions = ClimateOptions(
             climate: true,
@@ -91,13 +95,13 @@ Task {
             rearRightSeat: .off
         )
         let climateCommand = VehicleCommand.startClimate(climateOptions)
-        try await hyundaiClient.sendCommand(
+        try await client.sendCommand(
             for: vehicle,
             command: climateCommand,
             authToken: authToken
         )
         print("Climate control started")
-        
+
     } catch {
         print("Error: \(error)")
     }
