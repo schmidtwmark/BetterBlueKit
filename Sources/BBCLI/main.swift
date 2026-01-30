@@ -17,21 +17,15 @@ final class CLIState {
     var hyundaiClient: HyundaiAPIClient?
     var authToken: AuthToken?
     var vehicles: [Vehicle] = []
-    var brandString: String = "hyundai"
-    var regionString: String = "USA"
     var username: String = ""
     var password: String = ""
     var pin: String = ""
-
-    var brand: Brand {
-        brandString == "kia" ? .kia : .hyundai
-    }
-
-    var region: Region {
-        Region(rawValue: regionString) ?? .usa
-    }
+    
+    var brand: Brand = .hyundai
+    var region: Region = .usa
 }
 
+@MainActor
 let state = CLIState()
 
 // MARK: - Helpers
@@ -87,8 +81,8 @@ func parseArguments() {
         case "-b", "--brand":
             if i + 1 < args.count {
                 let brandArg = args[i + 1].lowercased()
-                if brandArg == "kia" || brandArg == "hyundai" {
-                    state.brandString = brandArg
+                if let brand = Brand(rawValue: brandArg) {
+                    state.brand = brand
                 } else {
                     printError("Unknown brand: \(args[i + 1]). Use 'hyundai' or 'kia'.")
                     exit(1)
@@ -98,12 +92,11 @@ func parseArguments() {
         case "-r", "--region":
             if i + 1 < args.count {
                 let regionArg = args[i + 1]
-                if Region(rawValue: regionArg.capitalized) != nil {
-                    state.regionString = regionArg.capitalized
-                } else if regionArg.lowercased() == "usa" || regionArg.lowercased() == "us" {
-                    state.regionString = "USA"
+                print("Region arg: '\(regionArg)'")
+                if let r = Region(rawValue: regionArg.uppercased()) {
+                    state.region = r
                 } else {
-                    printError("Unknown region: \(args[i + 1]). Use 'USA', 'Canada', or 'Europe'.")
+                    printError("Unknown region: \(args[i + 1]). Use \(Region.allCases).")
                     exit(1)
                 }
                 i += 1
