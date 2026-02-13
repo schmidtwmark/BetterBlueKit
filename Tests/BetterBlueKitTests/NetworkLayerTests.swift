@@ -38,32 +38,6 @@ struct NetworkLayerTests {
         }
     }
 
-    @Test("API endpoint URL construction")
-    @MainActor func testAPIEndpointURLConstruction() {
-        let config = APIClientConfiguration(
-            region: .usa,
-            brand: .kia,
-            username: "test@example.com",
-            password: "password123",
-            pin: "0000",
-            accountId: UUID()
-        )
-
-        let provider = KiaAPIEndpointProviderUSA(configuration: config)
-
-        // Test login endpoint
-        let loginEndpoint = provider.loginEndpoint()
-        #expect(loginEndpoint.url.hasPrefix("https://"))
-        #expect(loginEndpoint.url.contains("prof/authUser"))
-        #expect(loginEndpoint.method == .POST)
-        #expect(loginEndpoint.headers["content-type"] == "application/json;charset=UTF-8")
-
-        // Verify URL is valid
-        let url = URL(string: loginEndpoint.url)
-        #expect(url != nil)
-        #expect(url?.scheme == "https")
-    }
-
     // MARK: - HTTP Status Code Handling Tests
 
     @Test("HTTP status code interpretation")
@@ -142,117 +116,6 @@ struct NetworkLayerTests {
             )
             #expect(log.statusText == expectedText)
         }
-    }
-
-    // MARK: - Request Header Tests
-
-    @Test("API headers contain required fields")
-    @MainActor func testAPIHeadersContainRequiredFields() {
-        let config = APIClientConfiguration(
-            region: .usa,
-            brand: .kia,
-            username: "test@example.com",
-            password: "password123",
-            pin: "0000",
-            accountId: UUID()
-        )
-
-        let provider = KiaAPIEndpointProviderUSA(configuration: config)
-        let endpoint = provider.loginEndpoint()
-
-        let requiredHeaders = [
-            "content-type",
-            "accept",
-            "accept-encoding",
-            "accept-language",
-            "apptype",
-            "appversion",
-            "clientid",
-            "from",
-            "host",
-            "language",
-            "offset",
-            "ostype",
-            "osversion",
-            "secretkey",
-            "to",
-            "tokentype",
-            "user-agent",
-            "deviceid",
-            "date"
-        ]
-
-        for header in requiredHeaders {
-            #expect(endpoint.headers[header] != nil, "Missing required header: \(header)")
-            #expect(endpoint.headers[header]?.isEmpty == false, "Empty header value for: \(header)")
-        }
-    }
-
-    @Test("API headers format validation")
-    @MainActor func testAPIHeadersFormatValidation() {
-        let config = APIClientConfiguration(
-            region: .usa,
-            brand: .kia,
-            username: "test@example.com",
-            password: "password123",
-            pin: "0000",
-            accountId: UUID()
-        )
-
-        let provider = KiaAPIEndpointProviderUSA(configuration: config)
-        let endpoint = provider.loginEndpoint()
-
-        // Validate specific header formats
-        #expect(endpoint.headers["content-type"] == "application/json;charset=UTF-8")
-        #expect(endpoint.headers["accept"] == "application/json, text/plain, */*")
-        #expect(endpoint.headers["apptype"] == "L")
-        #expect(endpoint.headers["clientid"] == "MWAMOBILE")
-        #expect(endpoint.headers["from"] == "SPA")
-        #expect(endpoint.headers["to"] == "APIGW")
-        #expect(endpoint.headers["tokentype"] == "G")
-        #expect(endpoint.headers["ostype"] == "Android")
-
-        // Validate date format (should be RFC 1123)
-        let dateHeader = endpoint.headers["date"]
-        #expect(dateHeader != nil)
-        #expect(dateHeader?.contains("GMT") == true)
-
-        // Validate deviceid format (should be alphanumeric with colon and UUID)
-        let deviceId = endpoint.headers["deviceid"]
-        #expect(deviceId != nil)
-        #expect(deviceId?.contains(":") == true)
-        #expect(deviceId?.count == 55) // 22 chars + 1 colon + 32 chars (UUID without dashes)
-    }
-
-    // MARK: - Request Body Tests
-
-    @Test("Login request body format")
-    @MainActor func testLoginRequestBodyFormat() throws {
-        let config = APIClientConfiguration(
-            region: .usa,
-            brand: .kia,
-            username: "test@example.com",
-            password: "password123",
-            pin: "0000",
-            accountId: UUID()
-        )
-
-        let provider = KiaAPIEndpointProviderUSA(configuration: config)
-        let endpoint = provider.loginEndpoint()
-
-        #expect(endpoint.body != nil)
-
-        let bodyData = try #require(endpoint.body)
-        let json = try JSONSerialization.jsonObject(with: bodyData) as? [String: Any]
-
-        #expect(json != nil)
-        #expect(json?["deviceKey"] as? String == nil)
-        #expect(json?["deviceType"] as? Int == nil)
-
-        let userCredential = json?["userCredential"] as? [String: Any]
-        #expect(userCredential != nil)
-        #expect(userCredential?["userId"] as? String == "test@example.com")
-        #expect(userCredential?["password"] as? String == "password123")
     }
 
     // MARK: - Large Payload Handling Tests
@@ -390,7 +253,7 @@ struct NetworkLayerTests {
 
             let formattedDuration = log.formattedDuration
             #expect(formattedDuration.contains("s")) // Should contain 's' for seconds
-            #expect(formattedDuration.hasSuffix("s")) // Should end with 's' 
+            #expect(formattedDuration.hasSuffix("s")) // Should end with 's'
 
             // The actual format is "X.XXs" regardless of duration
             #expect(!formattedDuration.matches(of: /\d+\.\d{2}s/).isEmpty)

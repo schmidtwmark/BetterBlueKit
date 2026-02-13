@@ -17,7 +17,7 @@ public struct APIError: Error, Codable {
     public enum ErrorType: String, Codable, Sendable {
         case general, invalidVehicleSession, invalidCredentials
         case serverError, invalidPin, concurrentRequest, failedRetryLogin
-        case requiresMFA, kiaInvalidRequest
+        case requiresMFA, kiaInvalidRequest, regionNotSupported
     }
 
     public init(
@@ -135,5 +135,12 @@ public struct APIError: Error, Codable {
         apiName: String? = nil,
     ) -> APIError {
         logError(message, code: 502, apiName: apiName, errorType: .kiaInvalidRequest)
+    }
+
+    public static func regionNotSupported(
+        _ message: String = "This region is not yet supported",
+        apiName: String? = nil,
+    ) -> APIError {
+        logError(message, apiName: apiName, errorType: .regionNotSupported)
     }
 }

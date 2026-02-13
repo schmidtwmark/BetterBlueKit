@@ -2,155 +2,184 @@
 //  APIClientLoggingTests.swift
 //  BetterBlueKit
 //
-//  Unit tests for APIClientLogging
+//  Unit tests for HTTP logging functionality
+//
+//  Note: Tests for internal APIClient methods (extractAPIError, logHTTPRequest)
+//  have been removed as these are now private implementation details.
+//  This file retains tests for the public HTTPLog model.
 //
 
 import Foundation
 import Testing
 @testable import BetterBlueKit
 
-@Suite("APIClientLogging Tests")
-@MainActor
+@Suite("HTTP Logging Tests")
 struct APIClientLoggingTests {
-    struct DummyProvider: APIEndpointProvider {
-        func loginEndpoint() -> APIEndpoint {
-            APIEndpoint(url: "https://example.com/login", method: .POST)
-        }
-        func fetchVehiclesEndpoint(authToken: AuthToken) -> APIEndpoint {
-            APIEndpoint(url: "https://example.com/vehicles", method: .GET)
-        }
-        func fetchVehicleStatusEndpoint(for vehicle: Vehicle, authToken: AuthToken) -> APIEndpoint {
-            APIEndpoint(url: "https://example.com/vehicleStatus", method: .GET)
-        }
-        func sendCommandEndpoint(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) -> APIEndpoint {
-            APIEndpoint(url: "https://example.com/sendCommand", method: .POST)
-        }
-        func parseLoginResponse(_ data: Data, headers: [String: String]) throws -> AuthToken {
-            AuthToken(accessToken: "token", refreshToken: "refresh", expiresAt: Date().addingTimeInterval(3600), pin: "1234")
-        }
-        func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] { [] }
-        func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus { throw NSError(domain: "", code: 0) }
-        func parseCommandResponse(_ data: Data) throws {}
 
-        func getBodyForCommand(command: VehicleCommand, vehicle: Vehicle) -> [String: Any] {
-            return [:] // Dummy implementation for test
-        }
-    }
+    // MARK: - HTTPLog Tests
 
-    class DummyAPIClient: APIClient<DummyProvider> {
-        init(logSink: HTTPLogSink? = nil) {
-            let config = APIClientConfiguration(
-                region: .usa,
-                brand: .kia,
-                username: "testuser",
-                password: "testpass",
-                pin: "1234",
-                accountId: UUID(),
-                logSink: logSink
-            )
-            super.init(configuration: config, endpointProvider: DummyProvider())
-        }
-        override func login() async throws -> AuthToken { fatalError() }
-        override func fetchVehicles(authToken: AuthToken) async throws -> [Vehicle] { fatalError() }
-        override func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken) async throws -> VehicleStatus { fatalError() }
-        override func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws { fatalError() }
-    }
+    @Test("HTTPLog creation with all fields")
+    func testHTTPLogCreation() {
+        let timestamp = Date()
+        let accountId = UUID()
 
-    @Test("extractAPIError returns nil for nil data")
-    func testExtractAPIErrorNil() {
-        let client = DummyAPIClient()
-        let result = client.extractAPIError(from: nil)
-        #expect(result == nil)
-    }
-
-    @Test("extractAPIError returns nil for non-JSON data")
-    func testExtractAPIErrorNonJSON() {
-        let client = DummyAPIClient()
-        let data = "not json".data(using: .utf8)!
-        let result = client.extractAPIError(from: data)
-        #expect(result == nil)
-    }
-
-    @Test("extractAPIError handles status error pattern")
-    func testExtractAPIErrorStatusPattern() {
-        let client = DummyAPIClient()
-        let json: [String: Any] = [
-            "status": ["errorCode": 123, "errorMessage": "Something went wrong"]
-        ]
-        // swiftlint:disable:next force_try
-        let data = try! JSONSerialization.data(withJSONObject: json)
-        let result = client.extractAPIError(from: data)
-        #expect(result?.contains("API Error 123") == true)
-        #expect(result?.contains("Something went wrong") == true)
-    }
-
-    @Test("extractAPIError handles errorCode 401 pattern")
-    func testExtractAPIError401() {
-        let client = DummyAPIClient()
-        let json: [String: Any] = ["errorCode": 401, "errorMessage": "Auth fail"]
-        // swiftlint:disable:next force_try
-        let data = try! JSONSerialization.data(withJSONObject: json)
-        let result = client.extractAPIError(from: data)
-        #expect(result?.contains("API Error 401") == true)
-        #expect(result?.contains("Auth fail") == true)
-    }
-
-    @Test("extractAPIError handles errorCode 502 pattern")
-    func testExtractAPIError502() {
-        let client = DummyAPIClient()
-        let json: [String: Any] = ["errorCode": 502, "errorMessage": "Server fail"]
-        // swiftlint:disable:next force_try
-        let data = try! JSONSerialization.data(withJSONObject: json)
-        let result = client.extractAPIError(from: data)
-        #expect(result?.contains("API Error 502") == true)
-        #expect(result?.contains("Server fail") == true)
-    }
-
-    @Test("extractAPIError handles error string pattern")
-    func testExtractAPIErrorString() {
-        let client = DummyAPIClient()
-        let json: [String: Any] = ["error": "Something bad"]
-        // swiftlint:disable:next force_try
-        let data = try! JSONSerialization.data(withJSONObject: json)
-        let result = client.extractAPIError(from: data)
-        #expect(result?.contains("API Error: Something bad") == true)
-    }
-
-    @Test("extractAPIError handles message with success false pattern")
-    func testExtractAPIErrorMessageSuccessFalse() {
-        let client = DummyAPIClient()
-        let json: [String: Any] = ["message": "Failed", "success": false]
-        // swiftlint:disable:next force_try
-        let data = try! JSONSerialization.data(withJSONObject: json)
-        let result = client.extractAPIError(from: data)
-        #expect(result?.contains("API Error: Failed") == true)
-    }
-
-    @Test("logHTTPRequest logs with redaction and stack trace")
-    func testLogHTTPRequest() async {
-        actor LogFlag { var didLog = false; func set() { didLog = true } }
-        let logFlag = LogFlag()
-        let logSink: HTTPLogSink = { _ in Task { await logFlag.set() } }
-        let apiClient = DummyAPIClient(logSink: logSink)
-        let logData = APIClient<DummyProvider>.HTTPRequestLogData(
+        let log = HTTPLog(
+            timestamp: timestamp,
+            accountId: accountId,
             requestType: .login,
-            request: {
-                var req = URLRequest(url: URL(string: "https://example.com")!)
-                req.httpMethod = "POST"
-                return req
-            }(),
+            method: "POST",
+            url: "https://example.com/login",
             requestHeaders: ["Authorization": "Bearer token"],
-            requestBody: "mysecret",
+            requestBody: "{\"username\": \"test\"}",
             responseStatus: 200,
-            responseHeaders: ["Authorization": "Bearer token"],
-            responseBody: "mysecret",
-            error: "Test error",
-            apiError: "Test API error",
-            startTime: Date(timeIntervalSinceNow: -1)
+            responseHeaders: ["Content-Type": "application/json"],
+            responseBody: "{\"success\": true}",
+            error: nil,
+            duration: 0.5
         )
-        apiClient.logHTTPRequest(logData)
-        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
-        let didLog = await logFlag.didLog
-        #expect(didLog == true)
+
+        #expect(log.timestamp == timestamp)
+        #expect(log.accountId == accountId)
+        #expect(log.requestType == .login)
+        #expect(log.method == "POST")
+        #expect(log.url == "https://example.com/login")
+        #expect(log.requestHeaders["Authorization"] == "Bearer token")
+        #expect(log.requestBody == "{\"username\": \"test\"}")
+        #expect(log.responseStatus == 200)
+        #expect(log.responseHeaders["Content-Type"] == "application/json")
+        #expect(log.responseBody == "{\"success\": true}")
+        #expect(log.error == nil)
+        #expect(log.duration == 0.5)
+    }
+
+    @Test("HTTPLog isSuccess for various status codes")
+    func testHTTPLogIsSuccess() {
+        let successCodes = [200, 201, 202, 204, 299]
+        let failureCodes = [400, 401, 403, 404, 500, 502, 503]
+
+        for code in successCodes {
+            let log = createLog(status: code)
+            #expect(log.isSuccess == true, "Status \(code) should be success")
+        }
+
+        for code in failureCodes {
+            let log = createLog(status: code)
+            #expect(log.isSuccess == false, "Status \(code) should be failure")
+        }
+    }
+
+    @Test("HTTPLog isSuccess when no status code")
+    func testHTTPLogIsSuccessNoStatus() {
+        let log = HTTPLog(
+            timestamp: Date(),
+            accountId: UUID(),
+            requestType: .fetchVehicles,
+            method: "GET",
+            url: "https://test.com",
+            requestHeaders: [:],
+            requestBody: nil,
+            responseStatus: nil,
+            responseHeaders: [:],
+            responseBody: nil,
+            error: "Network error",
+            duration: 0.1
+        )
+
+        #expect(log.isSuccess == false)
+    }
+
+    @Test("HTTPLog statusText for known codes")
+    func testHTTPLogStatusText() {
+        let log200 = createLog(status: 200)
+        #expect(log200.statusText.contains("200"))
+
+        let log401 = createLog(status: 401)
+        #expect(log401.statusText.contains("401"))
+
+        let log500 = createLog(status: 500)
+        #expect(log500.statusText.contains("500"))
+    }
+
+    @Test("HTTPLog statusText when no status code")
+    func testHTTPLogStatusTextNoStatus() {
+        let log = HTTPLog(
+            timestamp: Date(),
+            accountId: UUID(),
+            requestType: .sendCommand,
+            method: "POST",
+            url: "https://test.com",
+            requestHeaders: [:],
+            requestBody: nil,
+            responseStatus: nil,
+            responseHeaders: [:],
+            responseBody: nil,
+            error: "Timeout",
+            duration: 30.0
+        )
+
+        #expect(log.statusText == "Error")
+    }
+
+    @Test("HTTPLog formattedDuration")
+    func testHTTPLogFormattedDuration() {
+        let log = createLog(status: 200, duration: 1.234)
+        let formatted = log.formattedDuration
+
+        #expect(formatted.contains("1.23"))
+        #expect(formatted.hasSuffix("s"))
+    }
+
+    // MARK: - HTTPRequestType Tests
+
+    @Test("HTTPRequestType covers all API operations")
+    func testHTTPRequestTypeCoverage() {
+        let allTypes: [HTTPRequestType] = [
+            .login,
+            .fetchVehicles,
+            .fetchVehicleStatus,
+            .sendCommand,
+            .fetchEVTripDetails,
+            .sendMFA,
+            .verifyMFA
+        ]
+
+        // Verify all types can be used in HTTPLog
+        for requestType in allTypes {
+            let log = HTTPLog(
+                timestamp: Date(),
+                accountId: UUID(),
+                requestType: requestType,
+                method: "POST",
+                url: "https://test.com",
+                requestHeaders: [:],
+                requestBody: nil,
+                responseStatus: 200,
+                responseHeaders: [:],
+                responseBody: nil,
+                error: nil,
+                duration: 0.1
+            )
+
+            #expect(log.requestType == requestType)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func createLog(status: Int?, duration: Double = 0.1) -> HTTPLog {
+        HTTPLog(
+            timestamp: Date(),
+            accountId: UUID(),
+            requestType: .fetchVehicleStatus,
+            method: "GET",
+            url: "https://test.com",
+            requestHeaders: [:],
+            requestBody: nil,
+            responseStatus: status,
+            responseHeaders: [:],
+            responseBody: nil,
+            error: nil,
+            duration: duration
+        )
     }
 }

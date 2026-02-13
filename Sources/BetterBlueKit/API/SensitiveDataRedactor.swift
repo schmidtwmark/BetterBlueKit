@@ -1,5 +1,5 @@
 //
-//  APIClientRedaction.swift
+//  SensitiveDataRedactor.swift
 //  BetterBlueKit
 //
 //  Data redaction utilities for sensitive data
@@ -81,17 +81,20 @@ public enum SensitiveDataRedactor {
     /// Redacts sensitive HTTP headers
     public static func redactHeaders(_ headers: [String: String]) -> [String: String] {
         var redactedHeaders = headers
+        var handledKeys = Set<String>()
 
-        // Redact Authorization headers
+        // Redact Authorization headers (keep "Bearer" prefix for clarity)
         if redactedHeaders["Authorization"] != nil {
             redactedHeaders["Authorization"] = "Bearer [REDACTED]"
+            handledKeys.insert("Authorization")
         }
         if redactedHeaders["authorization"] != nil {
             redactedHeaders["authorization"] = "Bearer [REDACTED]"
+            handledKeys.insert("authorization")
         }
 
-        // Redact any other authentication headers
-        for (key, _) in redactedHeaders {
+        // Redact any other authentication headers (skip already handled)
+        for (key, _) in redactedHeaders where !handledKeys.contains(key) {
             if key.lowercased().contains("auth") ||
                 key.lowercased().contains("token") {
                 redactedHeaders[key] = "[REDACTED]"
@@ -99,17 +102,5 @@ public enum SensitiveDataRedactor {
         }
 
         return redactedHeaders
-    }
-}
-
-// MARK: - APIClient Extension (for backward compatibility)
-
-extension APIClient {
-    func redactSensitiveData(in text: String?) -> String? {
-        SensitiveDataRedactor.redact(text)
-    }
-
-    func redactSensitiveHeaders(_ headers: [String: String]) -> [String: String] {
-        SensitiveDataRedactor.redactHeaders(headers)
     }
 }

@@ -9,14 +9,14 @@ let package = Package(
         .watchOS(.v11)
     ],
     products: [
+        // Only expose the library as a product.
+        // BBCLI is kept as an internal executable target for development/testing
+        // and can be built via `swift build` but won't be compiled when the
+        // package is used as a dependency.
         .library(
             name: "BetterBlueKit",
             targets: ["BetterBlueKit"],
         ),
-        .executable(
-            name: "bbcli",
-            targets: ["BBCLI"]
-        )
     ],
     dependencies: [
         .package(url: "https://github.com/SimplyDanny/SwiftLintPlugins", from: "0.61.0")
