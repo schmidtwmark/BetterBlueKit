@@ -1,215 +1,24 @@
 //
-//  HyundaiUSAAPIClient.swift
+//  HyundaiUSAAPIClient+Parsing.swift
 //  BetterBlueKit
 //
-//  Hyundai USA API Client
+//  Response parsing for Hyundai USA API
 //
 
 import Foundation
-
-// MARK: - Hyundai USA API Client
-
-@MainActor
-public final class HyundaiUSAAPIClient: APIClientBase, APIClientProtocol {
-
-    // MARK: - Constants
-
-    private let clientId = "m66129Bb-em93-SPAHYN-bZ91-am4540zp19920"
-    private let clientSecret = "v558o935-6nne-423i-baa8"
-
-    private var baseURL: String {
-        region.apiBaseURL(for: .hyundai)
-    }
-
-    private var apiHost: String {
-        "api.telematics.hyundaiusa.com"
-    }
-
-    public override var apiName: String { "HyundaiUSA" }
-
-    // MARK: - Headers
-
-    private func headers() -> [String: String] {
-        [
-            "client_id": clientId,
-            "clientSecret": clientSecret,
-            "Host": apiHost,
-            "User-Agent": "okhttp/3.12.0",
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Connection": "Keep-Alive"
-        ]
-    }
-
-    private func authorizedHeaders(authToken: AuthToken, vehicle: Vehicle? = nil) -> [String: String] {
-        var result = headers()
-        result["accessToken"] = authToken.accessToken
-        result["language"] = "0"
-        result["to"] = "ISS"
-        result["encryptFlag"] = "false"
-        result["from"] = "SPA"
-        result["offset"] = "-5"
-        result["brandIndicator"] = "H"
-        result["origin"] = "https://\(apiHost)"
-        result["referer"] = "https://\(apiHost)/login"
-        result["username"] = username
-        result["blueLinkServicePin"] = pin
-        result["refresh"] = "false"
-
-        if let vehicle {
-            result["gen"] = String(vehicle.generation)
-            result["registrationId"] = vehicle.regId
-            result["vin"] = vehicle.vin
-            result["APPCLOUD-VIN"] = vehicle.vin
-        }
-
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyyMMddHHmmss"
-        result["payloadGenerated"] = dateFormatter.string(from: Date())
-        result["includeNonConnectedVehicles"] = "Y"
-
-        return result
-    }
-
-    // MARK: - APIClientProtocol Implementation
-
-    public func login() async throws -> AuthToken {
-        BBLogger.info(.auth, "HyundaiUSA: Attempting login for \(username)")
-
-        let (data, _, _) = try await performJSONRequest(
-            url: "\(baseURL)/v2/ac/oauth/token",
-            method: .POST,
-            headers: headers(),
-            body: ["username": username, "password": password],
-            requestType: .login
-        )
-
-        return try parseLoginResponse(data)
-    }
-
-    public func fetchVehicles(authToken: AuthToken) async throws -> [Vehicle] {
-        let (data, _, _) = try await performJSONRequest(
-            url: "\(baseURL)/ac/v2/enrollment/details/\(username)",
-            method: .GET,
-            headers: authorizedHeaders(authToken: authToken),
-            requestType: .fetchVehicles
-        )
-
-        return try parseVehiclesResponse(data)
-    }
-
-    public func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken) async throws -> VehicleStatus {
-        var statusHeaders = authorizedHeaders(authToken: authToken, vehicle: vehicle)
-
-        let (data, _, _) = try await performJSONRequest(
-            url: "\(baseURL)/ac/v2/rcs/rvs/vehicleStatus",
-            method: .GET,
-            headers: statusHeaders,
-            requestType: .fetchVehicleStatus
-        )
-
-        return try parseVehicleStatusResponse(data, for: vehicle)
-    }
-
-    public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
-        let url = commandURL(for: command, vehicle: vehicle)
-        let body = commandBody(for: command, vehicle: vehicle)
-
-        let (data, _, _) = try await performJSONRequest(
-            url: url,
-            method: .POST,
-            headers: authorizedHeaders(authToken: authToken, vehicle: vehicle),
-            body: body,
-            requestType: .sendCommand
-        )
-
-        try parseCommandResponse(data)
-    }
-
-    public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
-        var tripHeaders = authorizedHeaders(authToken: authToken, vehicle: vehicle)
-        tripHeaders["userId"] = username
-        tripHeaders["access_token"] = authToken.accessToken
-
-        let (data, _, _) = try await performJSONRequest(
-            url: "\(baseURL)/ac/v2/ts/alerts/maintenance/evTripDetails",
-            method: .GET,
-            headers: tripHeaders,
-            requestType: .fetchEVTripDetails
-        )
-
-        return try parseEVTripDetailsResponse(data)
-    }
-
-    // MARK: - Command Helpers
-
-    private func commandURL(for command: VehicleCommand, vehicle: Vehicle) -> String {
-        let path: String = switch command {
-        case .unlock: "ac/v2/rcs/rdo/on"
-        case .lock: "ac/v2/rcs/rdo/off"
-        case .startClimate: vehicle.isElectric ? "ac/v2/evc/fatc/start" : "ac/v2/rcs/rsc/start"
-        case .stopClimate: vehicle.isElectric ? "ac/v2/evc/fatc/stop" : "ac/v2/rcs/rsc/stop"
-        case .startCharge: "ac/v2/evc/charge/start"
-        case .stopCharge: "ac/v2/evc/charge/stop"
-        case .setTargetSOC: "ac/v2/evc/charge/targetsoc/set"
-        }
-        return "\(baseURL)/\(path)"
-    }
-
-    private func commandBody(for command: VehicleCommand, vehicle: Vehicle) -> [String: Any] {
-        switch command {
-        case .startClimate(let options):
-            if vehicle.isElectric {
-                var body: [String: Any] = [
-                    "airCtrl": options.climate ? 1 : 0,
-                    "airTemp": ["value": String(Int(options.temperature.value)), "unit": options.temperature.units.integer()],
-                    "defrost": options.defrost,
-                    "heating1": options.heatValue
-                ]
-                if vehicle.generation >= 3 {
-                    body["igniOnDuration"] = options.duration
-                    body["seatHeaterVentInfo"] = options.getSeatHeaterVentInfo()
-                }
-                return body
-            } else {
-                return [
-                    "Ims": 0,
-                    "airCtrl": options.climate ? 1 : 0,
-                    "airTemp": ["unit": options.temperature.units.integer(), "value": Int(options.temperature.value)],
-                    "defrost": options.defrost,
-                    "heating1": options.heatValue,
-                    "igniOnDuration": options.duration,
-                    "seatHeaterVentInfo": options.getSeatHeaterVentInfo(),
-                    "username": username,
-                    "vin": vehicle.vin
-                ]
-            }
-        case .startCharge:
-            return ["chargeRatio": 100]
-        case .setTargetSOC(let acLevel, let dcLevel):
-            return ["targetSOClist": [
-                ["targetSOClevel": acLevel, "plugType": 1],
-                ["targetSOClevel": dcLevel, "plugType": 0]
-            ]]
-        default:
-            return [:]
-        }
-    }
-}
 
 // MARK: - Response Parsing
 
 extension HyundaiUSAAPIClient {
 
-    private func parseLoginResponse(_ data: Data) throws -> AuthToken {
+    func parseLoginResponse(_ data: Data) throws -> AuthToken {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let accessToken = json["access_token"] as? String,
               let refreshToken = json["refresh_token"] as? String,
               let expiresInString = json["expires_in"] as? String,
               let expiresIn = Int(expiresInString) else {
-            throw APIError.logError("Invalid login response: \(String(data: data, encoding: .utf8) ?? "")", apiName: apiName)
+            let responseText = String(data: data, encoding: .utf8) ?? ""
+            throw APIError.logError("Invalid login response: \(responseText)", apiName: apiName)
         }
 
         BBLogger.info(.auth, "HyundaiUSA: Login successful")
@@ -221,7 +30,7 @@ extension HyundaiUSAAPIClient {
         )
     }
 
-    private func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] {
+    func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let vehicleArray = json["enrolledVehicleDetails"] as? [[String: Any]] else {
             throw APIError.logError("Invalid vehicles response", apiName: apiName)
@@ -254,7 +63,7 @@ extension HyundaiUSAAPIClient {
         }
     }
 
-    private func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus {
+    func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let statusData = json["vehicleStatus"] as? [String: Any] else {
             throw APIError.logError("Invalid status response", apiName: apiName)
@@ -297,7 +106,7 @@ extension HyundaiUSAAPIClient {
         )
     }
 
-    private func parseCommandResponse(_ data: Data) throws {
+    func parseCommandResponse(_ data: Data) throws {
         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let pinValid = json["isBlueLinkServicePinValid"] as? String,
            pinValid == "invalid" {
@@ -306,7 +115,7 @@ extension HyundaiUSAAPIClient {
         }
     }
 
-    private func parseEVTripDetailsResponse(_ data: Data) throws -> [EVTripDetail] {
+    func parseEVTripDetailsResponse(_ data: Data) throws -> [EVTripDetail] {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tripDetails = json["tripdetails"] as? [[String: Any]] else {
             throw APIError(message: "Failed to parse trip details", apiName: apiName)
@@ -379,8 +188,7 @@ extension HyundaiUSAAPIClient {
         var targetSocAC: Double?, targetSocDC: Double?
         for target in targetSocList {
             if let plugType = target["plugType"] as? Int, let soc = target["targetSOClevel"] as? Double {
-                if plugType == 1 { targetSocAC = soc }
-                else if plugType == 0 { targetSocDC = soc }
+                if plugType == 1 { targetSocAC = soc } else if plugType == 0 { targetSocDC = soc }
             }
         }
 

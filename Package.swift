@@ -15,8 +15,8 @@ let package = Package(
         // package is used as a dependency.
         .library(
             name: "BetterBlueKit",
-            targets: ["BetterBlueKit"],
-        ),
+            targets: ["BetterBlueKit"]
+        )
     ],
     dependencies: [
         .package(url: "https://github.com/SimplyDanny/SwiftLintPlugins", from: "0.61.0")

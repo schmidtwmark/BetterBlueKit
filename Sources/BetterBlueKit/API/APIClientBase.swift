@@ -66,7 +66,7 @@ open class APIClientBase {
         headers: [String: String] = [:],
         body: [String: Any]? = nil,
         requestType: HTTPRequestType
-    ) async throws -> (Data, [String: Any], HTTPURLResponse) {
+    ) async throws -> (Data, [String: Any], HTTPURLResponse) { // swiftlint:disable:this large_tuple
         let bodyData = body.flatMap { try? JSONSerialization.data(withJSONObject: $0) }
 
         let (data, response) = try await performRequest(
@@ -167,8 +167,9 @@ open class APIClientBase {
         }
 
         if httpResponse.statusCode >= 400 {
+            let statusText = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
             throw APIError(
-                message: "HTTP \(httpResponse.statusCode): \(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode))",
+                message: "HTTP \(httpResponse.statusCode): \(statusText)",
                 code: httpResponse.statusCode,
                 apiName: apiName
             )

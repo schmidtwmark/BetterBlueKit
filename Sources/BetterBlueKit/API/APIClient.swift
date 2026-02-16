@@ -90,7 +90,11 @@ extension APIClientProtocol {
         throw APIError(message: "MFA not supported for this API", apiName: "APIClient")
     }
 
-    public func verifyMFACode(xid: String, otpKey: String, code: String) async throws -> (rememberMeToken: String, sid: String) {
+    public func verifyMFACode(
+        xid: String,
+        otpKey: String,
+        code: String
+    ) async throws -> (rememberMeToken: String, sid: String) {
         throw APIError(message: "MFA not supported for this API", apiName: "APIClient")
     }
 

@@ -11,32 +11,32 @@ import Foundation
 
 // MARK: - Hyundai Europe API Client
 
-// swiftlint:disable type_body_length
 @MainActor
 public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
 
     // MARK: - Constants
 
-    private static let apiDomain = "prd.eu-ccapi.hyundai.com"
-    private static let apiPort = 8080
+    static let apiDomain = "prd.eu-ccapi.hyundai.com"
+    static let apiPort = 8080
     private static let authHost = "eu-account.hyundai.com"
-    private static let clientId = "6d477c38-3ca4-4cf3-9557-2a1929a94654"
+    static let clientId = "6d477c38-3ca4-4cf3-9557-2a1929a94654"
     private static let authClientId = "64621b96-0f0d-11ec-82a8-0242ac130003"
-    private static let appId = "014d2225-8495-4735-812d-2616334fd15d"
-    private static let authCfb = "RFtoRq/vDXJmRndoZaZQyfOot7OrIqGVFj96iY2WL3yyH5Z/pUvlUhqmCxD2t+D65SQ="
+    static let appId = "014d2225-8495-4735-812d-2616334fd15d"
+    static let authCfb = "RFtoRq/vDXJmRndoZaZQyfOot7OrIqGVFj96iY2WL3yyH5Z/pUvlUhqmCxD2t+D65SQ="
+    // swiftlint:disable:next line_length
     private static let authBasicCredentials = "6d477c38-3ca4-4cf3-9557-2a1929a94654:KUy49XxPzLpLuoK0xhBC77W6VXhmtQR9iQhmIFjjoY4IpxsV"
 
-    private let deviceId = UUID().uuidString
+    let deviceId = UUID().uuidString
 
-    private var baseURL: String { "https://\(Self.apiDomain):\(Self.apiPort)" }
+    var baseURL: String { "https://\(Self.apiDomain):\(Self.apiPort)" }
     private var authBaseURL: String { "https://\(Self.authHost)" }
-    private var apiHost: String { "\(Self.apiDomain):\(Self.apiPort)" }
+    var apiHost: String { "\(Self.apiDomain):\(Self.apiPort)" }
 
     public override var apiName: String { "HyundaiEurope" }
 
     // MARK: - Headers
 
-    private func authorizedHeaders(authToken: AuthToken) -> [String: String] {
+    func authorizedHeaders(authToken: AuthToken) -> [String: String] {
         [
             "Authorization": "Bearer \(authToken.accessToken)",
             "Content-Type": "application/json",
@@ -52,7 +52,7 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
         ]
     }
 
-    private func generateStamp() -> String {
+    func generateStamp() -> String {
         let timestamp = ISO8601DateFormatter().string(from: Date())
         let message = "\(Self.appId):\(timestamp)"
         guard let cfbData = Data(base64Encoded: Self.authCfb) else { return message }
@@ -187,7 +187,8 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
 
         let encodedUsername = username.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? username
         let encodedPassword = password.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? password
-        request.httpBody = "username=\(encodedUsername)&password=\(encodedPassword)&credentialId=".data(using: .utf8)
+        let bodyString = "username=\(encodedUsername)&password=\(encodedPassword)&credentialId="
+        request.httpBody = Data(bodyString.utf8)
 
         let config = URLSessionConfiguration.default
         config.httpCookieAcceptPolicy = .always
@@ -227,10 +228,12 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
         var request = URLRequest(url: URL(string: "\(baseURL)/api/v1/user/oauth2/token")!)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.setValue("Basic \(Data(Self.authBasicCredentials.utf8).base64EncodedString())", forHTTPHeaderField: "Authorization")
+        let authHeader = "Basic \(Data(Self.authBasicCredentials.utf8).base64EncodedString())"
+        request.setValue(authHeader, forHTTPHeaderField: "Authorization")
 
         let redirectUri = "\(baseURL)/api/v1/user/integration/redirect/login"
-        request.httpBody = "grant_type=authorization_code&code=\(authCode)&redirect_uri=\(redirectUri)".data(using: .utf8)
+        let bodyString = "grant_type=authorization_code&code=\(authCode)&redirect_uri=\(redirectUri)"
+        request.httpBody = Data(bodyString.utf8)
 
         let (data, _) = try await urlSession.data(for: request)
 
@@ -289,146 +292,4 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
             requestType: .sendCommand
         )
     }
-
-    private func commandPathAndBody(for command: VehicleCommand) -> (String, [String: Any]) {
-        switch command {
-        case .lock:
-            return ("ccs2/control/door", ["command": "close"])
-        case .unlock:
-            return ("ccs2/control/door", ["command": "open"])
-        case .startClimate(let options):
-            let tempCelsius = options.temperature.units == .celsius
-                ? options.temperature.value
-                : (options.temperature.value - 32.0) * 5.0 / 9.0
-            return ("ccs2/control/temperature", [
-                "command": "start",
-                "hvacInfo": [
-                    "airCtrl": options.climate ? 1 : 0,
-                    "defrost": options.defrost,
-                    "heating1": options.heatValue,
-                    "airTemp": ["value": String(format: "%.1f", tempCelsius), "unit": 0]
-                ]
-            ])
-        case .stopClimate:
-            return ("ccs2/control/temperature", ["command": "stop"])
-        case .startCharge:
-            return ("ccs2/control/charge", ["command": "start"])
-        case .stopCharge:
-            return ("ccs2/control/charge", ["command": "stop"])
-        case .setTargetSOC(let acLevel, let dcLevel):
-            return ("charge/target", [
-                "targetSOClist": [
-                    ["targetSOClevel": acLevel, "plugType": 0],
-                    ["targetSOClevel": dcLevel, "plugType": 1]
-                ]
-            ])
-        }
-    }
 }
-
-// MARK: - Response Parsing
-
-extension HyundaiEuropeAPIClient {
-
-    private func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] {
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let resMsg = json["resMsg"] as? [String: Any],
-              let vehicleArray = resMsg["vehicles"] as? [[String: Any]] else {
-            throw APIError.logError("Invalid vehicles response", apiName: apiName)
-        }
-
-        return vehicleArray.compactMap { vehicleData -> Vehicle? in
-            guard let vehicleId = vehicleData["vehicleId"] as? String,
-                  let vin = vehicleData["vin"] as? String,
-                  let nickname = vehicleData["nickname"] as? String ?? vehicleData["vehicleName"] as? String else {
-                return nil
-            }
-
-            let fuelKindCode = vehicleData["fuelKindCode"] as? String ?? ""
-            let isElectric = fuelKindCode == "E" || fuelKindCode == "EV"
-            let masterInfo = vehicleData["master"] as? [String: Any] ?? [:]
-            let generation = masterInfo["carGeneration"] as? Int ?? 2
-
-            return Vehicle(
-                vin: vin,
-                regId: vehicleId,
-                model: nickname,
-                accountId: accountId,
-                isElectric: isElectric,
-                generation: generation,
-                odometer: Distance(length: 0, units: .kilometers)
-            )
-        }
-    }
-
-    private func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus {
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let resMsg = json["resMsg"] as? [String: Any] else {
-            throw APIError.logError("Invalid status response", apiName: apiName)
-        }
-
-        let state = resMsg["state"] as? [String: Any] ?? [:]
-        let vehicleState = state["Vehicle"] as? [String: Any] ?? [:]
-        let green = vehicleState["Green"] as? [String: Any] ?? [:]
-        let drivetrain = green["Drivetrain"] as? [String: Any] ?? [:]
-        let evInfo = drivetrain["BatteryManagement"] as? [String: Any] ?? [:]
-
-        let chassis = vehicleState["Chassis"] as? [String: Any] ?? [:]
-        let doorLockState = chassis["DoorLock"] as? [String: Any] ?? [:]
-        let isLocked = (doorLockState["DoorLockStatus"] as? String ?? "").lowercased() == "locked"
-
-        let hvac = vehicleState["HVAC"] as? [String: Any] ?? [:]
-        let airConOn = hvac["AirConOn"] as? Bool ?? false
-        let targetTemp = hvac["TargetTemperature"] as? Double ?? 20.0
-
-        var evStatus: VehicleStatus.EVStatus?
-        if vehicle.isElectric {
-            let batterySOC = evInfo["BatterySOC"] as? Double ?? 0
-            let chargingStatus = evInfo["ChargingStatus"] as? String ?? ""
-            let isCharging = chargingStatus.lowercased().contains("charging")
-            let pluggedIn = evInfo["PluggedIn"] as? Bool ?? false
-            let estimatedRange = evInfo["EstimatedRange"] as? Double ?? 0
-
-            evStatus = VehicleStatus.EVStatus(
-                charging: isCharging,
-                chargeSpeed: 0,
-                evRange: VehicleStatus.FuelRange(
-                    range: Distance(length: estimatedRange, units: .kilometers),
-                    percentage: batterySOC
-                ),
-                plugType: pluggedIn ? .acCharger : .unplugged,
-                chargeTime: .seconds(0),
-                targetSocAC: nil,
-                targetSocDC: nil
-            )
-        }
-
-        let location = resMsg["coord"] as? [String: Any] ?? [:]
-        let syncDate = (resMsg["lastUpdateTime"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
-
-        return VehicleStatus(
-            vin: vehicle.vin,
-            gasRange: nil,
-            evStatus: evStatus,
-            location: VehicleStatus.Location(
-                latitude: location["lat"] as? Double ?? 0,
-                longitude: location["lon"] as? Double ?? 0
-            ),
-            lockStatus: VehicleStatus.LockStatus(locked: isLocked),
-            climateStatus: VehicleStatus.ClimateStatus(
-                defrostOn: false,
-                airControlOn: airConOn,
-                steeringWheelHeatingOn: false,
-                temperature: Temperature(value: targetTemp, units: .celsius)
-            ),
-            odometer: vehicle.odometer,
-            syncDate: syncDate,
-            battery12V: nil,
-            doorOpen: nil,
-            trunkOpen: nil,
-            hoodOpen: nil,
-            tirePressureWarning: nil
-        )
-    }
-}
-// swiftlint:enable type_body_length
