@@ -257,6 +257,26 @@ struct APIClientRedactionTests {
         #expect(result["Accept"] == "application/json")
     }
 
+    @Test("redactSensitiveHeaders with Canada cookie and transaction headers")
+    @MainActor func testRedactSensitiveHeadersWithCanadaHeaders() {
+        let client = makeTestClient()
+
+        let headers = [
+            "Cookie": "__cf_bm=secret_cookie",
+            "TransactionId": "txn-12345",
+            "Pauth": "pauth-secret",
+            "Accesstoken": "access-secret",
+            "Content-Type": "application/json"
+        ]
+
+        let result = client.redactSensitiveHeaders(headers)
+        #expect(result["Cookie"] == "[REDACTED]")
+        #expect(result["TransactionId"] == "[REDACTED]")
+        #expect(result["Pauth"] == "[REDACTED]")
+        #expect(result["Accesstoken"] == "[REDACTED]")
+        #expect(result["Content-Type"] == "application/json")
+    }
+
     @Test("redactSensitiveHeaders preserves non-sensitive headers")
     @MainActor func testRedactSensitiveHeadersPreservesNormalHeaders() {
         let client = makeTestClient()

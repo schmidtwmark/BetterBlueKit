@@ -2,6 +2,10 @@
 // swiftlint:disable:next concurrency_safety
 // MARK: - Global Helper Functions
 
+import Foundation
+import Testing
+@testable import BetterBlueKit
+
 @MainActor func makeHyundaiProvider(region: Region = .usa) -> HyundaiAPIEndpointProviderUSA {
     let config = APIClientConfiguration(
         region: region,
@@ -12,6 +16,216 @@
         accountId: UUID()
     )
     return HyundaiAPIEndpointProviderUSA(configuration: config)
+}
+
+@Suite("Hyundai Canada API Provider Tests")
+struct HyundaiCanadaAPIProviderTests {
+    @MainActor private func makeCanadaProvider() -> HyundaiAPIEndpointProviderCanada {
+        let config = APIClientConfiguration(
+            region: .canada,
+            brand: .hyundai,
+            username: "test@hyundai.ca",
+            password: "testpassword",
+            pin: "1234",
+            accountId: UUID()
+        )
+        return HyundaiAPIEndpointProviderCanada(configuration: config)
+    }
+
+    private func makeCanadaAuthToken(cookie: String? = "__cf_bm=test-cookie") -> AuthToken {
+        AuthToken(
+            accessToken: "canada_access_token",
+            refreshToken: "",
+            expiresAt: Date().addingTimeInterval(3600),
+            pin: "1234",
+            authCookie: cookie
+        )
+    }
+
+    @Test("Canada login endpoint includes v2 login and cookie")
+    @MainActor func testCanadaLoginEndpoint() {
+        let provider = makeCanadaProvider()
+        provider.cloudFlareCookie = "__cf_bm=test-cookie"
+
+        let endpoint = provider.loginEndpoint()
+        #expect(endpoint.url.contains("/tods/api/v2/login"))
+        #expect(endpoint.method == .POST)
+        #expect(endpoint.headers["Cookie"] == "__cf_bm=test-cookie")
+        #expect(endpoint.headers["client_id"] == "HATAHSPACA0232141ED9722C67715A0B")
+    }
+
+    @Test("Canada parse login response success")
+    @MainActor func testCanadaParseLoginResponseSuccess() throws {
+        let provider = makeCanadaProvider()
+        provider.cloudFlareCookie = "__cf_bm=test-cookie"
+        let responseData = """
+        {
+            "responseHeader": { "responseCode": 0 },
+            "result": {
+                "token": {
+                    "accessToken": "ca_access",
+                    "refreshToken": "ca_refresh",
+                    "expireIn": 3600
+                }
+            }
+        }
+        """.data(using: .utf8)!
+
+        let authToken = try provider.parseCanadaLoginResponse(responseData, headers: [:])
+        #expect(authToken.accessToken == "ca_access")
+        #expect(authToken.refreshToken == "ca_refresh")
+        #expect(authToken.authCookie == "__cf_bm=test-cookie")
+        #expect(authToken.expiresAt > Date())
+    }
+
+    @Test("Canada parse login response maps expired session error")
+    @MainActor func testCanadaParseLoginResponseExpiredError() {
+        let provider = makeCanadaProvider()
+        let responseData = """
+        {
+            "responseHeader": { "responseCode": 1 },
+            "error": { "errorDesc": "session expired for this account" }
+        }
+        """.data(using: .utf8)!
+
+        do {
+            _ = try provider.parseCanadaLoginResponse(responseData, headers: [:])
+            Issue.record("Expected APIError.invalidCredentials")
+        } catch let error as APIError {
+            #expect(error.errorType == .invalidCredentials)
+        } catch {
+            Issue.record("Expected APIError, got \(error)")
+        }
+    }
+
+    @Test("Canada parse vehicles response success")
+    @MainActor func testCanadaParseVehiclesResponseSuccess() throws {
+        let provider = makeCanadaProvider()
+        let responseData = """
+        {
+            "responseHeader": { "responseCode": 0 },
+            "result": {
+                "vehicles": [
+                    {
+                        "vehicleId": "CA_VEH_1",
+                        "vin": "CANADA123VIN",
+                        "nickName": "My Canada EV",
+                        "evStatus": "E",
+                        "vehicleGeneration": "3",
+                        "odometer": 12345
+                    }
+                ]
+            }
+        }
+        """.data(using: .utf8)!
+
+        let vehicles = try provider.parseCanadaVehiclesResponse(responseData)
+        #expect(vehicles.count == 1)
+        #expect(vehicles[0].vin == "CANADA123VIN")
+        #expect(vehicles[0].regId == "CA_VEH_1")
+        #expect(vehicles[0].isElectric == true)
+        #expect(vehicles[0].odometer.length == 12345)
+    }
+
+    @Test("Canada parse status response success")
+    @MainActor func testCanadaParseStatusResponseSuccess() throws {
+        let provider = makeCanadaProvider()
+        let vehicle = Vehicle(
+            vin: "CANADA123VIN",
+            regId: "CA_VEH_1",
+            model: "Canada EV",
+            accountId: UUID(),
+            isElectric: true,
+            generation: 3,
+            odometer: Distance(length: 0, units: .kilometers)
+        )
+        let responseData = """
+        {
+            "responseHeader": { "responseCode": 0 },
+            "result": {
+                "vehicle": { "odometer": 10000 },
+                "status": {
+                    "doorLock": true,
+                    "airCtrlOn": false,
+                    "defrost": false,
+                    "airTemp": { "value": "21", "unit": 0 },
+                    "lastStatusDate": "20260215123000",
+                    "vehicleLocation": { "coord": { "lat": 43.6532, "lon": -79.3832 } },
+                    "evStatus": {
+                        "batteryStatus": 82.0,
+                        "batteryCharge": true,
+                        "batteryPlugin": 2,
+                        "remainTime2": { "atc": { "value": 40 } },
+                        "drvDistance": [
+                            {
+                                "rangeByFuel": {
+                                    "evModeRange": { "value": 340, "unit": 1 }
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+        """.data(using: .utf8)!
+
+        let status = try provider.parseCanadaVehicleStatusResponse(responseData, for: vehicle)
+        #expect(status.vin == "CANADA123VIN")
+        #expect(status.lockStatus == .locked)
+        #expect(status.location.latitude == 43.6532)
+        #expect(status.location.longitude == -79.3832)
+        #expect(status.evStatus?.evRange.percentage == 82.0)
+        #expect(status.evStatus?.evRange.range.length == 340)
+        #expect(status.evStatus?.pluggedIn == true)
+    }
+
+    @Test("Canada command endpoints and auth headers")
+    @MainActor func testCanadaCommandEndpoints() {
+        let provider = makeCanadaProvider()
+        let authToken = makeCanadaAuthToken()
+        let vehicle = Vehicle(
+            vin: "CANADA123VIN",
+            regId: "CA_VEH_1",
+            model: "Canada EV",
+            accountId: UUID(),
+            isElectric: true,
+            generation: 3,
+            odometer: Distance(length: 0, units: .kilometers)
+        )
+
+        let endpoint = provider.commandEndpoint(
+            for: vehicle,
+            command: .lock,
+            authToken: authToken,
+            authCode: "pauth123",
+            useRemoteControl: false
+        )
+        #expect(endpoint.url.contains("/drlck"))
+        #expect(endpoint.headers["Vehicleid"] == "CA_VEH_1")
+        #expect(endpoint.headers["Pauth"] == "pauth123")
+        #expect(endpoint.headers["Cookie"] == "__cf_bm=test-cookie")
+    }
+
+    @Test("Canada command status parser")
+    @MainActor func testCanadaCommandStatusParser() throws {
+        let provider = makeCanadaProvider()
+        let completedData = """
+        {
+            "responseHeader": { "responseCode": 0 },
+            "result": { "transaction": { "apiResult": "C" } }
+        }
+        """.data(using: .utf8)!
+
+        let pendingData = """
+        {
+            "responseHeader": { "responseCode": 0 },
+            "result": { "transaction": { "apiResult": "P" } }
+        }
+        """.data(using: .utf8)!
+
+        #expect(try provider.isCommandCompleted(completedData) == true)
+        #expect(try provider.isCommandCompleted(pendingData) == false)
+    }
 }
 
 @MainActor func makeKiaProvider(region: Region = .usa) -> KiaAPIEndpointProviderUSA {
@@ -306,6 +520,21 @@ struct APIClientConfigurationTests {
         #expect(config.region == .canada)
         #expect(config.brand == .kia)
         #expect(config.logSink == nil)
+    }
+
+    @Test("Hyundai factory returns Canada wrapper for Canada region")
+    @MainActor func testHyundaiFactoryCanadaClientSelection() {
+        let config = APIClientConfiguration(
+            region: .canada,
+            brand: .hyundai,
+            username: "user@test.ca",
+            password: "secret",
+            pin: "1234",
+            accountId: UUID()
+        )
+
+        let client = HyundaiAPIClientFactory.createClient(configuration: config)
+        #expect(client is HyundaiCanadaAPIClient)
     }
 }
 

@@ -33,7 +33,11 @@ public enum SensitiveDataRedactor {
         )
 
         // Redact token patterns (handles escaped quotes in values with (?:[^"\\]|\\.)*)
-        let tokenKeys = "access_token|refresh_token|accessToken|refreshToken|serializedAuthToken|rememberMeToken"
+        let tokenKeys = [
+            "access_token", "refresh_token", "accessToken", "refreshToken",
+            "serializedAuthToken", "rememberMeToken", "Accesstoken", "Pauth",
+            "TransactionId", "Cookie", "__cf_bm"
+        ].joined(separator: "|")
         redacted = redacted.replacingOccurrences(
             of: #""(\#(tokenKeys))"\s*:\s*"(?:[^"\\]|\\.)*""#,
             with: "\"$1\" : \"[REDACTED]\"",
@@ -92,8 +96,12 @@ public enum SensitiveDataRedactor {
 
         // Redact any other authentication headers
         for (key, _) in redactedHeaders {
-            if key.lowercased().contains("auth") ||
-                key.lowercased().contains("token") {
+            let lowerKey = key.lowercased()
+            if lowerKey.contains("auth") ||
+                lowerKey.contains("token") ||
+                lowerKey == "cookie" ||
+                lowerKey == "__cf_bm" ||
+                lowerKey == "transactionid" {
                 redactedHeaders[key] = "[REDACTED]"
             }
         }
