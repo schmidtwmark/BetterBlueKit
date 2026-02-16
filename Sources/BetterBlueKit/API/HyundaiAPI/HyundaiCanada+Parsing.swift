@@ -24,9 +24,7 @@ extension HyundaiCanadaAPIClient {
         return AuthToken(
             accessToken: accessToken,
             refreshToken: refreshToken,
-            expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn)),
-            pin: pin,
-            authCookie: cloudFlareCookie
+            expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn))
         )
     }
 

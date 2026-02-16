@@ -327,3 +327,58 @@ struct APIClientRedactionTests {
         #expect(!result.contains("some_long_token_value_here"))
     }
 }
+
+@Suite("APIClientBase Redaction Tests")
+struct APIClientBaseRedactionTests {
+
+    @MainActor
+    @Test("APIClientBase redacts Hyundai Canada sensitive headers")
+    func testAPIClientBaseRedactsCanadaSensitiveHeaders() {
+        let client = makeCanadaClient()
+        let headers = [
+            "client_secret": "CLISCR01AHSPA",
+            "Pauth": "pauth-secret",
+            "TransactionId": "txn-12345",
+            "Accesstoken": "access-secret",
+            "Content-Type": "application/json"
+        ]
+
+        let result = client.redactSensitiveHeaders(headers)
+
+        #expect(result["client_secret"] == "[REDACTED]")
+        #expect(result["Pauth"] == "[REDACTED]")
+        #expect(result["TransactionId"] == "[REDACTED]")
+        #expect(result["Accesstoken"] == "[REDACTED]")
+        #expect(result["Content-Type"] == "application/json")
+    }
+
+    @MainActor
+    @Test("APIClientBase redacts camelCase token fields in body")
+    func testAPIClientBaseRedactsCamelCaseTokens() {
+        let client = makeCanadaClient()
+        let body = """
+        {"accessToken":"access-token-value","refreshToken":"refresh-token-value","vehicleId":"abc123"}
+        """
+
+        let result = client.redactSensitiveData(in: body)
+
+        #expect(result?.contains(#""accessToken":"[REDACTED]""#) == true)
+        #expect(result?.contains(#""refreshToken":"[REDACTED]""#) == true)
+        #expect(result?.contains("access-token-value") == false)
+        #expect(result?.contains("refresh-token-value") == false)
+        #expect(result?.contains(#""vehicleId":"abc123""#) == true)
+    }
+
+    @MainActor
+    private func makeCanadaClient() -> HyundaiCanadaAPIClient {
+        let config = APIClientConfiguration(
+            region: .canada,
+            brand: .hyundai,
+            username: "test@example.com",
+            password: "password123",
+            pin: "1234",
+            accountId: UUID()
+        )
+        return HyundaiCanadaAPIClient(configuration: config)
+    }
+}

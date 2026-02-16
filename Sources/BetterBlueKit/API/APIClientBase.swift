@@ -292,8 +292,20 @@ open class APIClientBase {
 
 extension APIClientBase {
     func redactSensitiveHeaders(_ headers: [String: String]) -> [String: String] {
-        let sensitiveKeys = ["authorization", "accesstoken", "access_token", "cookie",
-                            "bluelinkservicepin", "password", "pin", "clientsecret"]
+        let sensitiveKeys = [
+            "authorization",
+            "accesstoken",
+            "access_token",
+            "cookie",
+            "set-cookie",
+            "bluelinkservicepin",
+            "password",
+            "pin",
+            "clientsecret",
+            "client_secret",
+            "pauth",
+            "transactionid"
+        ]
         return headers.reduce(into: [:]) { result, pair in
             let key = pair.key.lowercased()
             result[pair.key] = sensitiveKeys.contains(key) ? "[REDACTED]" : pair.value
@@ -307,7 +319,9 @@ extension APIClientBase {
             (#""password"\s*:\s*"[^"]*""#, #""password":"[REDACTED]""#),
             (#""pin"\s*:\s*"[^"]*""#, #""pin":"[REDACTED]""#),
             (#""access_token"\s*:\s*"[^"]*""#, #""access_token":"[REDACTED]""#),
-            (#""refresh_token"\s*:\s*"[^"]*""#, #""refresh_token":"[REDACTED]""#)
+            (#""refresh_token"\s*:\s*"[^"]*""#, #""refresh_token":"[REDACTED]""#),
+            (#""accessToken"\s*:\s*"[^"]*""#, #""accessToken":"[REDACTED]""#),
+            (#""refreshToken"\s*:\s*"[^"]*""#, #""refreshToken":"[REDACTED]""#)
         ]
         for (pattern, replacement) in patterns {
             if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {

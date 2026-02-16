@@ -20,31 +20,12 @@ struct AuthenticationTests {
         let token = AuthToken(
             accessToken: "access123",
             refreshToken: "refresh456",
-            expiresAt: expiresAt,
-            pin: "1234"
+            expiresAt: expiresAt
         )
 
         #expect(token.accessToken == "access123")
         #expect(token.refreshToken == "refresh456")
         #expect(token.expiresAt == expiresAt)
-        #expect(token.pin == "1234")
-        #expect(token.authCookie == nil)
-    }
-
-    @Test("AuthToken creation with auth cookie")
-    func testAuthTokenCreationWithAuthCookie() {
-        let now = Date()
-        let expiresAt = now.addingTimeInterval(3600)
-
-        let token = AuthToken(
-            accessToken: "access123",
-            refreshToken: "refresh456",
-            expiresAt: expiresAt,
-            pin: "1234",
-            authCookie: "__cf_bm=test-cookie"
-        )
-
-        #expect(token.authCookie == "__cf_bm=test-cookie")
     }
 
     @Test("AuthToken isValid returns true for future expiration")
@@ -53,8 +34,7 @@ struct AuthenticationTests {
         let token = AuthToken(
             accessToken: "test",
             refreshToken: "test",
-            expiresAt: futureDate,
-            pin: "0000"
+            expiresAt: futureDate
         )
 
         #expect(token.isValid == true)
@@ -66,8 +46,7 @@ struct AuthenticationTests {
         let token = AuthToken(
             accessToken: "test",
             refreshToken: "test",
-            expiresAt: pastDate,
-            pin: "0000"
+            expiresAt: pastDate
         )
 
         #expect(token.isValid == false)
@@ -79,8 +58,7 @@ struct AuthenticationTests {
         let token = AuthToken(
             accessToken: "test",
             refreshToken: "test",
-            expiresAt: nearFuture,
-            pin: "0000"
+            expiresAt: nearFuture
         )
 
         #expect(token.isValid == false)
@@ -92,8 +70,7 @@ struct AuthenticationTests {
         let token = AuthToken(
             accessToken: "test",
             refreshToken: "test",
-            expiresAt: safeFuture,
-            pin: "0000"
+            expiresAt: safeFuture
         )
 
         #expect(token.isValid == true)
@@ -104,8 +81,7 @@ struct AuthenticationTests {
         let original = AuthToken(
             accessToken: "access123",
             refreshToken: "refresh456",
-            expiresAt: Date(),
-            pin: "1234"
+            expiresAt: Date()
         )
 
         let encoded = try JSONEncoder().encode(original)
@@ -114,44 +90,5 @@ struct AuthenticationTests {
         #expect(decoded.accessToken == original.accessToken)
         #expect(decoded.refreshToken == original.refreshToken)
         #expect(abs(decoded.expiresAt.timeIntervalSince(original.expiresAt)) < 1.0) // Allow small time difference
-        #expect(decoded.pin == original.pin)
-        #expect(decoded.authCookie == nil)
-    }
-
-    @Test("AuthToken Codable backward compatibility without authCookie")
-    func testAuthTokenCodableBackwardCompatibility() throws {
-        let legacyJSON = """
-        {
-            "accessToken":"legacy_access",
-            "refreshToken":"legacy_refresh",
-            "expiresAt":"2026-02-15T00:00:00Z",
-            "pin":"0000"
-        }
-        """.data(using: .utf8)!
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let decoded = try decoder.decode(AuthToken.self, from: legacyJSON)
-
-        #expect(decoded.accessToken == "legacy_access")
-        #expect(decoded.refreshToken == "legacy_refresh")
-        #expect(decoded.pin == "0000")
-        #expect(decoded.authCookie == nil)
-    }
-
-    @Test("AuthToken Codable preserves authCookie")
-    func testAuthTokenCodableWithAuthCookie() throws {
-        let original = AuthToken(
-            accessToken: "access123",
-            refreshToken: "refresh456",
-            expiresAt: Date(),
-            pin: "1234",
-            authCookie: "__cf_bm=cookie-value"
-        )
-
-        let encoded = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(AuthToken.self, from: encoded)
-
-        #expect(decoded.authCookie == "__cf_bm=cookie-value")
     }
 }

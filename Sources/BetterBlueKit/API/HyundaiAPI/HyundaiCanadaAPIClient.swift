@@ -45,8 +45,7 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     public func login() async throws -> AuthToken {
         BBLogger.info(.auth, "HyundaiCanada: starting login")
 
-        let cookie = try await fetchCloudFlareCookie()
-        cloudFlareCookie = cookie
+        let cookie = try await ensureCloudFlareCookie()
 
         var loginHeaders = headers()
         loginHeaders["Cookie"] = cookie
@@ -66,6 +65,8 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     }
 
     public func fetchVehicles(authToken: AuthToken) async throws -> [Vehicle] {
+        _ = try await ensureCloudFlareCookie()
+
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/vhcllst",
             method: .POST,
@@ -77,6 +78,8 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     }
 
     public func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken) async throws -> VehicleStatus {
+        _ = try await ensureCloudFlareCookie()
+
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/sltvhcl",
             method: .POST,
@@ -89,6 +92,8 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     }
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
+        _ = try await ensureCloudFlareCookie()
+
         let authCode = try await fetchCommandAuthCode(authToken: authToken)
 
         let transactionId = try await sendCommandRequest(
@@ -224,5 +229,15 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
             "Canada command completion polling timed out (last result: \(lastKnownResult))",
             apiName: apiName
         )
+    }
+
+    private func ensureCloudFlareCookie() async throws -> String {
+        if let cloudFlareCookie, !cloudFlareCookie.isEmpty {
+            return cloudFlareCookie
+        }
+
+        let cookie = try await fetchCloudFlareCookie()
+        cloudFlareCookie = cookie
+        return cookie
     }
 }

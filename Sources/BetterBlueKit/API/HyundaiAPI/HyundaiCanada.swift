@@ -33,8 +33,6 @@ extension HyundaiCanadaAPIClient {
         vehicleId: String? = nil,
         pAuth: String? = nil
     ) -> [String: String] {
-        hydrateCloudFlareCookie(from: authToken)
-
         var result = headers()
         result["Accesstoken"] = authToken.accessToken
 
@@ -85,14 +83,6 @@ extension HyundaiCanadaAPIClient {
         }
 
         return "__cf_bm=\(cookie.value)"
-    }
-
-    func hydrateCloudFlareCookie(from authToken: AuthToken) {
-        if cloudFlareCookie == nil,
-           let tokenCookie = authToken.authCookie,
-           !tokenCookie.isEmpty {
-            cloudFlareCookie = tokenCookie
-        }
     }
 
     // MARK: - Shared Response Parser

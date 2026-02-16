@@ -59,8 +59,7 @@ extension KiaUSAAPIClient {
         return AuthToken(
             accessToken: sessionId,
             refreshToken: sessionId,
-            expiresAt: validUntil,
-            pin: pin
+            expiresAt: validUntil
         )
     }
 
