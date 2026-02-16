@@ -17,7 +17,7 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     let clientId = "HATAHSPACA0232141ED9722C67715A0B"
     let clientSecret = "CLISCR01AHSPA"
     let userAgent = "MyHyundai/2.0.25 (iPhone; iOS 18.3; Scale/3.00)"
-    private let maxCommandPollAttempts = 10
+    private let maxCommandPollAttempts = 30
 
     let deviceId = UUID().uuidString.uppercased()
     let commandPollIntervalNanoseconds: UInt64 = 2_000_000_000
@@ -191,6 +191,7 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
         transactionId: String
     ) async throws {
         var attempts = 0
+        var lastKnownResult = "unknown"
 
         while attempts <= maxCommandPollAttempts {
             let (data, _, _) = try await performJSONRequest(
@@ -205,14 +206,23 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
                 requestType: .sendCommand
             )
 
-            if try isCommandCompleted(data) {
+            let pollResult = try commandPollResult(data)
+            lastKnownResult = pollResult
+
+            if isSuccessfulPollResult(pollResult) {
                 return
+            }
+            if isFailedPollResult(pollResult) {
+                throw APIError.logError("Canada command failed (\(pollResult))", apiName: apiName)
             }
 
             attempts += 1
             try await Task.sleep(nanoseconds: commandPollIntervalNanoseconds)
         }
 
-        throw APIError.logError("Canada command completion polling timed out", apiName: apiName)
+        throw APIError.logError(
+            "Canada command completion polling timed out (last result: \(lastKnownResult))",
+            apiName: apiName
+        )
     }
 }

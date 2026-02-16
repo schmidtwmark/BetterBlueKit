@@ -133,22 +133,40 @@ extension HyundaiCanadaAPIClient {
         return authCode
     }
 
-    func isCommandCompleted(_ data: Data) throws -> Bool {
+    func commandPollResult(_ data: Data) throws -> String {
         let json = try parseCanadaResponse(data, context: "command status")
-        guard let result = json["result"] as? [String: Any],
-              let transaction = result["transaction"] as? [String: Any],
-              let apiResult = transaction["apiResult"] as? String else {
+        guard let result = json["result"] as? [String: Any] else {
             throw APIError.logError("Invalid command status response", apiName: apiName)
         }
 
-        if apiResult == "C" {
-            return true
-        }
-        if apiResult == "F" {
-            throw APIError.logError("Canada command failed", apiName: apiName)
+        let transaction = result["transaction"] as? [String: Any] ?? [:]
+        let rawResult =
+            transaction["apiResult"] ??
+            result["apiResult"] ??
+            transaction["result"] ??
+            result["status"]
+
+        if let resultString = stringify(rawResult)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased(),
+           !resultString.isEmpty {
+            return resultString
         }
 
-        return false
+        // Some successful responses include a vehicle payload but omit apiResult.
+        if result["vehicle"] != nil {
+            return "C"
+        }
+
+        throw APIError.logError("Invalid command status response", apiName: apiName)
+    }
+
+    func isSuccessfulPollResult(_ result: String) -> Bool {
+        ["C", "S", "SUCCESS", "COMPLETE", "COMPLETED"].contains(result)
+    }
+
+    func isFailedPollResult(_ result: String) -> Bool {
+        ["F", "E", "FAILED", "ERROR"].contains(result)
     }
 
     // MARK: - Status Parsing Helpers
