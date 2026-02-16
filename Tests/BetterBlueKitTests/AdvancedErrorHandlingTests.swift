@@ -12,307 +12,95 @@ import Testing
 @Suite("Advanced Error Handling Tests")
 struct AdvancedErrorHandlingTests {
 
-    // MARK: - Malformed API Response Tests
+    // MARK: - API Error Type Tests
 
-    @Test("API response with missing payload structure")
-    @MainActor func testAPIResponseWithMissingPayload() throws {
-        let provider = makeKiaProvider()
-        let vehicle = makeTestVehicle()
+    @Test("APIError types are correctly identified")
+    func testAPIErrorTypes() {
+        let invalidCredentials = APIError.invalidCredentials("Bad credentials", apiName: "Test")
+        #expect(invalidCredentials.errorType == .invalidCredentials)
+        #expect(invalidCredentials.apiName == "Test")
 
-        let invalidResponseVariants = [
-            // Missing payload entirely
-            """
-            {
-              "status": "success",
-              "message": "OK"
-            }
-            """,
+        let invalidPin = APIError.invalidPin("Wrong PIN", apiName: "Test")
+        #expect(invalidPin.errorType == .invalidPin)
 
-            // Payload is not an object
-            """
-            {
-              "payload": "invalid_string"
-            }
-            """,
+        let serverError = APIError.serverError("Server down", apiName: "Test")
+        #expect(serverError.errorType == .serverError)
 
-            // Payload is an array instead of object
-            """
-            {
-              "payload": ["not", "an", "object"]
-            }
-            """,
+        let regionNotSupported = APIError.regionNotSupported("Not available", apiName: "Test")
+        #expect(regionNotSupported.errorType == .regionNotSupported)
 
-            // Empty payload
-            """
-            {
-              "payload": {}
-            }
-            """
-        ]
-
-        for invalidJSON in invalidResponseVariants {
-            let data = Data(invalidJSON.utf8)
-
-            #expect(throws: APIError.self) {
-                try provider.parseVehicleStatusResponse(data, for: vehicle)
-            }
-        }
+        let invalidVehicleSession = APIError.invalidVehicleSession("Session expired", apiName: "Test")
+        #expect(invalidVehicleSession.errorType == .invalidVehicleSession)
     }
 
-    @Test("API response with corrupted vehicleInfoList")
-    @MainActor func testAPIResponseWithCorruptedVehicleInfoList() throws {
-        let provider = makeKiaProvider()
-        let vehicle = makeTestVehicle()
+    @Test("MFA required error contains correct user info")
+    func testMFARequiredError() {
+        let error = APIError.requiresMFA(
+            xid: "xid123",
+            otpKey: "otp456",
+            hasEmail: true,
+            hasPhone: false,
+            email: "test@example.com",
+            phone: nil,
+            rmTokenExpired: false,
+            apiName: "KiaUSA"
+        )
 
-        let corruptedVariants = [
-            // vehicleInfoList is not an array
-            """
-            {
-              "payload": {
-                "vehicleInfoList": "not_an_array"
-              }
-            }
-            """,
-
-            // vehicleInfoList is empty array
-            """
-            {
-              "payload": {
-                "vehicleInfoList": []
-              }
-            }
-            """,
-
-            // vehicleInfoList contains non-object elements
-            """
-            {
-              "payload": {
-                "vehicleInfoList": ["string", 123, true]
-              }
-            }
-            """
-        ]
-
-        for invalidJSON in corruptedVariants {
-            let data = Data(invalidJSON.utf8)
-
-            #expect(throws: APIError.self) {
-                try provider.parseVehicleStatusResponse(data, for: vehicle)
-            }
-        }
+        #expect(error.errorType == .requiresMFA)
+        #expect(error.userInfo?["xid"] == "xid123")
+        #expect(error.userInfo?["otpKey"] == "otp456")
+        #expect(error.userInfo?["hasEmail"] == "true")
+        #expect(error.userInfo?["hasPhone"] == "false")
+        #expect(error.userInfo?["email"] == "test@example.com")
+        #expect(error.userInfo?["phone"] == nil)
     }
 
-    @Test("Partial data corruption in vehicle status")
-    @MainActor func testPartialDataCorruptionInVehicleStatus() throws {
-        let provider = makeKiaProvider()
-        let vehicle = makeTestVehicle()
+    // MARK: - HTTPLog Tests
 
-        // Test with corrupted but parseable data
-        let partiallyCorruptedJSON = """
-        {
-          "payload": {
-            "vehicleInfoList": [{
-              "lastVehicleInfo": {
-                "vehicleStatusRpt": {
-                  "vehicleStatus": {
-                    "doorLock": "not_a_boolean",
-                    "evStatus": {
-                      "batteryStatus": "not_a_number",
-                      "batteryCharge": null,
-                      "drvDistance": "not_an_array"
-                    },
-                    "climate": {
-                      "airTemp": {
-                        "value": null,
-                        "unit": "not_a_number"
-                      }
-                    }
-                  }
-                },
-                "location": {
-                  "coord": {
-                    "lat": "not_a_number",
-                    "lon": "not_a_number"
-                  }
-                }
-              }
-            }]
-          }
-        }
-        """
+    @Test("HTTPLog success detection")
+    func testHTTPLogSuccessDetection() {
+        let successLog = HTTPLog(
+            timestamp: Date(),
+            accountId: UUID(),
+            requestType: .fetchVehicles,
+            method: "GET",
+            url: "https://example.com/api/vehicles",
+            requestHeaders: [:],
+            requestBody: nil,
+            responseStatus: 200,
+            responseHeaders: [:],
+            responseBody: "[]",
+            error: nil,
+            duration: 0.5
+        )
 
-        let data = Data(partiallyCorruptedJSON.utf8)
-
-        // Should not throw, but should handle gracefully with defaults
-        let status = try provider.parseVehicleStatusResponse(data, for: vehicle)
-
-        // Verify graceful handling of corrupted data
-        #expect(status.vin == vehicle.vin)
-        #expect(status.location.latitude == 0.0) // Should default to 0 for invalid number
-        #expect(status.location.longitude == 0.0) // Should default to 0 for invalid number
-        #expect(status.lockStatus == VehicleStatus.LockStatus.unknown) // Should handle invalid boolean
+        #expect(successLog.isSuccess == true)
+        #expect(successLog.statusText.contains("200"))
     }
 
-    // MARK: - API Version Mismatch Tests
+    @Test("HTTPLog error detection")
+    func testHTTPLogErrorDetection() {
+        let errorLog = HTTPLog(
+            timestamp: Date(),
+            accountId: UUID(),
+            requestType: .login,
+            method: "POST",
+            url: "https://example.com/api/login",
+            requestHeaders: [:],
+            requestBody: nil,
+            responseStatus: 401,
+            responseHeaders: [:],
+            responseBody: nil,
+            error: "Unauthorized",
+            duration: 0.3
+        )
 
-    @Test("API response with unknown fields")
-    @MainActor func testAPIResponseWithUnknownFields() throws {
-        let provider = makeKiaProvider()
-        let vehicle = makeTestVehicle()
-
-        let futureVersionJSON = """
-        {
-          "payload": {
-            "apiVersion": "2.0",
-            "newFeature": "future_value",
-            "vehicleInfoList": [{
-              "lastVehicleInfo": {
-                "vehicleStatusRpt": {
-                  "vehicleStatus": {
-                    "doorLock": true,
-                    "futureField": "unknown_value",
-                    "newTechnology": {
-                      "quantumBattery": 150,
-                      "holoDisplay": true
-                    },
-                    "climate": {
-                      "airCtrl": false,
-                      "airTemp": {
-                        "value": "72",
-                        "unit": 1
-                      },
-                      "defrost": false,
-                      "heatingAccessory": {
-                        "steeringWheel": 0
-                      },
-                      "aiPoweredClimate": {
-                        "enabled": true,
-                        "model": "GPT-10"
-                      }
-                    }
-                  }
-                },
-                "location": {
-                  "coord": {
-                    "lat": 40.7128,
-                    "lon": -74.0060
-                  },
-                  "accuracy": "centimeter",
-                  "satellite": "GPS-III"
-                }
-              }
-            }]
-          }
-        }
-        """
-
-        let data = Data(futureVersionJSON.utf8)
-
-        // Should parse successfully, ignoring unknown fields
-        let status = try provider.parseVehicleStatusResponse(data, for: vehicle)
-
-        #expect(status.vin == vehicle.vin)
-        #expect(status.lockStatus == VehicleStatus.LockStatus.locked)
-        #expect(status.location.latitude == 40.7128)
-        #expect(status.location.longitude == -74.0060)
-        #expect(status.climateStatus.airControlOn == false)
-        #expect(status.climateStatus.temperature.value == 72.0)
+        #expect(errorLog.isSuccess == false)
+        #expect(errorLog.statusText.contains("401"))
     }
 
-    // MARK: - Rate Limiting Response Tests
-
-    @Test("Rate limiting error response parsing")
-    @MainActor func testRateLimitingErrorResponse() throws {
-        let provider = makeKiaProvider()
-
-        let rateLimitJSON = """
-        {
-          "status": {
-            "statusCode": 429,
-            "errorCode": 429,
-            "errorType": 2,
-            "errorMessage": "Too many requests. Please wait before trying again.",
-            "retryAfter": 60
-          }
-        }
-        """
-
-        let data = Data(rateLimitJSON.utf8)
-
-        #expect(throws: APIError.self) {
-            try provider.parseCommandResponse(data)
-        }
-    }
-
-    @Test("Server maintenance response parsing")
-    @MainActor func testServerMaintenanceResponse() throws {
-        let provider = makeKiaProvider()
-
-        let maintenanceJSON = """
-        {
-          "status": {
-            "statusCode": 503,
-            "errorCode": 503,
-            "errorType": 3,
-            "errorMessage": "Service temporarily unavailable due to scheduled maintenance. Please try again later.",
-            "maintenanceWindow": {
-              "start": "2025-10-10T02:00:00Z",
-              "end": "2025-10-10T06:00:00Z"
-            }
-          }
-        }
-        """
-
-        let data = Data(maintenanceJSON.utf8)
-
-        #expect(throws: APIError.self) {
-            try provider.parseCommandResponse(data)
-        }
-    }
-
-    // MARK: - Authentication Edge Cases
-
-    @Test("Expired session error handling")
-    @MainActor func testExpiredSessionErrorHandling() throws {
-        let provider = makeKiaProvider()
-
-        let expiredSessionJSON = """
-        {
-          "status": {
-            "statusCode": 1,
-            "errorCode": 1003,
-            "errorType": 1,
-            "errorMessage": "Session Key is invalid or expired. Please re-authenticate."
-          }
-        }
-        """
-
-        let data = Data(expiredSessionJSON.utf8)
-
-        do {
-            try provider.parseCommandResponse(data)
-            #expect(Bool(false), "Should have thrown an error")
-        } catch let error as APIError {
-            #expect(error.errorType == .invalidCredentials)
-            #expect(error.message.lowercased().contains("session"))
-            #expect(error.message.lowercased().contains("expired"))
-        }
-    }
-
-    @Test("Invalid PIN error handling")
-    @MainActor func testInvalidPINErrorHandling() {
-        let pinError = APIError.invalidPin("PIN is incorrect", apiName: "TestAPI")
-
-        #expect(pinError.errorType == .invalidPin)
-        #expect(pinError.apiName == "TestAPI")
-        #expect(pinError.message.contains("PIN is incorrect"))
-        // Note: APIError doesn't have a statusCode property in this implementation
-    }
-
-    // MARK: - Network Timeout Simulation
-
-    @Test("Network timeout error characteristics")
-    func testNetworkTimeoutErrorCharacteristics() {
+    @Test("HTTPLog timeout characteristics")
+    func testHTTPLogTimeoutCharacteristics() {
         let timeoutLog = HTTPLog(
             timestamp: Date(),
             accountId: UUID(),
@@ -321,11 +109,11 @@ struct AdvancedErrorHandlingTests {
             url: "https://example.com/api/timeout",
             requestHeaders: ["Content-Type": "application/json"],
             requestBody: "{}",
-            responseStatus: nil, // No status code for timeout
+            responseStatus: nil,
             responseHeaders: [:],
             responseBody: nil,
             error: "Request timeout",
-            duration: 30.0 // Long duration indicating timeout
+            duration: 30.0
         )
 
         #expect(timeoutLog.responseStatus == nil)
@@ -335,70 +123,30 @@ struct AdvancedErrorHandlingTests {
         #expect(timeoutLog.formattedDuration.contains("30"))
     }
 
-    // MARK: - JSON Structure Variations
+    @Test("HTTPLog duration formatting")
+    func testHTTPLogDurationFormatting() {
+        let quickLog = HTTPLog(
+            timestamp: Date(),
+            accountId: UUID(),
+            requestType: .fetchVehicleStatus,
+            method: "GET",
+            url: "https://example.com/api/status",
+            requestHeaders: [:],
+            requestBody: nil,
+            responseStatus: 200,
+            responseHeaders: [:],
+            responseBody: "{}",
+            error: nil,
+            duration: 0.123
+        )
 
-    @Test("Different JSON encoding formats")
-    @MainActor func testDifferentJSONEncodingFormats() throws {
-        let provider = makeKiaProvider()
-        let vehicle = makeTestVehicle()
-
-        // Test with different valid JSON formatting
-        let compactJSON = """
-        {"payload":{"vehicleInfoList":[{"lastVehicleInfo":{"vehicleStatusRpt":{"vehicleStatus":{"doorLock":true,"climate":{"airCtrl":false,"airTemp":{"value":"70","unit":1},"defrost":false,"heatingAccessory":{"steeringWheel":0}}}},"location":{"coord":{"lat":40.0,"lon":-74.0}}}}]}}
-        """
-
-        let prettyJSON = """
-        {
-          "payload" : {
-            "vehicleInfoList" : [ {
-              "lastVehicleInfo" : {
-                "vehicleStatusRpt" : {
-                  "vehicleStatus" : {
-                    "doorLock" : true,
-                    "climate" : {
-                      "airCtrl" : false,
-                      "airTemp" : {
-                        "value" : "70",
-                        "unit" : 1
-                      },
-                      "defrost" : false,
-                      "heatingAccessory" : {
-                        "steeringWheel" : 0
-                      }
-                    }
-                  }
-                },
-                "location" : {
-                  "coord" : {
-                    "lat" : 40.0,
-                    "lon" : -74.0
-                  }
-                }
-              }
-            } ]
-          }
-        }
-        """
-
-        // Both should parse successfully
-        let compactData = Data(compactJSON.utf8)
-        let prettyData = Data(prettyJSON.utf8)
-
-        let status1 = try provider.parseVehicleStatusResponse(compactData, for: vehicle)
-        let status2 = try provider.parseVehicleStatusResponse(prettyData, for: vehicle)
-
-        // Results should be identical
-        #expect(status1.vin == status2.vin)
-        #expect(status1.lockStatus == status2.lockStatus)
-        #expect(status1.location.latitude == status2.location.latitude)
-        #expect(status1.location.longitude == status2.location.longitude)
+        #expect(quickLog.formattedDuration.contains("123") || quickLog.formattedDuration.contains("0.12"))
     }
 
-    // MARK: - Memory and Performance Edge Cases
+    // MARK: - JSON Edge Cases
 
     @Test("Deeply nested JSON handling")
     func testDeeplyNestedJSONHandling() throws {
-        // Create deeply nested JSON structure
         let nestedJSON = """
         {
           "level1": {
@@ -427,39 +175,114 @@ struct AdvancedErrorHandlingTests {
 
         let data = Data(nestedJSON.utf8)
 
-        // Should parse without stack overflow or performance issues
         let startTime = Date()
         let json = try JSONSerialization.jsonObject(with: data)
         let endTime = Date()
 
         #expect(json is [String: Any])
-        #expect(endTime.timeIntervalSince(startTime) < 0.1) // Should be fast
+        #expect(endTime.timeIntervalSince(startTime) < 0.1)
     }
 
-    // MARK: - Helper Methods
+    @Test("Different JSON encoding formats parse identically")
+    func testDifferentJSONEncodingFormats() throws {
+        let compactJSON = """
+        {"key":"value","number":123,"nested":{"inner":"data"}}
+        """
 
-    @MainActor private func makeKiaProvider() -> KiaAPIEndpointProviderUSA {
-        let config = APIClientConfiguration(
-            region: .usa,
-            brand: .kia,
-            username: "test@example.com",
-            password: "password123",
-            pin: "0000",
-            accountId: UUID()
-        )
-        return KiaAPIEndpointProviderUSA(configuration: config)
+        let prettyJSON = """
+        {
+          "key" : "value",
+          "number" : 123,
+          "nested" : {
+            "inner" : "data"
+          }
+        }
+        """
+
+        let compactData = Data(compactJSON.utf8)
+        let prettyData = Data(prettyJSON.utf8)
+
+        let compact = try JSONSerialization.jsonObject(with: compactData) as? [String: Any]
+        let pretty = try JSONSerialization.jsonObject(with: prettyData) as? [String: Any]
+
+        #expect(compact?["key"] as? String == pretty?["key"] as? String)
+        #expect(compact?["number"] as? Int == pretty?["number"] as? Int)
+
+        let compactNested = compact?["nested"] as? [String: Any]
+        let prettyNested = pretty?["nested"] as? [String: Any]
+        #expect(compactNested?["inner"] as? String == prettyNested?["inner"] as? String)
     }
 
-    private func makeTestVehicle() -> Vehicle {
-        Vehicle(
-            vin: "KNDJ23AU1N7000000",
-            regId: "REG789012",
-            model: "EV6",
-            accountId: UUID(),
-            isElectric: true,
-            generation: 4,
-            odometer: Distance(length: 25000.0, units: .miles),
-            vehicleKey: "test_vehicle_key"
+    // MARK: - Error Message Tests
+
+    @Test("Invalid credentials error message")
+    func testInvalidCredentialsErrorMessage() {
+        let error = APIError.invalidCredentials("Invalid username or password", apiName: "TestAPI")
+
+        #expect(error.message.contains("Invalid username or password"))
+        #expect(error.apiName == "TestAPI")
+    }
+
+    @Test("Session expired error message")
+    func testSessionExpiredErrorMessage() {
+        let error = APIError.invalidCredentials(
+            "Session Key is either invalid or expired",
+            apiName: "KiaUSA"
         )
+
+        #expect(error.errorType == .invalidCredentials)
+        #expect(error.message.lowercased().contains("session"))
+        #expect(error.message.lowercased().contains("expired"))
+    }
+
+    @Test("Invalid PIN error with attempt count")
+    func testInvalidPINErrorWithAttemptCount() {
+        let error = APIError.invalidPin("Invalid PIN, 2 attempts remaining", apiName: "HyundaiUSA")
+
+        #expect(error.errorType == .invalidPin)
+        #expect(error.message.contains("2 attempts remaining"))
+    }
+
+    // MARK: - Kia-specific Error Tests
+
+    @Test("Kia invalid request error")
+    func testKiaInvalidRequestError() {
+        let error = APIError.kiaInvalidRequest(
+            "Kia API is currently unsupported",
+            apiName: "KiaUSA"
+        )
+
+        #expect(error.errorType == .kiaInvalidRequest)
+        #expect(error.message.contains("unsupported"))
+    }
+
+    // MARK: - Region Support Error Tests
+
+    @Test("RegionSupportError for unsupported region")
+    func testRegionSupportError() {
+        let error = RegionSupportError.unsupportedRegion(brand: .hyundai, region: .canada)
+
+        switch error {
+        case .unsupportedRegion(let brand, let region):
+            #expect(brand == .hyundai)
+            #expect(region == .canada)
+        }
+
+        // Check the description contains brand and region info
+        let description = error.localizedDescription.lowercased()
+        #expect(description.contains("hyundai"))
+        #expect(description.contains("ca") || description.contains("canada"))
+    }
+
+    // MARK: - Error Logging Tests
+
+    @Test("APIError logs error correctly")
+    func testAPIErrorLogsCorrectly() {
+        // This tests that logError doesn't crash and returns an error
+        let error = APIError.logError("Test error message", apiName: "TestClient")
+
+        #expect(error.message == "Test error message")
+        #expect(error.apiName == "TestClient")
+        #expect(error.errorType == .general)
     }
 }

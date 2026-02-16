@@ -5,28 +5,26 @@
 //  Hyundai Canada parsing helpers
 //
 
+// swiftlint:disable:next file_length
 import Foundation
 
-extension HyundaiAPIEndpointProviderCanada {
-    func parseCanadaLoginResponse(_ data: Data, headers _: [String: String]) throws -> AuthToken {
+extension HyundaiCanadaAPIClient {
+
+    func parseCanadaLoginResponse(_ data: Data) throws -> AuthToken {
         let json = try parseCanadaResponse(data, context: "login")
         guard let result = json["result"] as? [String: Any],
               let token = result["token"] as? [String: Any],
               let accessToken = token["accessToken"] as? String else {
-            throw APIError.logError(
-                "Invalid Canada login response",
-                apiName: "HyundaiAPI"
-            )
+            throw APIError.logError("Invalid Canada login response", apiName: apiName)
         }
 
         let expiresIn: Int = extractNumber(from: token["expireIn"]) ?? 3600
         let refreshToken = token["refreshToken"] as? String ?? ""
-        let expiresAt = Date().addingTimeInterval(TimeInterval(expiresIn))
 
         return AuthToken(
             accessToken: accessToken,
             refreshToken: refreshToken,
-            expiresAt: expiresAt,
+            expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn)),
             pin: pin,
             authCookie: cloudFlareCookie
         )
@@ -36,10 +34,7 @@ extension HyundaiAPIEndpointProviderCanada {
         let json = try parseCanadaResponse(data, context: "vehicles")
         guard let result = json["result"] as? [String: Any],
               let vehicles = result["vehicles"] as? [[String: Any]] else {
-            throw APIError.logError(
-                "Invalid Canada vehicles response",
-                apiName: "HyundaiAPI"
-            )
+            throw APIError.logError("Invalid Canada vehicles response", apiName: apiName)
         }
 
         return vehicles.compactMap { vehicleData in
@@ -52,6 +47,7 @@ extension HyundaiAPIEndpointProviderCanada {
                 vehicleData["regid"] as? String ??
                 vehicleData["registrationId"] as? String ??
                 vin
+
             let nickname =
                 vehicleData["nickName"] as? String ??
                 vehicleData["modelName"] as? String ??
@@ -66,6 +62,7 @@ extension HyundaiAPIEndpointProviderCanada {
             let odometerValue: Double =
                 extractNumber(from: vehicleData["odometer"]) ??
                 extractNumber(from: odometerObject["value"]) ?? 0
+
             let isElectric = detectElectricVehicle(from: vehicleData)
 
             return Vehicle(
@@ -83,16 +80,14 @@ extension HyundaiAPIEndpointProviderCanada {
     func parseCanadaVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus {
         let json = try parseCanadaResponse(data, context: "status")
         guard let result = json["result"] as? [String: Any] else {
-            throw APIError.logError(
-                "Invalid Canada status response",
-                apiName: "HyundaiAPI"
-            )
+            throw APIError.logError("Invalid Canada status response", apiName: apiName)
         }
 
         let statusData =
             result["status"] as? [String: Any] ??
             result["vehicleStatus"] as? [String: Any] ??
             [:]
+
         let vehicleData = result["vehicle"] as? [String: Any] ?? [:]
         let statusOdometer = statusData["odometer"] as? [String: Any] ?? [:]
         let vehicleOdometer = vehicleData["odometer"] as? [String: Any] ?? [:]
@@ -103,6 +98,7 @@ extension HyundaiAPIEndpointProviderCanada {
                 extractNumber(from: statusOdometer["value"]) ??
                 extractNumber(from: vehicleData["odometer"]) ??
                 extractNumber(from: vehicleOdometer["value"])
+
             guard let value else { return vehicle.odometer }
             return Distance(length: value, units: .kilometers)
         }()
@@ -124,9 +120,38 @@ extension HyundaiAPIEndpointProviderCanada {
         )
     }
 
-    func parseCanadaCommandResponse(_ data: Data) throws {
-        _ = try parseCanadaResponse(data, context: "command")
+    func validateCommandResponse(_ data: Data, context: String) throws {
+        _ = try parseCanadaResponse(data, context: context)
     }
+
+    func parseCommandAuthResponse(_ data: Data) throws -> String {
+        let json = try parseCanadaResponse(data, context: "command auth")
+        guard let result = json["result"] as? [String: Any],
+              let authCode = result["pAuth"] as? String else {
+            throw APIError.logError("Invalid Canada command auth response", apiName: apiName)
+        }
+        return authCode
+    }
+
+    func isCommandCompleted(_ data: Data) throws -> Bool {
+        let json = try parseCanadaResponse(data, context: "command status")
+        guard let result = json["result"] as? [String: Any],
+              let transaction = result["transaction"] as? [String: Any],
+              let apiResult = transaction["apiResult"] as? String else {
+            throw APIError.logError("Invalid command status response", apiName: apiName)
+        }
+
+        if apiResult == "C" {
+            return true
+        }
+        if apiResult == "F" {
+            throw APIError.logError("Canada command failed", apiName: apiName)
+        }
+
+        return false
+    }
+
+    // MARK: - Status Parsing Helpers
 
     private func detectElectricVehicle(from vehicleData: [String: Any]) -> Bool {
         if let evStatus = vehicleData["evStatus"] as? String {
@@ -146,7 +171,9 @@ extension HyundaiAPIEndpointProviderCanada {
         vehicle: Vehicle
     ) -> VehicleStatus.EVStatus? {
         guard vehicle.isElectric,
-              let evStatusData = statusData["evStatus"] as? [String: Any] else { return nil }
+              let evStatusData = statusData["evStatus"] as? [String: Any] else {
+            return nil
+        }
 
         let batteryStatus: Double = extractNumber(from: evStatusData["batteryStatus"]) ?? 0
         let chargeTimeMinutes = parseChargeTimeMinutes(from: evStatusData)
@@ -210,6 +237,7 @@ extension HyundaiAPIEndpointProviderCanada {
             let evModeRange = rangeByFuel["evModeRange"] as? [String: Any]
             let totalRange = rangeByFuel["totalAvailableRange"] as? [String: Any]
             let preferred = evModeRange ?? totalRange ?? [:]
+
             if let value: Double = extractNumber(from: preferred["value"]) {
                 let unit: Int = extractNumber(from: preferred["unit"]) ?? 1
                 return Distance(length: value, units: Distance.Units(unit))
@@ -224,6 +252,7 @@ extension HyundaiAPIEndpointProviderCanada {
             let standard: Double = extractNumber(from: batteryPower["batteryStndChrgPower"]) ?? 0
             return max(fast, standard)
         }
+
         let fast: Double = extractNumber(from: evStatusData["batteryFstChrgPower"]) ?? 0
         let standard: Double = extractNumber(from: evStatusData["batteryStndChrgPower"]) ?? 0
         return max(fast, standard)
@@ -235,6 +264,7 @@ extension HyundaiAPIEndpointProviderCanada {
         if let value: Int = extractNumber(from: atc["value"]) {
             return value
         }
+
         let remainChargeTime = evStatusData["remainChargeTime"] as? [[String: Any]] ?? []
         return extractNumber(from: remainChargeTime.first?["value"]) ?? 0
     }
@@ -246,6 +276,7 @@ extension HyundaiAPIEndpointProviderCanada {
 
         var targetSocAC: Double?
         var targetSocDC: Double?
+
         for target in targetSocList {
             if let plugType = target["plugType"] as? Int,
                let soc: Double = extractNumber(from: target["targetSOClevel"]) {
@@ -256,12 +287,14 @@ extension HyundaiAPIEndpointProviderCanada {
                 }
             }
         }
+
         return (targetSocAC, targetSocDC)
     }
 
     private func parseCanadaLocation(from statusData: [String: Any]) -> VehicleStatus.Location {
         let vehicleLocation = statusData["vehicleLocation"] as? [String: Any] ?? [:]
         let coord = vehicleLocation["coord"] as? [String: Any] ?? statusData["coord"] as? [String: Any] ?? [:]
+
         return VehicleStatus.Location(
             latitude: extractNumber(from: coord["lat"]) ?? 0,
             longitude: extractNumber(from: coord["lon"]) ?? 0
@@ -270,16 +303,12 @@ extension HyundaiAPIEndpointProviderCanada {
 
     private func parseCanadaClimateStatus(from statusData: [String: Any]) -> VehicleStatus.ClimateStatus {
         let airTemp = statusData["airTemp"] as? [String: Any] ?? [:]
-        let temperatureValue = stringify(airTemp["value"])
 
         return VehicleStatus.ClimateStatus(
             defrostOn: statusData["defrost"] as? Bool ?? false,
             airControlOn: (statusData["airCtrlOn"] as? Bool) ?? (statusData["airCtrl"] as? Bool) ?? false,
             steeringWheelHeatingOn: (extractNumber(from: statusData["steerWheelHeat"]) ?? 0) != 0,
-            temperature: Temperature(
-                units: extractNumber(from: airTemp["unit"]),
-                value: temperatureValue
-            )
+            temperature: Temperature(units: extractNumber(from: airTemp["unit"]), value: stringify(airTemp["value"]))
         )
     }
 
@@ -288,26 +317,29 @@ extension HyundaiAPIEndpointProviderCanada {
            let isoDate = ISO8601DateFormatter().date(from: dateTime) {
             return isoDate
         }
+
         if let lastStatusDate = statusData["lastStatusDate"] as? String {
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyyMMddHHmmss"
             formatter.timeZone = TimeZone(secondsFromGMT: 0)
             return formatter.date(from: lastStatusDate)
         }
+
         return nil
     }
 
     private func parseCanadaBattery12V(from statusData: [String: Any]) -> Int? {
-        if let battery = statusData["battery"] as? [String: Any] {
-            return extractNumber(from: battery["batSoc"])
+        guard let battery = statusData["battery"] as? [String: Any] else {
+            return nil
         }
-        return nil
+        return extractNumber(from: battery["batSoc"])
     }
 
     private func parseCanadaDoorStatus(from statusData: [String: Any]) -> VehicleStatus.DoorStatus? {
         let doorData =
             statusData["doorOpen"] as? [String: Any] ??
             statusData["doorStatus"] as? [String: Any] ?? [:]
+
         if doorData.isEmpty {
             return nil
         }
@@ -329,10 +361,12 @@ extension HyundaiAPIEndpointProviderCanada {
         if let trunk = statusData["trunkOpen"] as? Bool {
             return trunk
         }
+
         let doorStatus = statusData["doorStatus"] as? [String: Any] ?? [:]
         if let trunkValue: Int = extractNumber(from: doorStatus["trunk"]) {
             return trunkValue != 0
         }
+
         return nil
     }
 
@@ -340,10 +374,12 @@ extension HyundaiAPIEndpointProviderCanada {
         if let hood = statusData["hoodOpen"] as? Bool {
             return hood
         }
+
         let doorStatus = statusData["doorStatus"] as? [String: Any] ?? [:]
         if let hoodValue: Int = extractNumber(from: doorStatus["hood"]) {
             return hoodValue != 0
         }
+
         return nil
     }
 
@@ -357,15 +393,19 @@ extension HyundaiAPIEndpointProviderCanada {
         let all: Int =
             extractNumber(from: tireData["tirePressureWarningLampAll"]) ??
             extractNumber(from: tireData["all"]) ?? 0
+
         let frontLeft: Int =
             extractNumber(from: tireData["tirePressureWarningLampFrontLeft"]) ??
             extractNumber(from: tireData["frontLeft"]) ?? 0
+
         let frontRight: Int =
             extractNumber(from: tireData["tirePressureWarningLampFrontRight"]) ??
             extractNumber(from: tireData["frontRight"]) ?? 0
+
         let rearLeft: Int =
             extractNumber(from: tireData["tirePressureWarningLampRearLeft"]) ??
             extractNumber(from: tireData["rearLeft"]) ?? 0
+
         let rearRight: Int =
             extractNumber(from: tireData["tirePressureWarningLampRearRight"]) ??
             extractNumber(from: tireData["rearRight"]) ?? 0
@@ -383,9 +423,11 @@ extension HyundaiAPIEndpointProviderCanada {
         if let value = value as? String {
             return value
         }
+
         if let value = value as? NSNumber {
             return value.stringValue
         }
+
         return nil
     }
 }

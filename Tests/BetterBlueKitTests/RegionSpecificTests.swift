@@ -119,149 +119,6 @@ struct RegionSpecificTests {
         #expect(abs(kmValue - 160.93) < 1.0) // 100 miles ≈ 160.93 km
     }
 
-    // MARK: - Regional API Configuration Tests
-
-    @Test("API headers vary by region")
-    @MainActor func testAPIHeadersVaryByRegion() {
-        let regions: [Region] = [.usa, .europe, .canada]
-
-        for region in regions {
-            let config = APIClientConfiguration(
-                region: region,
-                brand: .kia,
-                username: "test@example.com",
-                password: "password123",
-                pin: "0000",
-                accountId: UUID()
-            )
-
-            let provider = KiaAPIEndpointProviderUSA(configuration: config)
-            let endpoint = provider.loginEndpoint()
-
-            // Verify region-specific host header
-            let hostHeader = endpoint.headers["host"]
-            #expect(hostHeader != nil)
-            #expect(hostHeader?.isEmpty == false)
-
-            // Host should correspond to the region
-            let baseURL = region.apiBaseURL(for: .kia)
-            let expectedHost = URL(string: baseURL)?.host
-
-            // Compare host parts (ignoring ports)
-            if let host = hostHeader, let expected = expectedHost {
-                let actualHost = host.components(separatedBy: ":").first
-                #expect(actualHost == expected)
-            }
-        }
-    }
-
-    @Test("Time zone offset handling by region")
-    @MainActor func testTimeZoneOffsetHandlingByRegion() {
-        let regions: [Region] = [.usa, .europe, .canada]
-
-        for region in regions {
-            let config = APIClientConfiguration(
-                region: region,
-                brand: .kia,
-                username: "test@example.com",
-                password: "password123",
-                pin: "0000",
-                accountId: UUID()
-            )
-
-            let provider = KiaAPIEndpointProviderUSA(configuration: config)
-            let endpoint = provider.loginEndpoint()
-
-            // Verify offset header exists and is a valid integer
-            let offsetHeader = endpoint.headers["offset"]
-            #expect(offsetHeader != nil)
-
-            if let offsetString = offsetHeader, let offset = Int(offsetString) {
-                // Offset should be within reasonable bounds (-12 to +14)
-                #expect(offset >= -12)
-                #expect(offset <= 14)
-            }
-        }
-    }
-
-    // MARK: - Regional Vehicle Data Tests
-
-    @Test("Regional vehicle parsing differences")
-    @MainActor func testRegionalVehicleParsingDifferences() throws {
-        // Test parsing the same vehicle data with different regional configurations
-        let vehicleJSON = """
-        {
-          "payload": {
-            "vehicleInfoList": [{
-              "lastVehicleInfo": {
-                "vehicleStatusRpt": {
-                  "vehicleStatus": {
-                    "doorLock": true,
-                    "distanceToEmpty": {
-                      "value": 200,
-                      "unit": 3
-                    },
-                    "climate": {
-                      "airCtrl": false,
-                      "airTemp": {
-                        "value": "20",
-                        "unit": 0
-                      },
-                      "defrost": false,
-                      "heatingAccessory": {
-                        "steeringWheel": 0
-                      }
-                    }
-                  }
-                },
-                "location": {
-                  "coord": {
-                    "lat": 51.5074,
-                    "lon": -0.1278
-                  }
-                }
-              }
-            }]
-          }
-        }
-        """
-
-        let data = Data(vehicleJSON.utf8)
-        let regions: [Region] = [.usa, .europe, .canada]
-
-        for region in regions {
-            let config = APIClientConfiguration(
-                region: region,
-                brand: .kia,
-                username: "test@example.com",
-                password: "password123",
-                pin: "0000",
-                accountId: UUID()
-            )
-
-            let provider = KiaAPIEndpointProviderUSA(configuration: config)
-            let vehicle = Vehicle(
-                vin: "TEST_REGIONAL_VIN",
-                regId: "REG_REGIONAL",
-                model: "Regional Test Model",
-                accountId: UUID(),
-                isElectric: false,
-                generation: 3,
-                odometer: Distance(length: 10000, units: .miles)
-            )
-
-            // Should parse successfully regardless of region
-            let status = try provider.parseVehicleStatusResponse(data, for: vehicle)
-
-            #expect(status.vin == vehicle.vin)
-            #expect(status.lockStatus == VehicleStatus.LockStatus.locked)
-            #expect(status.location.latitude == 51.5074)
-            #expect(status.location.longitude == -0.1278)
-            #expect(status.climateStatus.temperature.value == 20.0)
-            #expect(status.climateStatus.temperature.units == Temperature.Units.celsius)
-        }
-    }
-
     // MARK: - Regional Error Message Tests
 
     @Test("Regional error message consistency")
@@ -281,7 +138,6 @@ struct RegionSpecificTests {
 
             // Error structure should be consistent across regions
             #expect(error1.errorType == error2.errorType)
-            // Note: APIError doesn't have a statusCode property in this implementation
         }
     }
 
@@ -310,7 +166,7 @@ struct RegionSpecificTests {
     }
 
     @Test("Regional API client configuration validation")
-    @MainActor func testRegionalAPIClientConfigurationValidation() {
+    func testRegionalAPIClientConfigurationValidation() {
         let regions: [Region] = [.usa, .europe, .canada]
         let brands: [Brand] = [.kia, .hyundai]
 
@@ -330,17 +186,6 @@ struct RegionSpecificTests {
                 #expect(config.username == "test@example.com")
                 #expect(config.password == "password123")
                 #expect(config.pin == "0000")
-
-                // Should be able to create providers for all combinations
-                if brand == .kia {
-                    let provider = KiaAPIEndpointProviderUSA(configuration: config)
-                    let endpoint = provider.loginEndpoint()
-                    #expect(endpoint.url.hasPrefix("https://"))
-                } else if brand == .hyundai {
-                    let provider = HyundaiAPIEndpointProviderUSA(configuration: config)
-                    let endpoint = provider.loginEndpoint()
-                    #expect(endpoint.url.hasPrefix("https://"))
-                }
             }
         }
     }
@@ -376,6 +221,84 @@ struct RegionSpecificTests {
                 #expect(components.hour == 1)
                 #expect(components.minute == 29)
                 #expect(components.second == 55)
+            }
+        }
+    }
+
+    // MARK: - API Client Creation Tests
+
+    @Test("API client creation for supported regions")
+    @MainActor func testAPIClientCreationForSupportedRegions() throws {
+        // Hyundai USA should create successfully
+        let hyundaiUSAConfig = APIClientConfiguration(
+            region: .usa,
+            brand: .hyundai,
+            username: "test@example.com",
+            password: "password123",
+            pin: "0000",
+            accountId: UUID()
+        )
+        let hyundaiUSAClient = try createBetterBlueKitAPIClient(configuration: hyundaiUSAConfig)
+        #expect(hyundaiUSAClient is HyundaiUSAAPIClient)
+
+        // Kia USA should create successfully
+        let kiaUSAConfig = APIClientConfiguration(
+            region: .usa,
+            brand: .kia,
+            username: "test@example.com",
+            password: "password123",
+            pin: "0000",
+            accountId: UUID()
+        )
+        let kiaUSAClient = try createBetterBlueKitAPIClient(configuration: kiaUSAConfig)
+        #expect(kiaUSAClient is KiaUSAAPIClient)
+
+        // Hyundai Europe should create successfully
+        let hyundaiEuropeConfig = APIClientConfiguration(
+            region: .europe,
+            brand: .hyundai,
+            username: "test@example.com",
+            password: "password123",
+            pin: "0000",
+            accountId: UUID()
+        )
+        let hyundaiEuropeClient = try createBetterBlueKitAPIClient(configuration: hyundaiEuropeConfig)
+        #expect(hyundaiEuropeClient is HyundaiEuropeAPIClient)
+
+        // Hyundai Canada should create successfully
+        let hyundaiCanadaConfig = APIClientConfiguration(
+            region: .canada,
+            brand: .hyundai,
+            username: "test@example.com",
+            password: "password123",
+            pin: "0000",
+            accountId: UUID()
+        )
+        let hyundaiCanadaClient = try createBetterBlueKitAPIClient(configuration: hyundaiCanadaConfig)
+        #expect(hyundaiCanadaClient is HyundaiCanadaAPIClient)
+    }
+
+    @Test("API client creation for unsupported regions throws")
+    @MainActor func testAPIClientCreationForUnsupportedRegions() {
+        let unsupportedConfigs: [(Region, Brand)] = [
+            (.canada, .kia),
+            (.australia, .hyundai),
+            (.australia, .kia),
+            (.europe, .kia)  // Kia Europe not yet implemented
+        ]
+
+        for (region, brand) in unsupportedConfigs {
+            let config = APIClientConfiguration(
+                region: region,
+                brand: brand,
+                username: "test@example.com",
+                password: "password123",
+                pin: "0000",
+                accountId: UUID()
+            )
+
+            #expect(throws: RegionSupportError.self) {
+                _ = try createBetterBlueKitAPIClient(configuration: config)
             }
         }
     }

@@ -155,11 +155,11 @@ func performLogin(state: CLIState) async throws {
     )
 
     let client: any APIClientProtocol
-    if brand == .kia {
-        let endpointProvider = KiaAPIEndpointProviderUSA(configuration: config)
-        client = KiaAPIClientUSA(configuration: config, endpointProvider: endpointProvider)
-    } else {
-        client = HyundaiAPIClientFactory.createClient(configuration: config)
+    do {
+        client = try createBetterBlueKitAPIClient(configuration: config)
+    } catch let error as RegionSupportError {
+        printError(error.localizedDescription)
+        exit(1)
     }
 
     state.client = client
@@ -201,10 +201,10 @@ func handleMFA(client: any APIClientProtocol, error: APIError, state: CLIState) 
     }
 
     let methodChoice = prompt("Select method (1 for email, 2 for phone): ")
-    let notifyType = methodChoice == "2" ? "SMS" : "EMAIL"
+    let method: MFAMethod = methodChoice == "2" ? .sms : .email
 
-    print("Sending MFA code via \(notifyType)...")
-    try await client.sendMFACode(otpKey: otpKey, xid: xid, notifyType: notifyType)
+    print("Sending MFA code via \(method)...")
+    try await client.sendMFACode(xid: xid, otpKey: otpKey, method: method)
     printSuccess("MFA code sent!")
 
     let rawCode = prompt("Enter verification code: ")
@@ -221,7 +221,7 @@ func handleMFA(client: any APIClientProtocol, error: APIError, state: CLIState) 
     }
 
     print("Verifying MFA code...")
-    let (rmToken, sid) = try await client.verifyMFACode(otpKey: otpKey, xid: xid, otp: code)
+    let (rmToken, sid) = try await client.verifyMFACode(xid: xid, otpKey: otpKey, code: code)
     printSuccess("MFA verification successful!")
 
     print("Completing login...")

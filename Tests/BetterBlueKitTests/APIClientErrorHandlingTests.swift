@@ -2,162 +2,171 @@
 //  APIClientErrorHandlingTests.swift
 //  BetterBlueKit
 //
-//  Unit tests for APIClientErrorHandling
+//  Unit tests for API error handling
+//
+//  Note: Tests for internal APIClient methods have been removed as these
+//  are now private implementation details. This file retains tests for
+//  public error types and behavior.
 //
 
 import Foundation
 import Testing
 @testable import BetterBlueKit
 
-@Suite("APIClientErrorHandling Tests")
-@MainActor
+@Suite("API Error Handling Tests")
 struct APIClientErrorHandlingTests {
 
-    // Minimal DummyProvider for APIClient
-    struct DummyProvider: APIEndpointProvider {
-        func loginEndpoint() -> APIEndpoint {
-            APIEndpoint(url: "https://example.com/login", method: .POST)
-        }
-        func fetchVehiclesEndpoint(authToken: AuthToken) -> APIEndpoint {
-            APIEndpoint(url: "https://example.com/vehicles", method: .GET)
-        }
-        func fetchVehicleStatusEndpoint(for vehicle: Vehicle, authToken: AuthToken) -> APIEndpoint {
-            APIEndpoint(url: "https://example.com/vehicleStatus", method: .GET)
-        }
-        func sendCommandEndpoint(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) -> APIEndpoint {
-            APIEndpoint(url: "https://example.com/sendCommand", method: .POST)
-        }
-        func parseLoginResponse(_ data: Data, headers: [String: String]) throws -> AuthToken {
-            AuthToken(accessToken: "token", refreshToken: "refresh", expiresAt: Date().addingTimeInterval(3600), pin: "1234")
-        }
-        func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] { [] }
-        func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus { throw NSError(domain: "", code: 0) }
-        func parseCommandResponse(_ data: Data) throws {}
+    // MARK: - APIError Tests
 
-        func getBodyForCommand(command: VehicleCommand, vehicle: Vehicle) -> [String: Any] {
-            return [:] // Dummy implementation for test
+    @Test("APIError creation with all fields")
+    func testAPIErrorCreation() {
+        let error = APIError(
+            message: "Test error",
+            code: 401,
+            apiName: "TestAPI",
+            errorType: .invalidCredentials,
+            userInfo: ["key": "value"]
+        )
+
+        #expect(error.message == "Test error")
+        #expect(error.code == 401)
+        #expect(error.apiName == "TestAPI")
+        #expect(error.errorType == .invalidCredentials)
+        #expect(error.userInfo?["key"] == "value")
+    }
+
+    @Test("APIError default values")
+    func testAPIErrorDefaults() {
+        let error = APIError(message: "Simple error")
+
+        #expect(error.message == "Simple error")
+        #expect(error.code == nil)
+        #expect(error.apiName == nil)
+        #expect(error.errorType == .general)
+        #expect(error.userInfo == nil)
+    }
+
+    @Test("APIError convenience initializers")
+    func testAPIErrorConvenienceInitializers() {
+        let invalidCreds = APIError.invalidCredentials("Bad password", apiName: "Test")
+        #expect(invalidCreds.errorType == .invalidCredentials)
+        #expect(invalidCreds.message == "Bad password")
+
+        let invalidPin = APIError.invalidPin("Wrong PIN", apiName: "Test")
+        #expect(invalidPin.errorType == .invalidPin)
+
+        let serverError = APIError.serverError("Server down", apiName: "Test")
+        #expect(serverError.errorType == .serverError)
+
+        let vehicleSession = APIError.invalidVehicleSession("Session expired", apiName: "Test")
+        #expect(vehicleSession.errorType == .invalidVehicleSession)
+
+        let regionNotSupported = APIError.regionNotSupported("Not available", apiName: "Test")
+        #expect(regionNotSupported.errorType == .regionNotSupported)
+    }
+
+    @Test("APIError requiresMFA with all fields")
+    func testAPIErrorRequiresMFA() {
+        let error = APIError.requiresMFA(
+            xid: "xid123",
+            otpKey: "otp456",
+            hasEmail: true,
+            hasPhone: false,
+            email: "test@example.com",
+            phone: nil,
+            rmTokenExpired: true,
+            apiName: "KiaUSA"
+        )
+
+        #expect(error.errorType == .requiresMFA)
+        #expect(error.userInfo?["xid"] == "xid123")
+        #expect(error.userInfo?["otpKey"] == "otp456")
+        #expect(error.userInfo?["hasEmail"] == "true")
+        #expect(error.userInfo?["hasPhone"] == "false")
+        #expect(error.userInfo?["email"] == "test@example.com")
+        #expect(error.userInfo?["rmTokenExpired"] == "true")
+    }
+
+    // MARK: - APIError.ErrorType Tests
+
+    @Test("ErrorType has expected cases")
+    func testErrorTypeCases() {
+        let allTypes: [APIError.ErrorType] = [
+            .general,
+            .invalidVehicleSession,
+            .invalidCredentials,
+            .serverError,
+            .invalidPin,
+            .concurrentRequest,
+            .failedRetryLogin,
+            .requiresMFA,
+            .kiaInvalidRequest,
+            .regionNotSupported
+        ]
+
+        // Verify all types are unique
+        let uniqueTypes = Set(allTypes.map(\.rawValue))
+        #expect(uniqueTypes.count == allTypes.count)
+    }
+
+    // MARK: - RegionSupportError Tests
+
+    @Test("RegionSupportError creation")
+    func testRegionSupportErrorCreation() {
+        let error = RegionSupportError.unsupportedRegion(brand: .hyundai, region: .canada)
+
+        switch error {
+        case .unsupportedRegion(let brand, let region):
+            #expect(brand == .hyundai)
+            #expect(region == .canada)
         }
     }
 
-    // Minimal APIClient for extension testing
-    class DummyAPIClient: APIClient<DummyProvider> {
-        init(logSink: HTTPLogSink? = nil) {
-            let config = APIClientConfiguration(
-                region: .usa,
-                brand: .kia,
-                username: "testuser",
-                password: "testpass",
-                pin: "1234",
-                accountId: UUID(),
-                logSink: logSink
-            )
-            super.init(configuration: config, endpointProvider: DummyProvider())
-        }
-        override func login() async throws -> AuthToken { fatalError() }
-        override func fetchVehicles(authToken: AuthToken) async throws -> [Vehicle] { fatalError() }
-        override func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken) async throws -> VehicleStatus { fatalError() }
-        override func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws { fatalError() }
+    @Test("RegionSupportError localizedDescription")
+    func testRegionSupportErrorDescription() {
+        let error = RegionSupportError.unsupportedRegion(brand: .kia, region: .australia)
+        let description = error.localizedDescription.lowercased()
+
+        #expect(description.contains("kia"))
+        // Region can appear as "australia" or "au"
+        #expect(description.contains("au"))
     }
 
-    // Remove global client; instantiate in each test as needed
+    // MARK: - Error Codability Tests
 
-    @Test("shouldRetryWithReinitialization returns true for 401 status")
-    func testShouldRetryWithReinit401() {
-        let client = DummyAPIClient()
-        let shouldRetry = client.shouldRetryWithReinitialization(data: nil as Data?, httpStatusCode: 401)
-        #expect(shouldRetry == true)
+    @Test("APIError is Codable")
+    func testAPIErrorCodable() throws {
+        let original = APIError(
+            message: "Test message",
+            code: 500,
+            apiName: "TestAPI",
+            errorType: .serverError,
+            userInfo: ["key": "value"]
+        )
+
+        let encoded = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(APIError.self, from: encoded)
+
+        #expect(decoded.message == original.message)
+        #expect(decoded.code == original.code)
+        #expect(decoded.apiName == original.apiName)
+        #expect(decoded.errorType == original.errorType)
+        #expect(decoded.userInfo?["key"] == original.userInfo?["key"])
     }
 
-    @Test("shouldRetryWithReinitialization returns false for non-401 status")
-    func testShouldRetryWithReinitNon401() {
-        let client = DummyAPIClient()
-        let shouldRetry = client.shouldRetryWithReinitialization(data: nil as Data?, httpStatusCode: 502)
-        #expect(shouldRetry == false)
-    }
+    @Test("APIError.ErrorType is Codable")
+    func testErrorTypeCodable() throws {
+        let allTypes: [APIError.ErrorType] = [
+            .general, .invalidVehicleSession, .invalidCredentials,
+            .serverError, .invalidPin, .concurrentRequest,
+            .failedRetryLogin, .requiresMFA, .kiaInvalidRequest,
+            .regionNotSupported
+        ]
 
-    @Test("shouldRetryWithReinitialization returns true for errorCode 401 in JSON body")
-    func testShouldRetryWithReinitJSON401() {
-        let client = DummyAPIClient()
-        let json: [String: Any] = ["errorCode": 401]
-        // swiftlint:disable:next force_try
-        let data = try! JSONSerialization.data(withJSONObject: json)
-        let shouldRetry = client.shouldRetryWithReinitialization(data: data, httpStatusCode: 400)
-        #expect(shouldRetry == true)
-    }
-
-    @Test("shouldRetryWithReinitialization returns false for errorCode 502 in JSON body")
-    func testShouldRetryWithReinitJSON502() {
-        let client = DummyAPIClient()
-        let json: [String: Any] = ["errorCode": 502]
-        let data = try! JSONSerialization.data(withJSONObject: json)
-        let shouldRetry = client.shouldRetryWithReinitialization(data: data, httpStatusCode: 400)
-        #expect(shouldRetry == false)
-    }
-
-    @Test("handleInvalidResponse logs and throws")
-    func testHandleInvalidResponseThrows() async {
-        let request = URLRequest(url: URL(string: "https://example.com")!)
-        let headers: [String: String] = ["Authorization": "Bearer token"]
-        let startTime = Date()
-        actor LogFlag { var didLog = false; func set() { didLog = true } }
-        let logFlag = LogFlag()
-        let logSink: HTTPLogSink = { (_: HTTPLog) in Task { await logFlag.set() } }
-        let apiClient = DummyAPIClient(logSink: logSink)
-        do {
-            try apiClient.handleInvalidResponse(
-                requestType: HTTPRequestType.login,
-                request: request,
-                requestHeaders: headers,
-                requestBody: nil as String?,
-                startTime: startTime
-            )
-            #expect(Bool(false), "Should have thrown")
-        } catch let error as APIError {
-            #expect(error.message.contains("Invalid response type"))
-            #expect(error.apiName == "APIClient")
-        } catch {
-            #expect(Bool(false), "Unexpected error type")
-        }
-        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
-        let didLog = await logFlag.didLog
-        #expect(didLog == true)
-    }
-
-    @Test("validateHTTPResponse throws for 401 and 502 and 400+")
-    func testValidateHTTPResponseThrows() {
-        let client = DummyAPIClient()
-        let url = URL(string: "https://example.com")!
-        let response401 = HTTPURLResponse(url: url, statusCode: 401, httpVersion: nil, headerFields: nil)!
-        let response502 = HTTPURLResponse(url: url, statusCode: 502, httpVersion: nil, headerFields: nil)!
-        let response404 = HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: nil)!
-        let data = Data()
-        // 401
-        #expect(throws: APIError.self) {
-            try client.validateHTTPResponse(response401, data: data, responseBody: "expired")
-        }
-        // 502
-        #expect(throws: APIError.self) {
-            try client.validateHTTPResponse(response502, data: data, responseBody: "server error")
-        }
-        // 404
-        #expect(throws: APIError.self) {
-            try client.validateHTTPResponse(response404, data: data, responseBody: nil as String?)
+        for errorType in allTypes {
+            let encoded = try JSONEncoder().encode(errorType)
+            let decoded = try JSONDecoder().decode(APIError.ErrorType.self, from: encoded)
+            #expect(decoded == errorType)
         }
     }
-
-    @Test("validateHTTPResponse does not throw for 200")
-    func testValidateHTTPResponseSuccess() {
-        let client = DummyAPIClient()
-        let url = URL(string: "https://example.com")!
-        let response200 = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
-        let data = Data()
-        do {
-            try client.validateHTTPResponse(response200, data: data, responseBody: nil as String?)
-            #expect(true)
-        } catch {
-            #expect(false, "Should not throw for 200")
-        }
-    }
-
-    // Removed testHandleNetworkErrorThrows: assigning to logSink after init is not allowed and logSink is let
 }
