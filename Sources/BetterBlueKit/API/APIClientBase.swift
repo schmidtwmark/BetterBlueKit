@@ -210,10 +210,23 @@ open class APIClientBase {
         let url = logData.request.url?.absoluteString ?? "Unknown URL"
         let stackTrace = captureStackTrace()
 
-        let safeRequestHeaders = redactSensitiveHeaders(logData.requestHeaders)
-        let safeRequestBody = redactSensitiveData(in: logData.requestBody)
-        let safeResponseHeaders = redactSensitiveHeaders(logData.responseHeaders)
-        let safeResponseBody = redactSensitiveData(in: logData.responseBody)
+        // Apply redaction unless disabled
+        let requestHeaders: [String: String]
+        let requestBody: String?
+        let responseHeaders: [String: String]
+        let responseBody: String?
+
+        if configuration.redactPII{
+            requestHeaders = redactSensitiveHeaders(logData.requestHeaders)
+            requestBody = redactSensitiveData(in: logData.requestBody)
+            responseHeaders = redactSensitiveHeaders(logData.responseHeaders)
+            responseBody = redactSensitiveData(in: logData.responseBody)
+        } else {
+            requestHeaders = logData.requestHeaders
+            requestBody = logData.requestBody
+            responseHeaders = logData.responseHeaders
+            responseBody = logData.responseBody
+        }
 
         let httpLog = HTTPLog(
             timestamp: logData.startTime,
@@ -221,11 +234,11 @@ open class APIClientBase {
             requestType: logData.requestType,
             method: method,
             url: url,
-            requestHeaders: safeRequestHeaders,
-            requestBody: safeRequestBody,
+            requestHeaders: requestHeaders,
+            requestBody: requestBody,
             responseStatus: logData.responseStatus,
-            responseHeaders: safeResponseHeaders,
-            responseBody: safeResponseBody,
+            responseHeaders: responseHeaders,
+            responseBody: responseBody,
             error: logData.error,
             apiError: logData.apiError,
             duration: duration,

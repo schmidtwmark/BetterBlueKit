@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - Core Enums
 
-public enum Brand: String, Codable, CaseIterable {
+public enum Brand: String, Codable, CaseIterable, Sendable {
     case hyundai, kia, fake
 
     public var displayName: String {
@@ -58,7 +58,7 @@ public func isTestAccount(username: String, password: String) -> Bool {
     username.lowercased() == "testaccount@betterblue.com" && password == "betterblue"
 }
 
-public enum FuelType: String, CaseIterable, Codable {
+public enum FuelType: String, CaseIterable, Codable, Sendable {
     case gas
     case electric
 
@@ -71,7 +71,7 @@ public enum FuelType: String, CaseIterable, Codable {
     }
 }
 
-public enum Region: String, CaseIterable, Codable {
+public enum Region: String, CaseIterable, Codable, Sendable {
     case usa = "US", canada = "CA", europe = "EU"
     case australia = "AU", china = "CN", india = "IN"
 
