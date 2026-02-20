@@ -247,8 +247,7 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
         return AuthToken(
             accessToken: accessToken,
             refreshToken: refreshToken,
-            expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn)),
-            pin: pin
+            expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn))
         )
     }
 

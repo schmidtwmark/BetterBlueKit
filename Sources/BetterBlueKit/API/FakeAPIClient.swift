@@ -52,8 +52,7 @@ public class FakeAPIClient: APIClientProtocol {
         return AuthToken(
             accessToken: "fake_access_token_\(UUID().uuidString)",
             refreshToken: "fake_refresh_token_\(UUID().uuidString)",
-            expiresAt: Date().addingTimeInterval(3600),
-            pin: pin,
+            expiresAt: Date().addingTimeInterval(3600)
         )
     }
 

@@ -20,14 +20,12 @@ struct AuthenticationTests {
         let token = AuthToken(
             accessToken: "access123",
             refreshToken: "refresh456",
-            expiresAt: expiresAt,
-            pin: "1234"
+            expiresAt: expiresAt
         )
 
         #expect(token.accessToken == "access123")
         #expect(token.refreshToken == "refresh456")
         #expect(token.expiresAt == expiresAt)
-        #expect(token.pin == "1234")
     }
 
     @Test("AuthToken isValid returns true for future expiration")
@@ -36,8 +34,7 @@ struct AuthenticationTests {
         let token = AuthToken(
             accessToken: "test",
             refreshToken: "test",
-            expiresAt: futureDate,
-            pin: "0000"
+            expiresAt: futureDate
         )
 
         #expect(token.isValid == true)
@@ -49,8 +46,7 @@ struct AuthenticationTests {
         let token = AuthToken(
             accessToken: "test",
             refreshToken: "test",
-            expiresAt: pastDate,
-            pin: "0000"
+            expiresAt: pastDate
         )
 
         #expect(token.isValid == false)
@@ -62,8 +58,7 @@ struct AuthenticationTests {
         let token = AuthToken(
             accessToken: "test",
             refreshToken: "test",
-            expiresAt: nearFuture,
-            pin: "0000"
+            expiresAt: nearFuture
         )
 
         #expect(token.isValid == false)
@@ -75,8 +70,7 @@ struct AuthenticationTests {
         let token = AuthToken(
             accessToken: "test",
             refreshToken: "test",
-            expiresAt: safeFuture,
-            pin: "0000"
+            expiresAt: safeFuture
         )
 
         #expect(token.isValid == true)
@@ -87,8 +81,7 @@ struct AuthenticationTests {
         let original = AuthToken(
             accessToken: "access123",
             refreshToken: "refresh456",
-            expiresAt: Date(),
-            pin: "1234"
+            expiresAt: Date()
         )
 
         let encoded = try JSONEncoder().encode(original)
@@ -97,6 +90,5 @@ struct AuthenticationTests {
         #expect(decoded.accessToken == original.accessToken)
         #expect(decoded.refreshToken == original.refreshToken)
         #expect(abs(decoded.expiresAt.timeIntervalSince(original.expiresAt)) < 1.0) // Allow small time difference
-        #expect(decoded.pin == original.pin)
     }
 }
