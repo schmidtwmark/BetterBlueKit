@@ -216,7 +216,7 @@ open class APIClientBase {
         let responseHeaders: [String: String]
         let responseBody: String?
 
-        if configuration.redactPII{
+        if configuration.redactPII {
             requestHeaders = redactSensitiveHeaders(logData.requestHeaders)
             requestBody = redactSensitiveData(in: logData.requestBody)
             responseHeaders = redactSensitiveHeaders(logData.responseHeaders)
