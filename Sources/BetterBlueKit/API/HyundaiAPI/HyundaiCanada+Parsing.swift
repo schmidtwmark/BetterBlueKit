@@ -101,6 +101,28 @@ extension HyundaiCanadaAPIClient {
             return Distance(length: value, units: .kilometers)
         }()
 
+        // additional bools not currently covered by other helpers
+        let engineOn: Bool? = {
+            if let engineStatusIndicator = statusData["engine"] as? Bool { return engineStatusIndicator }
+            if let engineStatusInteger: Int = extractNumber(from: statusData["engine"]) { return engineStatusInteger != 0 }
+            return nil
+        }()
+
+        let accessoryOn: Bool? = {
+            if let accessoryStatusIndicator = statusData["acc"] as? Bool { return accessoryStatusIndicator }
+            if let accessoryStatusInteger: Int = extractNumber(from: statusData["acc"]) { return accessoryStatusInteger != 0 }
+            return nil
+        }()
+
+        let remoteIgnition: Bool? = statusData["remoteIgnition"] as? Bool
+        let transmissionCondition: Bool? = statusData["transCond"] as? Bool
+        let sleepMode: Bool? = statusData["sleepModeCheck"] as? Bool
+        let washerFluid: Bool? = {
+            if let washerFluidBool = statusData["washerFluidStatus"] as? Bool { return washerFluidBool }
+            if let washerFluidIndicator: Int = extractNumber(from: statusData["washerFluidStatus"]) { return washerFluidIndicator != 0 }
+            return nil
+        }()
+
         return VehicleStatus(
             vin: vehicle.vin,
             gasRange: parseCanadaGasRange(from: statusData, vehicle: vehicle),
@@ -114,7 +136,13 @@ extension HyundaiCanadaAPIClient {
             doorOpen: parseCanadaDoorStatus(from: statusData),
             trunkOpen: parseCanadaTrunkOpen(from: statusData),
             hoodOpen: parseCanadaHoodOpen(from: statusData),
-            tirePressureWarning: parseCanadaTirePressureWarning(from: statusData)
+            tirePressureWarning: parseCanadaTirePressureWarning(from: statusData),
+            engineOn: engineOn,
+            accessoryOn: accessoryOn,
+            remoteIgnition: remoteIgnition,
+            transmissionCondition: transmissionCondition,
+            sleepMode: sleepMode,
+            washerFluidLow: washerFluid
         )
     }
 
