@@ -11,7 +11,10 @@ import Foundation
 
 @MainActor
 public class FakeAPIClient: APIClientProtocol {
+    private let region: Region
     private let username: String
+    private let password: String
+    private let pin: String
     private let accountId: UUID
     private let vehicleProvider: FakeVehicleProvider
 
@@ -19,7 +22,10 @@ public class FakeAPIClient: APIClientProtocol {
         configuration: APIClientConfiguration,
         vehicleProvider: FakeVehicleProvider,
     ) {
+        region = configuration.region
         username = configuration.username
+        password = configuration.password
+        pin = configuration.pin
         accountId = configuration.accountId
         self.vehicleProvider = vehicleProvider
 
@@ -46,7 +52,8 @@ public class FakeAPIClient: APIClientProtocol {
         return AuthToken(
             accessToken: "fake_access_token_\(UUID().uuidString)",
             refreshToken: "fake_refresh_token_\(UUID().uuidString)",
-            expiresAt: Date().addingTimeInterval(3600)
+            expiresAt: Date().addingTimeInterval(3600),
+            pin: pin,
         )
     }
 
