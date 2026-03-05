@@ -33,7 +33,7 @@ let package = Package(
             plugins: [.plugin(name: "SwiftLintBuildToolPlugin", package: "SwiftLintPlugins")],
         ),
         .executableTarget(
-            name: "BBCLI",
+            name: "bbcli",
             dependencies: ["BetterBlueKit"],
             path: "Sources/BBCLI"
         ),

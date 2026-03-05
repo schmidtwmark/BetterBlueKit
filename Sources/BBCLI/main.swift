@@ -23,6 +23,7 @@ final class CLIState {
 
     var brand: Brand = .hyundai
     var region: Region = .usa
+    var redactPII: Bool = false
 }
 
 // MARK: - Helpers
@@ -49,6 +50,21 @@ func prompt(_ message: String) -> String {
     print(message, terminator: "")
     fflush(stdout)
     return readLine() ?? ""
+}
+
+func prettyPrintJSON(_ jsonString: String) -> String {
+    guard let data = jsonString.data(using: .utf8),
+          let json = try? JSONSerialization.jsonObject(with: data),
+          let prettyData = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]),
+          let prettyString = String(data: prettyData, encoding: .utf8) else {
+        return jsonString
+    }
+    return prettyString
+}
+
+func redactVIN(_ vin: String) -> String {
+    guard vin.count > 6 else { return "[REDACTED]" }
+    return String(vin.prefix(3)) + String(repeating: "*", count: vin.count - 6) + String(vin.suffix(3))
 }
 
 // MARK: - Argument Parsing
@@ -97,6 +113,8 @@ func parseArguments(state: CLIState) {
                 }
                 argIndex += 1
             }
+        case "--no-redaction":
+            state.redactPII = false
         case "-h", "--help":
             printUsage()
             exit(0)
@@ -119,6 +137,7 @@ func printUsage() {
       --pin <pin>               Vehicle PIN (required for Hyundai)
       -b, --brand <brand>       Brand: 'hyundai' or 'kia' (default: hyundai)
       -r, --region <region>     Region: 'USA', 'Canada', 'Europe' (default: USA)
+      --no-redaction            Disable PII redaction in HTTP logs
       -h, --help                Show this help message
 
     If credentials are not provided via arguments, you will be prompted.
@@ -143,7 +162,37 @@ func performLogin(state: CLIState) async throws {
     print("Brand: \(brand.displayName)")
     print("Region: \(region.rawValue)")
     print("Username: \(username)")
+    if state.redactPII == false {
+        print("⚠️  PII redaction disabled - sensitive data will be visible in logs")
+    }
     print("")
+
+    // Create HTTP log sink for console output
+    let logSink: HTTPLogSink = { log in
+        printSubheader("HTTP \(log.requestType.displayName)")
+        print("[\(log.preciseTimestamp)] \(log.method) \(log.url)")
+        print("Duration: \(log.formattedDuration)")
+        if let status = log.responseStatus {
+            print("Status: \(status)")
+        }
+        if let error = log.error {
+            print("Error: \(error)")
+        }
+        if let apiError = log.apiError {
+            print("API Error: \(apiError)")
+        }
+        if let body = log.requestBody {
+            let formatted = prettyPrintJSON(body)
+            print("Request Body:\n\(formatted)")
+        }
+        if let body = log.responseBody {
+            let formatted = prettyPrintJSON(body)
+            let truncated = formatted.count > 4000
+                ? String(formatted.prefix(4000)) + "\n... (truncated)"
+                : formatted
+            print("Response Body:\n\(truncated)")
+        }
+    }
 
     let config = APIClientConfiguration(
         region: region,
@@ -151,7 +200,9 @@ func performLogin(state: CLIState) async throws {
         username: username,
         password: password,
         pin: pin,
-        accountId: UUID()
+        accountId: UUID(),
+        logSink: logSink,
+        redactPII: state.redactPII
     )
 
     let client: any APIClientProtocol
@@ -251,22 +302,15 @@ func fetchVehicles(state: CLIState) async throws {
     printSuccess("Found \(vehicles.count) vehicle(s)")
 
     for (index, vehicle) in vehicles.enumerated() {
+        let displayVIN = state.redactPII ? redactVIN(vehicle.vin) : vehicle.vin
         print("\n[\(index + 1)] \(vehicle.model)")
-        print("    VIN: \(vehicle.vin)")
+        print("    VIN: \(displayVIN)")
         print("    Model: \(vehicle.model)")
         print("    Electric: \(vehicle.isElectric)")
         print("    Generation: \(vehicle.generation)")
         if let key = vehicle.vehicleKey {
-            print("    Vehicle Key: \(key)")
-        }
-
-        // Print as JSON
-        printSubheader("Vehicle \(index + 1) JSON")
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let jsonData = try? encoder.encode(vehicle),
-           let jsonString = String(data: jsonData, encoding: .utf8) {
-            print(jsonString)
+            let displayKey = state.redactPII ? "[REDACTED]" : key
+            print("    Vehicle Key: \(displayKey)")
         }
     }
 }
@@ -286,7 +330,8 @@ func selectVehicle(state: CLIState) -> Vehicle? {
 
     print("\nSelect a vehicle:")
     for (index, vehicle) in vehicles.enumerated() {
-        print("  \(index + 1). \(vehicle.model) (\(vehicle.vin))")
+        let displayVIN = state.redactPII ? redactVIN(vehicle.vin) : vehicle.vin
+        print("  \(index + 1). \(vehicle.model) (\(displayVIN))")
     }
 
     let choice = prompt("Vehicle number: ")
@@ -340,15 +385,6 @@ func fetchVehicleStatus(state: CLIState) async throws {
         print("     Fuel: \(Int(gasRange.percentage))%")
         print("     Range: \(Int(gasRange.range.length)) \(gasRange.range.units == .miles ? "mi" : "km")")
     }
-
-    // Print as JSON
-    printSubheader("Status JSON")
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    if let jsonData = try? encoder.encode(status),
-       let jsonString = String(data: jsonData, encoding: .utf8) {
-        print(jsonString)
-    }
 }
 
 @MainActor
@@ -391,18 +427,6 @@ func fetchEVTripDetails(state: CLIState) async throws {
         print("    Distance: \(trip.distance) mi")
         print("    Duration: \(trip.formattedDuration)")
         print("    Energy Used: \(Double(trip.totalEnergyUsed) / 1000.0) kWh")
-    }
-
-    // Print first trip as JSON
-    if let firstTrip = trips.first {
-        printSubheader("First Trip JSON")
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        if let jsonData = try? encoder.encode(firstTrip),
-           let jsonString = String(data: jsonData, encoding: .utf8) {
-            print(jsonString)
-        }
     }
 }
 

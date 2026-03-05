@@ -18,6 +18,7 @@ public struct APIClientConfiguration {
     public let accountId: UUID
     public let logSink: HTTPLogSink?
     public let rememberMeToken: String?
+    public let redactPII: Bool
 
     public init(
         region: Region,
@@ -27,7 +28,8 @@ public struct APIClientConfiguration {
         pin: String,
         accountId: UUID,
         logSink: HTTPLogSink? = nil,
-        rememberMeToken: String? = nil
+        rememberMeToken: String? = nil,
+        redactPII: Bool = true
     ) {
         self.region = region
         self.brand = brand
@@ -37,6 +39,7 @@ public struct APIClientConfiguration {
         self.accountId = accountId
         self.logSink = logSink
         self.rememberMeToken = rememberMeToken
+        self.redactPII = redactPII
     }
 }
 
@@ -66,6 +69,8 @@ public protocol APIClientProtocol {
 
     /// Complete login after MFA verification
     func completeMFALogin(sid: String, rmToken: String) async throws -> AuthToken
+
+    func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken, cached: Bool) async throws -> VehicleStatus
 }
 
 // MARK: - MFA Method
@@ -100,6 +105,12 @@ extension APIClientProtocol {
 
     public func completeMFALogin(sid: String, rmToken: String) async throws -> AuthToken {
         throw APIError(message: "MFA not supported for this API", apiName: "APIClient")
+    }
+
+    // Backwards-compatible overload: default implementation defers to the legacy method.
+    public func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken, cached: Bool = true) async throws -> VehicleStatus {
+        // Default behavior: call the existing non-cached method (which concrete clients already implement)
+        return try await fetchVehicleStatus(for: vehicle, authToken: authToken)
     }
 }
 
