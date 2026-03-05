@@ -159,42 +159,6 @@ extension HyundaiCanadaAPIClient {
         return authCode
     }
 
-    func commandPollResult(_ data: Data) throws -> String {
-        let json = try parseCanadaResponse(data, context: "command status")
-        guard let result = json["result"] as? [String: Any] else {
-            throw APIError.logError("Invalid command status response", apiName: apiName)
-        }
-
-        let transaction = result["transaction"] as? [String: Any] ?? [:]
-        let rawResult =
-            transaction["apiResult"] ??
-            result["apiResult"] ??
-            transaction["result"] ??
-            result["status"]
-
-        if let resultString = stringify(rawResult)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased(),
-           !resultString.isEmpty {
-            return resultString
-        }
-
-        // Some successful responses include a vehicle payload but omit apiResult.
-        if result["vehicle"] != nil {
-            return "C"
-        }
-
-        throw APIError.logError("Invalid command status response", apiName: apiName)
-    }
-
-    func isSuccessfulPollResult(_ result: String) -> Bool {
-        ["C", "S", "SUCCESS", "COMPLETE", "COMPLETED"].contains(result)
-    }
-
-    func isFailedPollResult(_ result: String) -> Bool {
-        ["F", "E", "FAILED", "ERROR"].contains(result)
-    }
-
     // MARK: - Status Parsing Helpers
 
     private func detectElectricVehicle(from vehicleData: [String: Any]) -> Bool {

@@ -17,10 +17,8 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     let clientId = "HATAHSPACA0232141ED9722C67715A0B"
     let clientSecret = "CLISCR01AHSPA"
     let userAgent = "MyHyundai/2.0.25 (iPhone; iOS 18.3; Scale/3.00)"
-    private let maxCommandPollAttempts = 30
 
     let deviceId = UUID().uuidString.uppercased()
-    let commandPollIntervalNanoseconds: UInt64 = 2_000_000_000
 
     let hvacFahrenheitValues: [Double] = Array(62...82).map { Double($0) }
     let hvacCelsiusValues: [Double] = [
@@ -169,18 +167,11 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
 
         let authCode = try await fetchCommandAuthCode(authToken: authToken)
 
-        let transactionId = try await sendCommandRequest(
+        try await sendCommandRequest(
             for: vehicle,
             command: command,
             authToken: authToken,
             authCode: authCode
-        )
-
-        try await pollForCommandCompletion(
-            vehicle: vehicle,
-            authToken: authToken,
-            authCode: authCode,
-            transactionId: transactionId
         )
     }
 
@@ -207,28 +198,30 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
         command: VehicleCommand,
         authToken: AuthToken,
         authCode: String
-    ) async throws -> String {
+    ) async throws {
         if case .startClimate = command {
             do {
-                return try await sendCommandRequest(
+                try await sendCommandRequest(
                     for: vehicle,
                     command: command,
                     authToken: authToken,
                     authCode: authCode,
                     useRemoteControl: false
                 )
+                return
             } catch {
-                return try await sendCommandRequest(
+                try await sendCommandRequest(
                     for: vehicle,
                     command: command,
                     authToken: authToken,
                     authCode: authCode,
                     useRemoteControl: true
                 )
+                return
             }
         }
 
-        return try await sendCommandRequest(
+        try await sendCommandRequest(
             for: vehicle,
             command: command,
             authToken: authToken,
@@ -243,8 +236,8 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
         authToken: AuthToken,
         authCode: String,
         useRemoteControl: Bool
-    ) async throws -> String {
-        let (data, _, response) = try await performJSONRequest(
+    ) async throws {
+        let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/\(commandPath(for: command))",
             method: .POST,
             headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: authCode),
@@ -253,55 +246,6 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
         )
 
         try validateCommandResponse(data, context: "command")
-
-        let responseHeaders = extractResponseHeaders(from: response)
-        guard let transactionId = extractTransactionId(from: responseHeaders) else {
-            throw APIError.logError("Canada command missing TransactionId header", apiName: apiName)
-        }
-
-        return transactionId
-    }
-
-    private func pollForCommandCompletion(
-        vehicle: Vehicle,
-        authToken: AuthToken,
-        authCode: String,
-        transactionId: String
-    ) async throws {
-        var attempts = 0
-        var lastKnownResult = "unknown"
-
-        while attempts <= maxCommandPollAttempts {
-            let (data, _, _) = try await performJSONRequest(
-                url: "\(apiBaseURL)/rmtsts",
-                method: .POST,
-                headers: commandStatusHeaders(
-                    authToken: authToken,
-                    vehicleId: vehicle.regId,
-                    pAuth: authCode,
-                    transactionId: transactionId
-                ),
-                requestType: .sendCommand
-            )
-
-            let pollResult = try commandPollResult(data)
-            lastKnownResult = pollResult
-
-            if isSuccessfulPollResult(pollResult) {
-                return
-            }
-            if isFailedPollResult(pollResult) {
-                throw APIError.logError("Canada command failed (\(pollResult))", apiName: apiName)
-            }
-
-            attempts += 1
-            try await Task.sleep(nanoseconds: commandPollIntervalNanoseconds)
-        }
-
-        throw APIError.logError(
-            "Canada command completion polling timed out (last result: \(lastKnownResult))",
-            apiName: apiName
-        )
     }
 
     private func ensureCloudFlareCookie() async throws -> String {
