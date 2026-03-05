@@ -15,7 +15,7 @@ let package = Package(
         ),
         .executable(
             name: "bbcli",
-            targets: ["BBCLI"]
+            targets: ["bbcli"]
         )
     ],
     dependencies: [
