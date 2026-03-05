@@ -12,10 +12,7 @@ import Foundation
 @MainActor
 public class FakeAPIClient: APIClientProtocol {
     private let region: Region
-    private let region: Region
     private let username: String
-    private let password: String
-    private let pin: String
     private let password: String
     private let pin: String
     private let accountId: UUID
@@ -26,10 +23,7 @@ public class FakeAPIClient: APIClientProtocol {
         vehicleProvider: FakeVehicleProvider,
     ) {
         region = configuration.region
-        region = configuration.region
         username = configuration.username
-        password = configuration.password
-        pin = configuration.pin
         password = configuration.password
         pin = configuration.pin
         accountId = configuration.accountId
