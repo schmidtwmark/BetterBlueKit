@@ -258,20 +258,15 @@ struct AdvancedErrorHandlingTests {
 
     // MARK: - Region Support Error Tests
 
-    @Test("RegionSupportError for unsupported region")
-    func testRegionSupportError() {
-        let error = RegionSupportError.unsupportedRegion(brand: .hyundai, region: .canada)
+    @Test("APIError.regionNotSupported for unsupported region")
+    func testRegionNotSupportedError() {
+        let error = APIError.regionNotSupported(
+            "\(Brand.hyundai.displayName) is not yet supported in \(Region.canada.rawValue)"
+        )
 
-        switch error {
-        case .unsupportedRegion(let brand, let region):
-            #expect(brand == .hyundai)
-            #expect(region == .canada)
-        }
-
-        // Check the description contains brand and region info
-        let description = error.localizedDescription.lowercased()
-        #expect(description.contains("hyundai"))
-        #expect(description.contains("ca") || description.contains("canada"))
+        #expect(error.errorType == .regionNotSupported)
+        #expect(error.message.lowercased().contains("hyundai"))
+        #expect(error.message.lowercased().contains("ca") || error.message.lowercased().contains("canada"))
     }
 
     // MARK: - Error Logging Tests

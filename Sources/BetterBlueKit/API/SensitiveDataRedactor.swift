@@ -18,10 +18,9 @@ public enum SensitiveDataRedactor {
         var redacted = text
 
         // Redact common password/PIN patterns in JSON
-        // Pattern matches the key and value, replacement preserves proper JSON format
         redacted = redacted.replacingOccurrences(
             of: #""(password|pin|PIN)"\s*:\s*"[^"]*""#,
-            with: "\"$1\" : \"[REDACTED]\"",
+            with: "\"$1\":\"[REDACTED]\"",
             options: .regularExpression
         )
 
@@ -40,14 +39,14 @@ public enum SensitiveDataRedactor {
         ].joined(separator: "|")
         redacted = redacted.replacingOccurrences(
             of: #""(\#(tokenKeys))"\s*:\s*"(?:[^"\\]|\\.)*""#,
-            with: "\"$1\" : \"[REDACTED]\"",
+            with: "\"$1\":\"[REDACTED]\"",
             options: .regularExpression
         )
 
         // Redact latitude/longitude coordinates to protect user location privacy
         redacted = redacted.replacingOccurrences(
             of: #""(latitude|longitude|lat|lng|lon)"\s*:\s*[-+]?\d+\.?\d*"#,
-            with: "\"$1\" : \"[REDACTED]\"",
+            with: "\"$1\":\"[REDACTED]\"",
             options: .regularExpression
         )
 
@@ -61,21 +60,21 @@ public enum SensitiveDataRedactor {
         // Redact email addresses (keep first char, domain TLD)
         redacted = redacted.replacingOccurrences(
             of: #""(username|email)"\s*:\s*"([^"@])[^"@]*@[^".]*(\.[^"]+)""#,
-            with: "\"$1\" : \"$2***@***$3\"",
+            with: "\"$1\":\"$2***@***$3\"",
             options: .regularExpression
         )
 
         // Redact VIN numbers (17 characters, keep first 3 and last 4)
         redacted = redacted.replacingOccurrences(
             of: #""(vin|VIN)"\s*:\s*"([A-HJ-NPR-Z0-9]{3})[A-HJ-NPR-Z0-9]{10}([A-HJ-NPR-Z0-9]{4})""#,
-            with: "\"$1\" : \"$2**********$3\"",
+            with: "\"$1\":\"$2**********$3\"",
             options: .regularExpression
         )
 
         // Redact regId (vehicle registration ID)
         redacted = redacted.replacingOccurrences(
             of: #""(regId|regID)"\s*:\s*"[^"]*""#,
-            with: "\"$1\" : \"[REDACTED]\"",
+            with: "\"$1\":\"[REDACTED]\"",
             options: .regularExpression
         )
 
@@ -84,27 +83,28 @@ public enum SensitiveDataRedactor {
 
     /// Redacts sensitive HTTP headers
     public static func redactHeaders(_ headers: [String: String]) -> [String: String] {
+        // Keys that should always be fully redacted (case-insensitive match)
+        let sensitiveKeys: Set<String> = [
+            "cookie", "set-cookie", "__cf_bm", "transactionid",
+            "password", "pin", "bluelinkservicepin",
+            "clientsecret", "client_secret"
+        ]
+
         var redactedHeaders = headers
-        var handledKeys = Set<String>()
 
-        // Redact Authorization headers (keep "Bearer" prefix for clarity)
-        if redactedHeaders["Authorization"] != nil {
-            redactedHeaders["Authorization"] = "Bearer [REDACTED]"
-            handledKeys.insert("Authorization")
-        }
-        if redactedHeaders["authorization"] != nil {
-            redactedHeaders["authorization"] = "Bearer [REDACTED]"
-            handledKeys.insert("authorization")
-        }
-
-        // Redact any other authentication headers (skip already handled)
-        for (key, _) in redactedHeaders where !handledKeys.contains(key) {
+        for (key, _) in headers {
             let lowerKey = key.lowercased()
-            if lowerKey.contains("auth") ||
-                lowerKey.contains("token") ||
-                lowerKey == "cookie" ||
-                lowerKey == "__cf_bm" ||
-                lowerKey == "transactionid" {
+
+            // Authorization headers get special treatment (keep "Bearer" prefix)
+            if lowerKey == "authorization" {
+                redactedHeaders[key] = "Bearer [REDACTED]"
+            }
+            // Check for exact matches in sensitive keys
+            else if sensitiveKeys.contains(lowerKey) {
+                redactedHeaders[key] = "[REDACTED]"
+            }
+            // Check for substring matches (auth, token, pauth, etc.)
+            else if lowerKey.contains("auth") || lowerKey.contains("token") {
                 redactedHeaders[key] = "[REDACTED]"
             }
         }

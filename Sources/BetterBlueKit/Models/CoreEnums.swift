@@ -85,4 +85,15 @@ public enum Region: String, CaseIterable, Codable, Sendable {
             return "https://fake.api.testing.com"
         }
     }
+
+    public var displayName: String {
+        switch self {
+        case .usa: "USA"
+        case .canada: "Canada"
+        case .europe: "Europe"
+        case .australia: "Australia"
+        case .china: "China"
+        case .india: "India"
+        }
+    }
 }

@@ -183,8 +183,13 @@ struct APIClientFactoryTests {
             accountId: UUID()
         )
 
-        #expect(throws: RegionSupportError.self) {
+        do {
             _ = try createBetterBlueKitAPIClient(configuration: config)
+            Issue.record("Expected APIError to be thrown")
+        } catch let error as APIError {
+            #expect(error.errorType == .regionNotSupported)
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
         }
     }
 
@@ -214,8 +219,13 @@ struct APIClientFactoryTests {
             accountId: UUID()
         )
 
-        #expect(throws: RegionSupportError.self) {
+        do {
             _ = try createBetterBlueKitAPIClient(configuration: config)
+            Issue.record("Expected APIError to be thrown")
+        } catch let error as APIError {
+            #expect(error.errorType == .regionNotSupported)
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
         }
     }
 }

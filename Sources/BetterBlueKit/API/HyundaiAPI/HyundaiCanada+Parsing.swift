@@ -5,7 +5,6 @@
 //  Hyundai Canada parsing helpers
 //
 
-// swiftlint:disable:next file_length
 import Foundation
 
 extension HyundaiCanadaAPIClient {

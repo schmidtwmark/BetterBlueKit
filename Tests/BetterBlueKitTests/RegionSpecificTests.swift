@@ -354,8 +354,13 @@ struct RegionSpecificTests {
                 accountId: UUID()
             )
 
-            #expect(throws: RegionSupportError.self) {
+            do {
                 _ = try createBetterBlueKitAPIClient(configuration: config)
+                Issue.record("Expected APIError for \(brand) in \(region)")
+            } catch let error as APIError {
+                #expect(error.errorType == .regionNotSupported)
+            } catch {
+                Issue.record("Unexpected error type: \(error)")
             }
         }
     }

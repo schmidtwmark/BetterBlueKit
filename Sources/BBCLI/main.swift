@@ -208,8 +208,8 @@ func performLogin(state: CLIState) async throws {
     let client: any APIClientProtocol
     do {
         client = try createBetterBlueKitAPIClient(configuration: config)
-    } catch let error as RegionSupportError {
-        printError(error.localizedDescription)
+    } catch let error as APIError {
+        printError("\(error.errorType): \(error.message)")
         exit(1)
     }
 

@@ -109,27 +109,29 @@ struct APIClientErrorHandlingTests {
         #expect(uniqueTypes.count == allTypes.count)
     }
 
-    // MARK: - RegionSupportError Tests
+    // MARK: - Region Not Supported Error Tests
 
-    @Test("RegionSupportError creation")
-    func testRegionSupportErrorCreation() {
-        let error = RegionSupportError.unsupportedRegion(brand: .hyundai, region: .canada)
+    @Test("APIError.regionNotSupported creation")
+    func testRegionNotSupportedErrorCreation() {
+        let error = APIError.regionNotSupported(
+            "\(Brand.hyundai.displayName) is not yet supported in \(Region.canada.rawValue)"
+        )
 
-        switch error {
-        case .unsupportedRegion(let brand, let region):
-            #expect(brand == .hyundai)
-            #expect(region == .canada)
-        }
+        #expect(error.errorType == .regionNotSupported)
+        #expect(error.message.contains("Hyundai"))
+        // Region.canada.rawValue is "CA"
+        #expect(error.message.contains("CA"))
     }
 
-    @Test("RegionSupportError localizedDescription")
-    func testRegionSupportErrorDescription() {
-        let error = RegionSupportError.unsupportedRegion(brand: .kia, region: .australia)
-        let description = error.localizedDescription.lowercased()
+    @Test("APIError.regionNotSupported message format")
+    func testRegionNotSupportedErrorMessage() {
+        let error = APIError.regionNotSupported(
+            "\(Brand.kia.displayName) is not yet supported in \(Region.australia.rawValue)"
+        )
+        let message = error.message.lowercased()
 
-        #expect(description.contains("kia"))
-        // Region can appear as "australia" or "au"
-        #expect(description.contains("au"))
+        #expect(message.contains("kia"))
+        #expect(message.contains("au"))
     }
 
     // MARK: - Error Codability Tests
