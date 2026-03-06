@@ -196,6 +196,49 @@ struct VehicleStatusTests {
         #expect(decoded.temperature.units == original.temperature.units)
     }
 
+    // MARK: - Additional Flag Tests
+
+    @Test("VehicleStatus additional flags initialization and codable")
+    func testVehicleStatusAdditionalFlags() throws {
+        let location = VehicleStatus.Location(latitude: 0, longitude: 0)
+        let climate = VehicleStatus.ClimateStatus(
+            defrostOn: false,
+            airControlOn: false,
+            steeringWheelHeatingOn: false,
+            temperature: Temperature(value: 0, units: .celsius)
+        )
+
+        let original = VehicleStatus(
+            vin: "FLAG_VIN",
+            location: location,
+            lockStatus: .unknown,
+            climateStatus: climate,
+            engineOn: true,
+            accessoryOn: false,
+            remoteIgnition: true,
+            transmissionCondition: false,
+            sleepMode: true,
+            washerFluidLow: true
+        )
+
+        #expect(original.engineOn == true)
+        #expect(original.accessoryOn == false)
+        #expect(original.remoteIgnition == true)
+        #expect(original.transmissionCondition == false)
+        #expect(original.sleepMode == true)
+        #expect(original.washerFluidLow == true)
+
+        let encoded = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(VehicleStatus.self, from: encoded)
+
+        #expect(decoded.engineOn == original.engineOn)
+        #expect(decoded.accessoryOn == original.accessoryOn)
+        #expect(decoded.remoteIgnition == original.remoteIgnition)
+        #expect(decoded.transmissionCondition == original.transmissionCondition)
+        #expect(decoded.sleepMode == original.sleepMode)
+        #expect(decoded.washerFluidLow == original.washerFluidLow)
+    }
+
     // MARK: - VehicleStatus Tests
 
     @Test("VehicleStatus creation with electric vehicle")

@@ -49,9 +49,11 @@ private func createHyundaiClient(configuration: APIClientConfiguration) throws -
     switch configuration.region {
     case .usa:
         return HyundaiUSAAPIClient(configuration: configuration)
+    case .canada:
+        return HyundaiCanadaAPIClient(configuration: configuration)
     case .europe:
         return HyundaiEuropeAPIClient(configuration: configuration)
-    case .canada, .australia, .china, .india:
+    case .australia, .china, .india:
         throw RegionSupportError.unsupportedRegion(brand: .hyundai, region: configuration.region)
     }
 }
@@ -73,13 +75,10 @@ private func createKiaClient(configuration: APIClientConfiguration) throws -> an
 /// Returns whether a brand/region combination is currently supported.
 public func isRegionSupported(brand: Brand, region: Region) -> Bool {
     switch brand {
-    case .hyundai, .kia:
-        switch region {
-        case .usa, .europe:
-            return true
-        case .canada, .australia, .china, .india:
-            return false
-        }
+    case .hyundai:
+        return [.usa, .canada, .europe].contains(region)
+    case .kia:
+        return [.usa].contains(region)
     case .fake:
         return false
     }
@@ -88,8 +87,10 @@ public func isRegionSupported(brand: Brand, region: Region) -> Bool {
 /// Returns the list of supported regions for a given brand.
 public func supportedRegions(for brand: Brand) -> [Region] {
     switch brand {
-    case .hyundai, .kia:
-        return [.usa, .europe]  // Only fully implemented regions
+    case .hyundai:
+        return [.usa, .canada, .europe]
+    case .kia:
+        return [.usa]
     case .fake:
         return []
     }

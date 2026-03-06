@@ -6,6 +6,7 @@
 //
 
 import BetterBlueKit
+import Dispatch
 import Foundation
 
 // MARK: - CLI State
@@ -24,9 +25,6 @@ final class CLIState {
     var region: Region = .usa
     var redactPII: Bool = false
 }
-
-@MainActor
-let state = CLIState()
 
 // MARK: - Helpers
 
@@ -72,7 +70,7 @@ func redactVIN(_ vin: String) -> String {
 // MARK: - Argument Parsing
 
 @MainActor
-func parseArguments() {
+func parseArguments(state: CLIState) {
     let args = CommandLine.arguments
     var argIndex = 1
 
@@ -107,7 +105,6 @@ func parseArguments() {
         case "-r", "--region":
             if argIndex + 1 < args.count {
                 let regionArg = args[argIndex + 1]
-                print("Region arg: '\(regionArg)'")
                 if let parsedRegion = Region(rawValue: regionArg.uppercased()) {
                     state.region = parsedRegion
                 } else {
@@ -154,7 +151,7 @@ func printUsage() {
 // MARK: - Login Flow
 
 @MainActor
-func performLogin() async throws {
+func performLogin(state: CLIState) async throws {
     let brand = state.brand
     let region = state.region
     let username = state.username
@@ -226,7 +223,7 @@ func performLogin() async throws {
         print("Auth token received (expires: \(token.expiresAt))")
     } catch let error as APIError {
         if error.errorType == .requiresMFA, client.supportsMFA() {
-            try await handleMFA(client: client, error: error)
+            try await handleMFA(client: client, error: error, state: state)
         } else {
             throw error
         }
@@ -234,7 +231,7 @@ func performLogin() async throws {
 }
 
 @MainActor
-func handleMFA(client: any APIClientProtocol, error: APIError) async throws {
+func handleMFA(client: any APIClientProtocol, error: APIError, state: CLIState) async throws {
     printSubheader("MFA Required")
 
     guard let userInfo = error.userInfo else {
@@ -288,7 +285,7 @@ func handleMFA(client: any APIClientProtocol, error: APIError) async throws {
 // MARK: - API Commands
 
 @MainActor
-func fetchVehicles() async throws {
+func fetchVehicles(state: CLIState) async throws {
     printSubheader("Fetching Vehicles")
 
     guard let token = state.authToken else {
@@ -319,7 +316,7 @@ func fetchVehicles() async throws {
 }
 
 @MainActor
-func selectVehicle() -> Vehicle? {
+func selectVehicle(state: CLIState) -> Vehicle? {
     let vehicles = state.vehicles
 
     if vehicles.isEmpty {
@@ -347,8 +344,8 @@ func selectVehicle() -> Vehicle? {
 }
 
 @MainActor
-func fetchVehicleStatus() async throws {
-    guard let vehicle = selectVehicle() else { return }
+func fetchVehicleStatus(state: CLIState) async throws {
+    guard let vehicle = selectVehicle(state: state) else { return }
     guard let token = state.authToken else {
         throw APIError(message: "Not logged in")
     }
@@ -391,8 +388,8 @@ func fetchVehicleStatus() async throws {
 }
 
 @MainActor
-func sendCommand(_ command: VehicleCommand, description: String) async throws {
-    guard let vehicle = selectVehicle() else { return }
+func sendCommand(_ command: VehicleCommand, description: String, state: CLIState) async throws {
+    guard let vehicle = selectVehicle(state: state) else { return }
     guard let token = state.authToken else {
         throw APIError(message: "Not logged in")
     }
@@ -409,8 +406,8 @@ func sendCommand(_ command: VehicleCommand, description: String) async throws {
 }
 
 @MainActor
-func fetchEVTripDetails() async throws {
-    guard let vehicle = selectVehicle() else { return }
+func fetchEVTripDetails(state: CLIState) async throws {
+    guard let vehicle = selectVehicle(state: state) else { return }
     guard let token = state.authToken else {
         throw APIError(message: "Not logged in")
     }
@@ -457,7 +454,7 @@ func showMenu() {
 }
 
 @MainActor
-func runInteractiveLoop() async {
+func runInteractiveLoop(state: CLIState) async {
     while true {
         showMenu()
         let choice = prompt("Enter command number: ")
@@ -465,34 +462,38 @@ func runInteractiveLoop() async {
         do {
             switch choice {
             case "1":
-                try await fetchVehicles()
+                try await fetchVehicles(state: state)
             case "2":
-                try await fetchVehicleStatus()
+                try await fetchVehicleStatus(state: state)
             case "3":
-                try await sendCommand(.lock, description: "Lock")
+                try await sendCommand(.lock, description: "Lock", state: state)
             case "4":
-                try await sendCommand(.unlock, description: "Unlock")
+                try await sendCommand(.unlock, description: "Unlock", state: state)
             case "5":
                 print("Climate options (press Enter for defaults):")
                 let tempStr = prompt("Temperature (default 72°F): ")
                 let temp = Double(tempStr) ?? 72.0
                 var options = ClimateOptions()
                 options.temperature = Temperature(value: temp, units: .fahrenheit)
-                try await sendCommand(.startClimate(options), description: "Start Climate")
+                try await sendCommand(.startClimate(options), description: "Start Climate", state: state)
             case "6":
-                try await sendCommand(.stopClimate, description: "Stop Climate")
+                try await sendCommand(.stopClimate, description: "Stop Climate", state: state)
             case "7":
-                try await sendCommand(.startCharge, description: "Start Charge")
+                try await sendCommand(.startCharge, description: "Start Charge", state: state)
             case "8":
-                try await sendCommand(.stopCharge, description: "Stop Charge")
+                try await sendCommand(.stopCharge, description: "Stop Charge", state: state)
             case "9":
                 let acStr = prompt("AC Charge Limit (50-100): ")
                 let dcStr = prompt("DC Charge Limit (50-100): ")
                 let acLimit = Int(acStr) ?? 80
                 let dcLimit = Int(dcStr) ?? 80
-                try await sendCommand(.setTargetSOC(acLevel: acLimit, dcLevel: dcLimit), description: "Set Charge Limits")
+                try await sendCommand(
+                    .setTargetSOC(acLevel: acLimit, dcLevel: dcLimit),
+                    description: "Set Charge Limits",
+                    state: state
+                )
             case "10":
-                try await fetchEVTripDetails()
+                try await fetchEVTripDetails(state: state)
             case "0", "q", "quit", "exit":
                 print("\nGoodbye!")
                 return
@@ -515,38 +516,44 @@ func runInteractiveLoop() async {
 
 // MARK: - Main
 
-@main
-struct BBCLI {
-    @MainActor
-    static func main() async {
-        parseArguments()
+@MainActor
+func runCLI() async -> Int32 {
+    let state = CLIState()
+    parseArguments(state: state)
 
-        // Prompt for missing credentials
-        if state.username.isEmpty {
-            state.username = prompt("Username/Email: ")
-        }
-        if state.password.isEmpty {
-            state.password = prompt("Password: ")
-        }
-        if state.brand == .hyundai && state.pin.isEmpty {
-            let rawPin = prompt("PIN: ")
-            // Filter to digits only - PIN should be numeric
-            state.pin = rawPin.filter { $0.isNumber }
-        }
+    // Prompt for missing credentials
+    if state.username.isEmpty {
+        state.username = prompt("Username/Email: ")
+    }
+    if state.password.isEmpty {
+        state.password = prompt("Password: ")
+    }
+    if state.brand == .hyundai && state.pin.isEmpty {
+        let rawPin = prompt("PIN: ")
+        // Filter to digits only - PIN should be numeric
+        state.pin = rawPin.filter { $0.isNumber }
+    }
 
-        // Perform login
-        do {
-            try await performLogin()
-            await runInteractiveLoop()
-        } catch let error as APIError {
-            printError("\(error.errorType): \(error.message)")
-            if let userInfo = error.userInfo {
-                print("User Info: \(userInfo)")
-            }
-            exit(1)
-        } catch {
-            printError(error.localizedDescription)
-            exit(1)
+    // Perform login
+    do {
+        try await performLogin(state: state)
+        await runInteractiveLoop(state: state)
+        return 0
+    } catch let error as APIError {
+        printError("\(error.errorType): \(error.message)")
+        if let userInfo = error.userInfo {
+            print("User Info: \(userInfo)")
         }
+        return 1
+    } catch {
+        printError(error.localizedDescription)
+        return 1
     }
 }
+
+Task { @MainActor in
+    let exitCode = await runCLI()
+    exit(exitCode)
+}
+
+dispatchMain()

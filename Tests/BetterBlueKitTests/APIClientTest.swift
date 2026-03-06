@@ -172,10 +172,10 @@ struct APIClientFactoryTests {
         #expect(client is HyundaiEuropeAPIClient)
     }
 
-    @Test("Unsupported region throws error")
+    @Test("Unsupported Hyundai region throws error")
     @MainActor func testUnsupportedRegionThrows() {
         let config = APIClientConfiguration(
-            region: .canada,
+            region: .australia,
             brand: .hyundai,
             username: "test@example.com",
             password: "password123",
@@ -186,6 +186,21 @@ struct APIClientFactoryTests {
         #expect(throws: RegionSupportError.self) {
             _ = try createBetterBlueKitAPIClient(configuration: config)
         }
+    }
+
+    @Test("Create Hyundai Canada client")
+    @MainActor func testCreateHyundaiCanadaClient() throws {
+        let config = APIClientConfiguration(
+            region: .canada,
+            brand: .hyundai,
+            username: "test@example.com",
+            password: "password123",
+            pin: "0000",
+            accountId: UUID()
+        )
+
+        let client = try createBetterBlueKitAPIClient(configuration: config)
+        #expect(client is HyundaiCanadaAPIClient)
     }
 
     @Test("Fake brand throws error")
@@ -261,8 +276,8 @@ struct ExtractNumberFunctionTests {
 @Suite("Region Not Supported Tests")
 struct RegionNotSupportedTests {
 
-    @Test("Hyundai Canada throws region not supported")
-    @MainActor func testHyundaiCanadaNotSupported() async {
+    @Test("Hyundai Canada client can be created")
+    @MainActor func testHyundaiCanadaClientCreation() {
         let config = APIClientConfiguration(
             region: .canada,
             brand: .hyundai,
@@ -271,16 +286,9 @@ struct RegionNotSupportedTests {
             pin: "0000",
             accountId: UUID()
         )
-        let client = HyundaiCanadaAPIClient(configuration: config)
 
-        do {
-            _ = try await client.login()
-            #expect(Bool(false), "Should have thrown")
-        } catch let error as APIError {
-            #expect(error.errorType == .regionNotSupported)
-        } catch {
-            #expect(Bool(false), "Unexpected error type: \(error)")
-        }
+        let client = HyundaiCanadaAPIClient(configuration: config)
+        #expect(client.apiName == "HyundaiCanada")
     }
 
     @Test("Kia Canada throws region not supported")

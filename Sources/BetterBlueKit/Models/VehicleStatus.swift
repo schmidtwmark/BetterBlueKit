@@ -117,6 +117,14 @@ public struct VehicleStatus: Codable, Hashable, Sendable {
     public var hoodOpen: Bool?
     public var tirePressureWarning: TirePressureWarning?
 
+    // additional flags reported by some regions (e.g. Canada)
+    public var engineOn: Bool?
+    public var accessoryOn: Bool?
+    public var remoteIgnition: Bool?
+    public var transmissionCondition: Bool?
+    public var sleepMode: Bool?
+    public var washerFluidLow: Bool?
+
     public struct DoorStatus: Codable, Hashable, Sendable {
         public var frontLeft: Bool
         public var frontRight: Bool
@@ -174,11 +182,17 @@ public struct VehicleStatus: Codable, Hashable, Sendable {
                 odometer: Distance? = nil, syncDate: Date? = nil,
                 battery12V: Int? = nil, doorOpen: DoorStatus? = nil,
                 trunkOpen: Bool? = nil, hoodOpen: Bool? = nil,
-                tirePressureWarning: TirePressureWarning? = nil) {
+                tirePressureWarning: TirePressureWarning? = nil,
+                engineOn: Bool? = nil, accessoryOn: Bool? = nil,
+                remoteIgnition: Bool? = nil, transmissionCondition: Bool? = nil,
+                sleepMode: Bool? = nil, washerFluidLow: Bool? = nil) {
         (self.vin, self.gasRange, self.evStatus, self.location) = (vin, gasRange, evStatus, location)
         (self.lockStatus, self.climateStatus, self.odometer, self.syncDate) =
             (lockStatus, climateStatus, odometer, syncDate)
-        (self.battery12V, self.doorOpen, self.trunkOpen, self.hoodOpen, self.tirePressureWarning) =
-            (battery12V, doorOpen, trunkOpen, hoodOpen, tirePressureWarning)
+        (self.battery12V, self.doorOpen, self.trunkOpen, self.hoodOpen, self.tirePressureWarning,
+         self.engineOn, self.accessoryOn, self.remoteIgnition, self.transmissionCondition,
+         self.sleepMode, self.washerFluidLow) =
+            (battery12V, doorOpen, trunkOpen, hoodOpen, tirePressureWarning,
+             engineOn, accessoryOn, remoteIgnition, transmissionCondition, sleepMode, washerFluidLow)
     }
 }
