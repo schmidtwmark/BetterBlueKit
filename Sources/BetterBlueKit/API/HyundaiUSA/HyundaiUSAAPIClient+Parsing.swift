@@ -220,10 +220,21 @@ extension HyundaiUSAAPIClient {
     }
 
     private func parseGasRange(from statusData: [String: Any], vehicle: Vehicle) -> VehicleStatus.FuelRange? {
-        guard !vehicle.isElectric,
-              let fuelLevel: Double = extractNumber(from: statusData["fuelLevel"]),
-              let gasRange = fuelRanges(from: statusData)[.gas] else { return nil }
-        return VehicleStatus.FuelRange(range: gasRange, percentage: fuelLevel)
+        guard !vehicle.isElectric else { return nil }
+        let percentage = extractNumber(from: statusData["fuelLevel"]) ?? -1.0
+        // Sometimes, gas vehicles don't have the fuelLevel member set
+        // Report a percentage of -1 if we don't know it, which gets ignored by the UI
+
+        // Gas range can be in two places: evStatus rangeByFuel section or dte field
+        if let gasRange = fuelRanges(from: statusData)[.gas] {
+            return VehicleStatus.FuelRange(range: gasRange, percentage: percentage)
+        } else if let dte = statusData["dte"] as? [String: Any],
+                  let gasRange: Double  = extractNumber(from: statusData["value"]) {
+            let units = Distance.Units(extractNumber(from: statusData["unit"]) ?? 2)
+            return VehicleStatus.FuelRange(range: Distance(length: gasRange, units: units), percentage: percentage )
+        } else {
+            return nil
+        }
     }
 
     private func parseLocation(from statusData: [String: Any]) -> VehicleStatus.Location {

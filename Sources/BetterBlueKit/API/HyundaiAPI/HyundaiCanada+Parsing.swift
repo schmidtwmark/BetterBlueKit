@@ -100,27 +100,13 @@ extension HyundaiCanadaAPIClient {
             return Distance(length: value, units: .kilometers)
         }()
 
-        // additional bools not currently covered by other helpers
-        let engineOn: Bool? = {
-            if let engineStatusIndicator = statusData["engine"] as? Bool { return engineStatusIndicator }
-            if let engineStatusInteger: Int = extractNumber(from: statusData["engine"]) { return engineStatusInteger != 0 }
-            return nil
-        }()
-
-        let accessoryOn: Bool? = {
-            if let accessoryStatusIndicator = statusData["acc"] as? Bool { return accessoryStatusIndicator }
-            if let accessoryStatusInteger: Int = extractNumber(from: statusData["acc"]) { return accessoryStatusInteger != 0 }
-            return nil
-        }()
-
-        let remoteIgnition: Bool? = statusData["remoteIgnition"] as? Bool
-        let transmissionCondition: Bool? = statusData["transCond"] as? Bool
-        let sleepMode: Bool? = statusData["sleepModeCheck"] as? Bool
-        let washerFluid: Bool? = {
-            if let washerFluidBool = statusData["washerFluidStatus"] as? Bool { return washerFluidBool }
-            if let washerFluidIndicator: Int = extractNumber(from: statusData["washerFluidStatus"]) { return washerFluidIndicator != 0 }
-            return nil
-        }()
+        // Parse additional boolean flags
+        let engineOn = parseBoolOrInt(statusData["engine"])
+        let accessoryOn = parseBoolOrInt(statusData["acc"])
+        let remoteIgnition = statusData["remoteIgnition"] as? Bool
+        let transmissionCondition = statusData["transCond"] as? Bool
+        let sleepMode = statusData["sleepModeCheck"] as? Bool
+        let washerFluid = parseBoolOrInt(statusData["washerFluidStatus"])
 
         return VehicleStatus(
             vin: vehicle.vin,
@@ -365,76 +351,48 @@ extension HyundaiCanadaAPIClient {
     }
 
     private func parseCanadaTrunkOpen(from statusData: [String: Any]) -> Bool? {
-        if let trunk = statusData["trunkOpen"] as? Bool {
-            return trunk
-        }
-
-        let doorStatus = statusData["doorStatus"] as? [String: Any] ?? [:]
-        if let trunkValue: Int = extractNumber(from: doorStatus["trunk"]) {
-            return trunkValue != 0
-        }
-
-        return nil
+        parseOpenStatus(statusData, directKey: "trunkOpen", doorStatusKey: "trunk")
     }
 
     private func parseCanadaHoodOpen(from statusData: [String: Any]) -> Bool? {
-        if let hood = statusData["hoodOpen"] as? Bool {
-            return hood
-        }
+        parseOpenStatus(statusData, directKey: "hoodOpen", doorStatusKey: "hood")
+    }
 
-        let doorStatus = statusData["doorStatus"] as? [String: Any] ?? [:]
-        if let hoodValue: Int = extractNumber(from: doorStatus["hood"]) {
-            return hoodValue != 0
-        }
-
+    private func parseOpenStatus(_ data: [String: Any], directKey: String, doorStatusKey: String) -> Bool? {
+        if let value = data[directKey] as? Bool { return value }
+        let doorStatus = data["doorStatus"] as? [String: Any] ?? [:]
+        if let intValue: Int = extractNumber(from: doorStatus[doorStatusKey]) { return intValue != 0 }
         return nil
     }
 
     private func parseCanadaTirePressureWarning(
         from statusData: [String: Any]
     ) -> VehicleStatus.TirePressureWarning? {
-        guard let tireData = statusData["tirePressureLamp"] as? [String: Any] else {
-            return nil
+        guard let tireData = statusData["tirePressureLamp"] as? [String: Any] else { return nil }
+
+        func warning(_ long: String, _ short: String) -> Bool {
+            let value: Int = extractNumber(from: tireData[long]) ?? extractNumber(from: tireData[short]) ?? 0
+            return value != 0
         }
 
-        let all: Int =
-            extractNumber(from: tireData["tirePressureWarningLampAll"]) ??
-            extractNumber(from: tireData["all"]) ?? 0
-
-        let frontLeft: Int =
-            extractNumber(from: tireData["tirePressureWarningLampFrontLeft"]) ??
-            extractNumber(from: tireData["frontLeft"]) ?? 0
-
-        let frontRight: Int =
-            extractNumber(from: tireData["tirePressureWarningLampFrontRight"]) ??
-            extractNumber(from: tireData["frontRight"]) ?? 0
-
-        let rearLeft: Int =
-            extractNumber(from: tireData["tirePressureWarningLampRearLeft"]) ??
-            extractNumber(from: tireData["rearLeft"]) ?? 0
-
-        let rearRight: Int =
-            extractNumber(from: tireData["tirePressureWarningLampRearRight"]) ??
-            extractNumber(from: tireData["rearRight"]) ?? 0
-
         return VehicleStatus.TirePressureWarning(
-            frontLeft: frontLeft != 0,
-            frontRight: frontRight != 0,
-            rearLeft: rearLeft != 0,
-            rearRight: rearRight != 0,
-            all: all != 0
+            frontLeft: warning("tirePressureWarningLampFrontLeft", "frontLeft"),
+            frontRight: warning("tirePressureWarningLampFrontRight", "frontRight"),
+            rearLeft: warning("tirePressureWarningLampRearLeft", "rearLeft"),
+            rearRight: warning("tirePressureWarningLampRearRight", "rearRight"),
+            all: warning("tirePressureWarningLampAll", "all")
         )
     }
 
     private func stringify(_ value: Any?) -> String? {
-        if let value = value as? String {
-            return value
-        }
+        if let str = value as? String { return str }
+        if let num = value as? NSNumber { return num.stringValue }
+        return nil
+    }
 
-        if let value = value as? NSNumber {
-            return value.stringValue
-        }
-
+    private func parseBoolOrInt(_ value: Any?) -> Bool? {
+        if let boolValue = value as? Bool { return boolValue }
+        if let intValue: Int = extractNumber(from: value) { return intValue != 0 }
         return nil
     }
 }

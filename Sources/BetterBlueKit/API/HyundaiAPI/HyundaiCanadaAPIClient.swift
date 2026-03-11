@@ -81,15 +81,14 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     }
 
     // New API: allow callers to request cached (sltvhcl) or real-time (rltmvhclsts) status
-    public func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken, cached: Bool) async throws -> VehicleStatus {
+    public func fetchVehicleStatus(
+        for vehicle: Vehicle,
+        authToken: AuthToken,
+        cached: Bool
+    ) async throws -> VehicleStatus {
         _ = try await ensureCloudFlareCookie()
 
-        // Choose endpoint based on cached flag
         let statusEndpoint = cached ? "sltvhcl" : "rltmvhclsts"
-
-        // Primary status request: for cached=true this is sltvhcl; for cached=false
-        // this first calls the realtime endpoint and then always fetches the
-        // cached sltvhcl payload so we have a complete response to parse.
         let (primaryData, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/\(statusEndpoint)",
             method: .POST,
@@ -98,67 +97,74 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
             requestType: .fetchVehicleStatus
         )
 
-        var finalData = primaryData
+        let finalData = cached ? primaryData : try await fetchRealtimeStatusData(
+            primaryData: primaryData,
+            vehicle: vehicle,
+            authToken: authToken
+        )
 
-        if !cached {
-            // We triggered a realtime refresh; now fetch the cached sltvhcl
-            // payload which contains the full vehicle metadata (odometer, etc.)
-            do {
-                let (cachedData, _, _) = try await performJSONRequest(
-                    url: "\(apiBaseURL)/sltvhcl",
-                    method: .POST,
-                    headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId),
-                    body: ["vehicleId": vehicle.regId],
-                    requestType: .fetchVehicleStatus
-                )
-                finalData = cachedData
-            } catch {
-                // If fetching sltvhcl fails, log and fall back to the realtime payload
-                BBLogger.debug(.api, "HyundaiCanada: failed fetching sltvhcl after realtime refresh: \(error)")
-            }
-
-            // Additionally, attempt to fetch the PIN-protected evc/fme payload to
-            // obtain a fresh GPS coord. If successful, inject coord into the
-            // cached sltvhcl payload so the parser has the latest location.
-            do {
-                let pAuth = try await fetchCommandAuthCode(authToken: authToken)
-                let (_, fmeJson, _) = try await performJSONRequest(
-                    url: "\(apiBaseURL)/evc/fme",
-                    method: .POST,
-                    headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: pAuth),
-                    body: ["vehicleId": vehicle.regId],
-                    requestType: .fetchVehicleStatus
-                )
-
-                if let fmeResult = fmeJson["result"] as? [String: Any],
-                   let gpsDetail = fmeResult["gpsDetail"] as? [String: Any],
-                   let coord = gpsDetail["coord"] as? [String: Any] {
-                    // Inject coord into finalData (cached sltvhcl payload) if possible
-                    if var finalJson = try JSONSerialization.jsonObject(with: finalData) as? [String: Any] {
-                        var result = finalJson["result"] as? [String: Any] ?? [:]
-                        var status = result["status"] as? [String: Any] ?? result["vehicleStatus"] as? [String: Any] ?? [:]
-                        status["coord"] = coord
-                        status["vehicleLocation"] = ["coord": coord]
-                        result["status"] = status
-                        finalJson["result"] = result
-                        finalData = try JSONSerialization.data(withJSONObject: finalJson)
-                    }
-                }
-            } catch {
-                BBLogger.debug(.api, "HyundaiCanada: failed fetching/injecting fme during realtime refresh: \(error)")
-            }
-        }
-
-        // We intentionally keep this flow simple: after optionally triggering
-        // a realtime refresh (rltmvhclsts) we always fetch the cached sltvhcl
-        // payload (finalData/finalJson) and parse that. No merging/augmentation.
         do {
-            let dataToParse = finalData
-            return try parseCanadaVehicleStatusResponse(dataToParse, for: vehicle)
+            return try parseCanadaVehicleStatusResponse(finalData, for: vehicle)
         } catch {
-            // If parsing the final payload fails, fall back to parsing the original primary payload
             BBLogger.debug(.api, "HyundaiCanada: parsing final status payload failed: \(error)")
             return try parseCanadaVehicleStatusResponse(primaryData, for: vehicle)
+        }
+    }
+
+    private func fetchRealtimeStatusData(
+        primaryData: Data,
+        vehicle: Vehicle,
+        authToken: AuthToken
+    ) async throws -> Data {
+        // Fetch cached sltvhcl payload for complete vehicle metadata
+        var finalData = primaryData
+        do {
+            let (cachedData, _, _) = try await performJSONRequest(
+                url: "\(apiBaseURL)/sltvhcl",
+                method: .POST,
+                headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId),
+                body: ["vehicleId": vehicle.regId],
+                requestType: .fetchVehicleStatus
+            )
+            finalData = cachedData
+        } catch {
+            BBLogger.debug(.api, "HyundaiCanada: failed fetching sltvhcl: \(error)")
+        }
+
+        // Fetch GPS coordinates from PIN-protected endpoint and inject into payload
+        finalData = await injectGPSCoordinates(into: finalData, vehicle: vehicle, authToken: authToken)
+        return finalData
+    }
+
+    private func injectGPSCoordinates(into data: Data, vehicle: Vehicle, authToken: AuthToken) async -> Data {
+        do {
+            let pAuth = try await fetchCommandAuthCode(authToken: authToken)
+            let (_, fmeJson, _) = try await performJSONRequest(
+                url: "\(apiBaseURL)/evc/fme",
+                method: .POST,
+                headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: pAuth),
+                body: ["vehicleId": vehicle.regId],
+                requestType: .fetchVehicleStatus
+            )
+
+            guard let fmeResult = fmeJson["result"] as? [String: Any],
+                  let gpsDetail = fmeResult["gpsDetail"] as? [String: Any],
+                  let coord = gpsDetail["coord"] as? [String: Any],
+                  var finalJson = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return data
+            }
+
+            var result = finalJson["result"] as? [String: Any] ?? [:]
+            var status = result["status"] as? [String: Any]
+                ?? result["vehicleStatus"] as? [String: Any] ?? [:]
+            status["coord"] = coord
+            status["vehicleLocation"] = ["coord": coord]
+            result["status"] = status
+            finalJson["result"] = result
+            return try JSONSerialization.data(withJSONObject: finalJson)
+        } catch {
+            BBLogger.debug(.api, "HyundaiCanada: failed injecting GPS: \(error)")
+            return data
         }
     }
 
