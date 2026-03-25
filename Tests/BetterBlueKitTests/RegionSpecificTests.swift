@@ -282,6 +282,80 @@ struct RegionSpecificTests {
         #expect(statusResult.washerFluidLow == true)
     }
 
+    @MainActor @Test("Canada location response parsing reads fndmcr coordinates")
+    func testCanadaLocationResponseParsing() throws {
+        let json: [String: Any] = [
+            "responseHeader": ["responseCode": 0],
+            "result": [
+                "coord": [
+                    "lat": 43.6532,
+                    "lon": -79.3832
+                ]
+            ]
+        ]
+
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let config = APIClientConfiguration(
+            region: .canada,
+            brand: .hyundai,
+            username: "",
+            password: "",
+            pin: "",
+            accountId: UUID()
+        )
+        let client = HyundaiCanadaAPIClient(configuration: config)
+
+        let location = try client.parseCanadaLocationResponse(data)
+        #expect(location.latitude == 43.6532)
+        #expect(location.longitude == -79.3832)
+    }
+
+    @MainActor @Test("Canada status parsing uses injected vehicle location coordinates")
+    func testCanadaStatusParsingInjectedLocation() throws {
+        let status: [String: Any] = [
+            "doorLock": true,
+            "airTemp": ["value": "22", "unit": 0],
+            "defrost": false,
+            "airCtrlOn": false,
+            "steerWheelHeat": 0,
+            "lastStatusDate": "20260221195224",
+            "vehicleLocation": [
+                "coord": [
+                    "lat": 43.6532,
+                    "lon": -79.3832
+                ]
+            ]
+        ]
+        let json: [String: Any] = [
+            "responseHeader": ["responseCode": 0],
+            "result": ["status": status]
+        ]
+
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let config = APIClientConfiguration(
+            region: .canada,
+            brand: .hyundai,
+            username: "",
+            password: "",
+            pin: "",
+            accountId: UUID()
+        )
+        let client = HyundaiCanadaAPIClient(configuration: config)
+        let vehicle = Vehicle(
+            vin: "TESTVIN",
+            regId: "REG",
+            model: "MODEL",
+            accountId: UUID(),
+            isElectric: false,
+            generation: 1,
+            odometer: Distance(length: 0, units: .kilometers)
+        )
+
+        let statusResult = try client.parseCanadaVehicleStatusResponse(data, for: vehicle)
+        #expect(statusResult.location.latitude == 43.6532)
+        #expect(statusResult.location.longitude == -79.3832)
+    }
+
     // MARK: - API Client Creation Tests
 
     @Test("API client creation for supported regions")
