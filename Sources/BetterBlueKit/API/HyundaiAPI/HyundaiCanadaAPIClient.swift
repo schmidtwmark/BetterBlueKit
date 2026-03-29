@@ -97,11 +97,12 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
             requestType: .fetchVehicleStatus
         )
 
-        let finalData = cached ? primaryData : try await fetchRealtimeStatusData(
+        let statusData = cached ? primaryData : try await fetchRealtimeStatusData(
             primaryData: primaryData,
             vehicle: vehicle,
             authToken: authToken
         )
+        let finalData = await injectLocationCoordinates(into: statusData, vehicle: vehicle, authToken: authToken)
 
         do {
             return try parseCanadaVehicleStatusResponse(finalData, for: vehicle)
@@ -131,29 +132,29 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
             BBLogger.debug(.api, "HyundaiCanada: failed fetching sltvhcl: \(error)")
         }
 
-        // Fetch GPS coordinates from PIN-protected endpoint and inject into payload
-        finalData = await injectGPSCoordinates(into: finalData, vehicle: vehicle, authToken: authToken)
         return finalData
     }
 
-    private func injectGPSCoordinates(into data: Data, vehicle: Vehicle, authToken: AuthToken) async -> Data {
+    private func injectLocationCoordinates(into data: Data, vehicle: Vehicle, authToken: AuthToken) async -> Data {
         do {
             let pAuth = try await fetchCommandAuthCode(authToken: authToken)
-            let (_, fmeJson, _) = try await performJSONRequest(
-                url: "\(apiBaseURL)/evc/fme",
+            let (locationData, _, _) = try await performJSONRequest(
+                url: "\(apiBaseURL)/fndmcr",
                 method: .POST,
                 headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: pAuth),
-                body: ["vehicleId": vehicle.regId],
+                body: ["pin": pin],
                 requestType: .fetchVehicleStatus
             )
+            let location = try parseCanadaLocationResponse(locationData)
 
-            guard let fmeResult = fmeJson["result"] as? [String: Any],
-                  let gpsDetail = fmeResult["gpsDetail"] as? [String: Any],
-                  let coord = gpsDetail["coord"] as? [String: Any],
-                  var finalJson = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            guard var finalJson = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 return data
             }
 
+            let coord: [String: Any] = [
+                "lat": location.latitude,
+                "lon": location.longitude
+            ]
             var result = finalJson["result"] as? [String: Any] ?? [:]
             var status = result["status"] as? [String: Any]
                 ?? result["vehicleStatus"] as? [String: Any] ?? [:]
@@ -163,7 +164,7 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
             finalJson["result"] = result
             return try JSONSerialization.data(withJSONObject: finalJson)
         } catch {
-            BBLogger.debug(.api, "HyundaiCanada: failed injecting GPS: \(error)")
+            BBLogger.debug(.api, "HyundaiCanada: failed injecting location: \(error)")
             return data
         }
     }

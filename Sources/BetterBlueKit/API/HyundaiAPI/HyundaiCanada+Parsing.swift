@@ -144,6 +144,19 @@ extension HyundaiCanadaAPIClient {
         return authCode
     }
 
+    func parseCanadaLocationResponse(_ data: Data) throws -> VehicleStatus.Location {
+        let json = try parseCanadaResponse(data, context: "location")
+        guard let result = json["result"] as? [String: Any],
+              let coord = result["coord"] as? [String: Any] else {
+            throw APIError.logError("Invalid Canada location response", apiName: apiName)
+        }
+
+        return VehicleStatus.Location(
+            latitude: extractNumber(from: coord["lat"]) ?? 0,
+            longitude: extractNumber(from: coord["lon"]) ?? 0
+        )
+    }
+
     // MARK: - Status Parsing Helpers
 
     private func detectElectricVehicle(from vehicleData: [String: Any]) -> Bool {
