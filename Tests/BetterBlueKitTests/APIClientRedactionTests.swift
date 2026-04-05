@@ -233,6 +233,19 @@ struct APIClientRedactionTests {
         #expect(result["Content-Type"] == "application/json")
     }
 
+    @Test("redactHeaders with secretkey header")
+    func testRedactSensitiveHeadersWithSecretKey() {
+        let headers = [
+            "secretkey": "sydnat-9kykci-Kuhtep-h5nK",
+            "Content-Type": "application/json"
+        ]
+
+        let result = SensitiveDataRedactor.redactHeaders(headers)
+
+        #expect(result["secretkey"] == "[REDACTED]")
+        #expect(result["Content-Type"] == "application/json")
+    }
+
     @Test("redactHeaders with empty headers")
     func testRedactSensitiveHeadersWithEmptyHeaders() {
         let headers: [String: String] = [:]
@@ -297,12 +310,122 @@ struct APIClientRedactionTests {
         #expect(!result.contains("5YJXCBE29KF000002"))
     }
 
+    @Test("redact phone numbers")
+    func testRedactPhoneNumbers() {
+        let input = """
+        {
+            "phone": "555-123-4567",
+            "phoneNumber": "+1 (555) 123-4567",
+            "mobileNumber": "5551234567",
+            "cellPhone": "555.123.4567",
+            "telematicsPhoneNumber": "6309152282",
+            "number": "6309152282"
+        }
+        """
+
+        let result = SensitiveDataRedactor.redact(input)!
+
+        #expect(!result.contains("555-123-4567"))
+        #expect(!result.contains("+1 (555) 123-4567"))
+        #expect(!result.contains("5551234567"))
+        #expect(!result.contains("555.123.4567"))
+        #expect(!result.contains("6309152282"))
+    }
+
+    @Test("redact account and user IDs")
+    func testRedactAccountAndUserIds() {
+        let input = """
+        {
+            "accountId": "550e8400-e29b-41d4-a716-446655440000",
+            "userId": "user@example.com",
+            "memberId": "MBR123456789",
+            "idmId": "PG1X67TL",
+            "billingAccountNumber": "A01134796",
+            "enrollmentId": "5025321",
+            "nadid": "5235406651",
+            "deviceKey": "B8DEC340-3543-4042-A4AD-9168823C67FA",
+            "deviceid": "B8DEC340-3543-4042-A4AD-9168823C67FA",
+            "clientuuid": "ba6c488d-78fb-5c40-9699-47fa624d06e7"
+        }
+        """
+
+        let result = SensitiveDataRedactor.redact(input)!
+
+        #expect(!result.contains("550e8400-e29b-41d4-a716-446655440000"))
+        #expect(!result.contains("user@example.com"))
+        #expect(!result.contains("MBR123456789"))
+        #expect(!result.contains("PG1X67TL"))
+        #expect(!result.contains("A01134796"))
+        #expect(!result.contains("5025321"))
+        #expect(!result.contains("5235406651"))
+        #expect(!result.contains("B8DEC340-3543-4042-A4AD-9168823C67FA"))
+        #expect(!result.contains("ba6c488d-78fb-5c40-9699-47fa624d06e7"))
+    }
+
+    @Test("redact first and last names")
+    func testRedactNames() {
+        let input = """
+        {
+            "firstName": "Mark",
+            "lastName": "Schmidt"
+        }
+        """
+
+        let result = SensitiveDataRedactor.redact(input)!
+
+        #expect(!result.contains("Mark"))
+        #expect(!result.contains("Schmidt"))
+        #expect(result.contains("[REDACTED]"))
+    }
+
+    @Test("redact emails in additional key formats")
+    func testRedactEmailsInAdditionalKeys() {
+        let input = """
+        {
+            "loginId": "user@example.com",
+            "notificationEmail": "user@example.com"
+        }
+        """
+
+        let result = SensitiveDataRedactor.redact(input)!
+
+        #expect(!result.contains("user@example.com"))
+    }
+
+    @Test("redact emails in URL paths")
+    func testRedactEmailsInURLPaths() {
+        let input = """
+        "url": "https://api.example.com/enrollment/details/user@example.com"
+        """
+
+        let result = SensitiveDataRedactor.redact(input)!
+
+        #expect(!result.contains("user@example.com"))
+        #expect(result.contains("[EMAIL_REDACTED]"))
+    }
+
+    @Test("redact physical address fields")
+    func testRedactAddressFields() {
+        let input = """
+        {
+            "street": "915 Long Drive",
+            "postalCode": "62305"
+        }
+        """
+
+        let result = SensitiveDataRedactor.redact(input)!
+
+        #expect(!result.contains("915 Long Drive"))
+        #expect(!result.contains("62305"))
+    }
+
     @Test("redact regId")
     func testRedactRegId() {
         let input = """
         {
             "regId": "ABC123456789",
-            "regID": "XYZ987654321"
+            "regID": "XYZ987654321",
+            "regid": "H00005447630VKM8KR4AE8PU232649"
         }
         """
 
@@ -311,6 +434,7 @@ struct APIClientRedactionTests {
         #expect(result.contains("[REDACTED]"))
         #expect(!result.contains("ABC123456789"))
         #expect(!result.contains("XYZ987654321"))
+        #expect(!result.contains("H00005447630VKM8KR4AE8PU232649"))
     }
 
     @Test("redact rememberMeToken")
