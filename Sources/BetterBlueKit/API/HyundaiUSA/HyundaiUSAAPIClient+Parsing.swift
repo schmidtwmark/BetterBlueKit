@@ -211,11 +211,25 @@ extension HyundaiUSAAPIClient {
         return distances.reduce(into: [:]) { dict, distance in
             let type: Int = extractNumber(from: distance["type"]) ?? 0
             let rangeByFuelData = distance["rangeByFuel"] as? [String: Any] ?? [:]
-            let totalRange = rangeByFuelData["totalAvailableRange"] as? [String: Any] ?? [:]
-            dict[FuelType(number: type)] = Distance(
-                length: extractNumber(from: totalRange["value"]) ?? 0,
-                units: Distance.Units(extractNumber(from: totalRange["unit"]) ?? 2)
-            )
+            if let evRange = rangeByFuelData["evModeRange"] as? [String: Any] {
+                dict[FuelType.electric] = Distance(
+                    length: extractNumber(from: evRange["value"]) ?? 0,
+                    units: Distance.Units(extractNumber(from: evRange["unit"]) ?? 2)
+                    )
+            }
+            if let gasRange = rangeByFuelData["gasModeRange"] as? [String: Any] {
+                dict[FuelType.gas] = Distance(
+                    length: extractNumber(from: gasRange["value"]) ?? 0,
+                    units: Distance.Units(extractNumber(from: gasRange["unit"]) ?? 2)
+                )
+            }
+            
+            if let totalRange = rangeByFuelData["totalAvailableRange"] as? [String: Any], dict.isEmpty {
+                dict[FuelType(number: type)] = Distance(
+                    length: extractNumber(from: totalRange["value"]) ?? 0,
+                    units: Distance.Units(extractNumber(from: totalRange["unit"]) ?? 2)
+                )
+            }
         }
     }
 
