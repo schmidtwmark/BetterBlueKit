@@ -63,7 +63,7 @@ extension KiaUSAAPIClient {
         )
     }
 
-    func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] {
+    package func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] {
         try checkForKiaErrors(data: data)
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -92,7 +92,7 @@ extension KiaUSAAPIClient {
                 regId: regId,
                 model: nickname,
                 accountId: accountId,
-                isElectric: fuelType != 3,
+                fuelType: FuelType(number: fuelType),
                 generation: Int(generation) ?? 1,
                 odometer: odometer,
                 vehicleKey: vehicleKey
@@ -100,7 +100,7 @@ extension KiaUSAAPIClient {
         }
     }
 
-    func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus {
+    package func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus {
         try checkForKiaErrors(data: data)
         let lastVehicleInfo = try extractLastVehicleInfo(from: data)
         let vehicleStatus = try extractVehicleStatus(from: lastVehicleInfo)

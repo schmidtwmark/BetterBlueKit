@@ -15,8 +15,8 @@ extension HyundaiUSAAPIClient {
         let path: String = switch command {
         case .unlock: "ac/v2/rcs/rdo/on"
         case .lock: "ac/v2/rcs/rdo/off"
-        case .startClimate: vehicle.isElectric ? "ac/v2/evc/fatc/start" : "ac/v2/rcs/rsc/start"
-        case .stopClimate: vehicle.isElectric ? "ac/v2/evc/fatc/stop" : "ac/v2/rcs/rsc/stop"
+        case .startClimate: vehicle.fuelType.hasElectricCapability ? "ac/v2/evc/fatc/start" : "ac/v2/rcs/rsc/start"
+        case .stopClimate: vehicle.fuelType.hasElectricCapability ? "ac/v2/evc/fatc/stop" : "ac/v2/rcs/rsc/stop"
         case .startCharge: "ac/v2/evc/charge/start"
         case .stopCharge: "ac/v2/evc/charge/stop"
         case .setTargetSOC: "ac/v2/evc/charge/targetsoc/set"
@@ -27,7 +27,7 @@ extension HyundaiUSAAPIClient {
     func commandBody(for command: VehicleCommand, vehicle: Vehicle) -> [String: Any] {
         switch command {
         case .startClimate(let options):
-            if vehicle.isElectric {
+            if vehicle.fuelType.hasElectricCapability {
                 var body: [String: Any] = [
                     "airCtrl": options.climate ? 1 : 0,
                     "airTemp": [

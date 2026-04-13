@@ -268,7 +268,7 @@ struct RegionSpecificTests {
             regId: "REG",
             model: "MODEL",
             accountId: UUID(),
-            isElectric: false,
+            fuelType: .gas,
             generation: 1,
             odometer: Distance(length: 0, units: .kilometers)
         )
@@ -346,7 +346,7 @@ struct RegionSpecificTests {
             regId: "REG",
             model: "MODEL",
             accountId: UUID(),
-            isElectric: false,
+            fuelType: .gas,
             generation: 1,
             odometer: Distance(length: 0, units: .kilometers)
         )

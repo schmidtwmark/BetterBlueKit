@@ -11,7 +11,7 @@ import Foundation
 
 extension HyundaiEuropeAPIClient {
 
-    func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] {
+    package func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let resMsg = json["resMsg"] as? [String: Any],
               let vehicleArray = resMsg["vehicles"] as? [[String: Any]] else {
@@ -26,7 +26,11 @@ extension HyundaiEuropeAPIClient {
             }
 
             let fuelKindCode = vehicleData["fuelKindCode"] as? String ?? ""
-            let isElectric = fuelKindCode == "E" || fuelKindCode == "EV"
+            let fuelType: FuelType = switch fuelKindCode {
+            case "E", "EV": .electric
+            case "P", "PE": .phev
+            default: .gas
+            }
             let ownerInfo = vehicleData["master"] as? [String: Any] ?? [:]
             let generation = ownerInfo["carGeneration"] as? Int ?? 2
 
@@ -35,14 +39,14 @@ extension HyundaiEuropeAPIClient {
                 regId: vehicleId,
                 model: nickname,
                 accountId: accountId,
-                isElectric: isElectric,
+                fuelType: fuelType,
                 generation: generation,
                 odometer: Distance(length: 0, units: .kilometers)
             )
         }
     }
 
-    func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus {
+    package func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let resMsg = json["resMsg"] as? [String: Any] else {
             throw APIError.logError("Invalid status response", apiName: apiName)
@@ -70,7 +74,7 @@ extension HyundaiEuropeAPIClient {
     }
 
     private func parseEVStatus(from vehicleState: [String: Any], vehicle: Vehicle) -> VehicleStatus.EVStatus? {
-        guard vehicle.isElectric else { return nil }
+        guard vehicle.fuelType.hasElectricCapability else { return nil }
 
         let green = vehicleState["Green"] as? [String: Any] ?? [:]
         let drivetrain = green["Drivetrain"] as? [String: Any] ?? [:]

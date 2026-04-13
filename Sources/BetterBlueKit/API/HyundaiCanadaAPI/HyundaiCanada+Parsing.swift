@@ -27,7 +27,7 @@ extension HyundaiCanadaAPIClient {
         )
     }
 
-    func parseCanadaVehiclesResponse(_ data: Data) throws -> [Vehicle] {
+    package func parseCanadaVehiclesResponse(_ data: Data) throws -> [Vehicle] {
         let json = try parseCanadaResponse(data, context: "vehicles")
         guard let result = json["result"] as? [String: Any],
               let vehicles = result["vehicles"] as? [[String: Any]] else {
@@ -60,21 +60,21 @@ extension HyundaiCanadaAPIClient {
                 extractNumber(from: vehicleData["odometer"]) ??
                 extractNumber(from: odometerObject["value"]) ?? 0
 
-            let isElectric = detectElectricVehicle(from: vehicleData)
+            let fuelType = detectFuelType(from: vehicleData)
 
             return Vehicle(
                 vin: vin,
                 regId: regId,
                 model: nickname,
                 accountId: accountId,
-                isElectric: isElectric,
+                fuelType: fuelType,
                 generation: generation,
                 odometer: Distance(length: odometerValue, units: .kilometers)
             )
         }
     }
 
-    func parseCanadaVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus {
+    package func parseCanadaVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus {
         let json = try parseCanadaResponse(data, context: "status")
         guard let result = json["result"] as? [String: Any] else {
             throw APIError.logError("Invalid Canada status response", apiName: apiName)

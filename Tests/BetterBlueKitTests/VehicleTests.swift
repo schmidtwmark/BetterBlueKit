@@ -22,7 +22,7 @@ struct VehicleTests {
             regId: "REG123456",
             model: "Elantra Hybrid",
             accountId: accountId,
-            isElectric: false,
+            fuelType: .gas,
             generation: 3,
             odometer: odometer,
             vehicleKey: "vehicle_key_123"
@@ -32,7 +32,7 @@ struct VehicleTests {
         #expect(vehicle.regId == "REG123456")
         #expect(vehicle.model == "Elantra Hybrid")
         #expect(vehicle.accountId == accountId)
-        #expect(vehicle.isElectric == false)
+        #expect(vehicle.fuelType == .gas)
         #expect(vehicle.generation == 3)
         #expect(vehicle.odometer.length == 15000.0)
         #expect(vehicle.odometer.units == .miles)
@@ -49,7 +49,7 @@ struct VehicleTests {
             regId: "REG789012",
             model: "Ioniq 5",
             accountId: accountId,
-            isElectric: true,
+            fuelType: .electric,
             generation: 4,
             odometer: odometer
         )
@@ -58,7 +58,7 @@ struct VehicleTests {
         #expect(vehicle.regId == "REG789012")
         #expect(vehicle.model == "Ioniq 5")
         #expect(vehicle.accountId == accountId)
-        #expect(vehicle.isElectric == true)
+        #expect(vehicle.fuelType == .electric)
         #expect(vehicle.generation == 4)
         #expect(vehicle.odometer.length == 25000.0)
         #expect(vehicle.odometer.units == .kilometers)
@@ -72,7 +72,7 @@ struct VehicleTests {
             regId: "REG001",
             model: "Test Model",
             accountId: UUID(),
-            isElectric: true,
+            fuelType: .electric,
             generation: 2,
             odometer: Distance(length: 0, units: .miles)
         )
@@ -91,7 +91,7 @@ struct VehicleTests {
             regId: "REG001",
             model: "Model A",
             accountId: accountId,
-            isElectric: true,
+            fuelType: .electric,
             generation: 3,
             odometer: odometer,
             vehicleKey: "key1"
@@ -102,7 +102,7 @@ struct VehicleTests {
             regId: "REG001",
             model: "Model A",
             accountId: accountId,
-            isElectric: true,
+            fuelType: .electric,
             generation: 3,
             odometer: odometer,
             vehicleKey: "key1"
@@ -113,7 +113,7 @@ struct VehicleTests {
             regId: "REG001",
             model: "Model A",
             accountId: accountId,
-            isElectric: true,
+            fuelType: .electric,
             generation: 3,
             odometer: odometer,
             vehicleKey: "key1"
@@ -131,7 +131,7 @@ struct VehicleTests {
             regId: "REG_CODABLE",
             model: "Codable Model",
             accountId: accountId,
-            isElectric: false,
+            fuelType: .gas,
             generation: 2,
             odometer: Distance(length: 5000.0, units: .kilometers),
             vehicleKey: "codable_key"
@@ -144,7 +144,7 @@ struct VehicleTests {
         #expect(decoded.regId == original.regId)
         #expect(decoded.model == original.model)
         #expect(decoded.accountId == original.accountId)
-        #expect(decoded.isElectric == original.isElectric)
+        #expect(decoded.fuelType == original.fuelType)
         #expect(decoded.generation == original.generation)
         #expect(decoded.odometer.length == original.odometer.length)
         #expect(decoded.odometer.units == original.odometer.units)
@@ -158,7 +158,7 @@ struct VehicleTests {
             regId: "NO_KEY_REG",
             model: "No Key Model",
             accountId: UUID(),
-            isElectric: true,
+            fuelType: .electric,
             generation: 3,
             odometer: Distance(length: 1000.0, units: .miles)
         )
@@ -177,7 +177,7 @@ struct VehicleTests {
             regId: "ID_REG",
             model: "ID Model",
             accountId: UUID(),
-            isElectric: false,
+            fuelType: .gas,
             generation: 1,
             odometer: Distance(length: 0, units: .miles)
         )
@@ -199,7 +199,7 @@ struct VehicleTests {
             regId: "ZERO_REG",
             model: "Zero Model",
             accountId: UUID(),
-            isElectric: true,
+            fuelType: .electric,
             generation: 1,
             odometer: Distance(length: 0.0, units: .miles)
         )
@@ -215,7 +215,7 @@ struct VehicleTests {
             regId: "HIGH_GEN_REG",
             model: "Future Model",
             accountId: UUID(),
-            isElectric: true,
+            fuelType: .electric,
             generation: 99,
             odometer: Distance(length: 0, units: .miles)
         )
@@ -230,7 +230,7 @@ struct VehicleTests {
             regId: "",
             model: "",
             accountId: UUID(),
-            isElectric: false,
+            fuelType: .gas,
             generation: 1,
             odometer: Distance(length: 0, units: .miles),
             vehicleKey: ""
@@ -251,7 +251,7 @@ struct VehicleTests {
             regId: "REG001",
             model: "Test Model",
             accountId: UUID(),
-            isElectric: false,
+            fuelType: .gas,
             generation: 1,
             odometer: Distance(length: 0, units: .miles)
         )
@@ -269,7 +269,7 @@ struct VehicleTests {
             regId: "REG_SPECIAL",
             model: specialModel,
             accountId: UUID(),
-            isElectric: true,
+            fuelType: .electric,
             generation: 4,
             odometer: Distance(length: 1000, units: .kilometers)
         )
@@ -289,7 +289,7 @@ struct VehicleTests {
             regId: "GEN_0_REG",
             model: "Generation 0",
             accountId: UUID(),
-            isElectric: false,
+            fuelType: .gas,
             generation: 0,
             odometer: Distance(length: 0, units: .miles)
         )
@@ -301,7 +301,7 @@ struct VehicleTests {
             regId: "GEN_NEG_REG",
             model: "Negative Generation",
             accountId: UUID(),
-            isElectric: false,
+            fuelType: .gas,
             generation: -1,
             odometer: Distance(length: 0, units: .miles)
         )
@@ -313,7 +313,7 @@ struct VehicleTests {
             regId: "GEN_LARGE_REG",
             model: "Future Generation",
             accountId: UUID(),
-            isElectric: true,
+            fuelType: .electric,
             generation: Int.max,
             odometer: Distance(length: 0, units: .miles)
         )
@@ -330,7 +330,7 @@ struct VehicleTests {
             regId: unicodeRegId,
             model: "International Model",
             accountId: UUID(),
-            isElectric: true,
+            fuelType: .electric,
             generation: 2,
             odometer: Distance(length: 5000, units: .kilometers)
         )
@@ -349,7 +349,7 @@ struct VehicleTests {
             regId: "MAX_DISTANCE_REG",
             model: "High Mileage Vehicle",
             accountId: UUID(),
-            isElectric: false,
+            fuelType: .gas,
             generation: 1,
             odometer: maxDistance
         )
@@ -369,7 +369,7 @@ struct VehicleTests {
             regId: "REG001",
             model: "Model A",
             accountId: accountId,
-            isElectric: true,
+            fuelType: .electric,
             generation: 3,
             odometer: odometer,
             vehicleKey: "key123"
@@ -381,7 +381,7 @@ struct VehicleTests {
             regId: "REG001",
             model: "Model A",
             accountId: accountId,
-            isElectric: true,
+            fuelType: .electric,
             generation: 3,
             odometer: odometer
         )
@@ -395,7 +395,7 @@ struct VehicleTests {
             regId: "REG001",
             model: "Model A",
             accountId: accountId,
-            isElectric: true,
+            fuelType: .electric,
             generation: 3,
             odometer: odometer,
             vehicleKey: "different_key"

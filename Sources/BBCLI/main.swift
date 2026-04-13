@@ -130,8 +130,9 @@ func printUsage() {
     BetterBlueKit CLI - Test tool for Hyundai/Kia API
 
     Usage: bbcli [OPTIONS]
+           bbcli parse [OPTIONS] <json-string-or-file>
 
-    Options:
+    Interactive Mode Options:
       -u, --username <email>    Account username/email
       -p, --password <pass>     Account password
       --pin <pin>               Vehicle PIN (required for Hyundai)
@@ -140,11 +141,26 @@ func printUsage() {
       --no-redaction            Disable PII redaction in HTTP logs
       -h, --help                Show this help message
 
-    If credentials are not provided via arguments, you will be prompted.
+    Parse Mode:
+      bbcli parse -b <brand> -r <region> -t <type> [--vin <vin>] [--electric] <json>
+
+      Parses a raw API response JSON and outputs the parsed BetterBlueKit struct.
+
+      -t, --type <type>         Parse type: 'vehicles' or 'vehicleStatus'
+      --vin <vin>               VIN for vehicleStatus parsing (default: TESTVIN0000000000)
+      --electric                Mark vehicle as electric for parsing (auto-detected from
+                                evStatus field in vehicles response if not specified)
+      <json>                    JSON string or path to a JSON file (last argument)
+
+      If the JSON contains a top-level "responseBody" key, it will be automatically
+      unwrapped before parsing.
 
     Examples:
       bbcli -u user@email.com -p password --pin 1234 -b hyundai
       bbcli -b kia -u user@email.com -p password
+      bbcli parse -b hyundai -r US -t vehicleStatus response.json
+      bbcli parse -b hyundai -r US -t vehicleStatus '{"vehicleStatus": {...}}'
+      bbcli parse -b kia -r US -t vehicles --electric response.json
     """)
 }
 
@@ -306,7 +322,7 @@ func fetchVehicles(state: CLIState) async throws {
         print("\n[\(index + 1)] \(vehicle.model)")
         print("    VIN: \(displayVIN)")
         print("    Model: \(vehicle.model)")
-        print("    Electric: \(vehicle.isElectric)")
+        print("    Fuel Type: \(vehicle.fuelType.rawValue)")
         print("    Generation: \(vehicle.generation)")
         if let key = vehicle.vehicleKey {
             let displayKey = state.redactPII ? "[REDACTED]" : key
@@ -514,6 +530,228 @@ func runInteractiveLoop(state: CLIState) async {
     }
 }
 
+// MARK: - Parse Mode
+
+enum ParseType: String {
+    case vehicles
+    case vehicleStatus
+}
+
+struct ParseOptions {
+    var brand: Brand = .hyundai
+    var region: Region = .usa
+    var parseType: ParseType?
+    var vin: String = "TESTVIN0000000000"
+    var fuelType: FuelType?  // nil = auto-detect
+    var jsonInput: String?
+}
+
+func parseParseArguments() -> ParseOptions {
+    let args = CommandLine.arguments
+    var options = ParseOptions()
+    var argIndex = 2  // Skip "bbcli" and "parse"
+
+    while argIndex < args.count {
+        switch args[argIndex] {
+        case "-b", "--brand":
+            if argIndex + 1 < args.count {
+                let brandArg = args[argIndex + 1].lowercased()
+                if let brand = Brand(rawValue: brandArg) {
+                    options.brand = brand
+                } else {
+                    printError("Unknown brand: \(args[argIndex + 1]). Use 'hyundai' or 'kia'.")
+                    exit(1)
+                }
+                argIndex += 1
+            }
+        case "-r", "--region":
+            if argIndex + 1 < args.count {
+                let regionArg = args[argIndex + 1]
+                if let parsedRegion = Region(rawValue: regionArg.uppercased()) {
+                    options.region = parsedRegion
+                } else {
+                    printError("Unknown region: \(args[argIndex + 1]). Use \(Region.allCases.map { $0.rawValue }).")
+                    exit(1)
+                }
+                argIndex += 1
+            }
+        case "-t", "--type":
+            if argIndex + 1 < args.count {
+                let typeArg = args[argIndex + 1]
+                switch typeArg.lowercased() {
+                case "vehicles":
+                    options.parseType = .vehicles
+                case "vehiclestatus", "status":
+                    options.parseType = .vehicleStatus
+                default:
+                    printError("Unknown parse type: \(typeArg). Use 'vehicles' or 'vehicleStatus'.")
+                    exit(1)
+                }
+                argIndex += 1
+            }
+        case "--vin":
+            if argIndex + 1 < args.count {
+                options.vin = args[argIndex + 1]
+                argIndex += 1
+            }
+        case "--electric":
+            options.fuelType = .electric
+        case "-h", "--help":
+            printUsage()
+            exit(0)
+        default:
+            // Last unknown argument is the JSON input
+            options.jsonInput = args[argIndex]
+        }
+        argIndex += 1
+    }
+
+    return options
+}
+
+func loadJSONData(from input: String) throws -> Data {
+    // Check if it's a file path
+    let fileManager = FileManager.default
+    let path = (input as NSString).expandingTildeInPath
+    if fileManager.fileExists(atPath: path) {
+        print("Reading JSON from file: \(path)")
+        return try Data(contentsOf: URL(fileURLWithPath: path))
+    }
+
+    // Try as raw JSON string
+    guard let data = input.data(using: .utf8) else {
+        throw APIError(message: "Could not convert input to data")
+    }
+
+    // Validate it's actually JSON
+    guard (try? JSONSerialization.jsonObject(with: data)) != nil else {
+        throw APIError(message: "Input is neither a valid file path nor valid JSON")
+    }
+
+    return data
+}
+
+/// Unwraps a `{"responseBody": {...}}` wrapper if present, returning the inner data.
+func unwrapResponseBody(_ data: Data) -> Data {
+    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let responseBody = json["responseBody"],
+          json.count <= 2  // responseBody + maybe one other key like "responseHeader"
+    else {
+        return data
+    }
+
+    if let unwrapped = try? JSONSerialization.data(withJSONObject: responseBody) {
+        print("Auto-unwrapped 'responseBody' wrapper")
+        return unwrapped
+    }
+    return data
+}
+
+func encodePrettyJSON<T: Encodable>(_ value: T) -> String {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    encoder.dateEncodingStrategy = .iso8601
+    guard let data = try? encoder.encode(value),
+          let string = String(data: data, encoding: .utf8) else {
+        return "\(value)"
+    }
+    return string
+}
+
+@MainActor
+func runParseMode() async -> Int32 {
+    let options = parseParseArguments()
+
+    guard let parseType = options.parseType else {
+        printError("Parse type is required. Use -t vehicles or -t vehicleStatus")
+        return 1
+    }
+
+    guard let jsonInput = options.jsonInput else {
+        printError("JSON input is required (JSON string or path to file)")
+        return 1
+    }
+
+    do {
+        let rawData = try loadJSONData(from: jsonInput)
+        let data = unwrapResponseBody(rawData)
+
+        // Create a dummy API client for parsing
+        let config = APIClientConfiguration(
+            region: options.region,
+            brand: options.brand,
+            username: "parse-mode",
+            password: "",
+            pin: "",
+            accountId: UUID()
+        )
+
+        let client = try createBetterBlueKitAPIClient(configuration: config)
+
+        printHeader("Parsing \(parseType.rawValue) (\(options.brand.displayName) \(options.region.rawValue))")
+
+        switch parseType {
+        case .vehicles:
+            let vehicles = try parseVehicles(client: client, data: data, options: options)
+            printSuccess("Parsed \(vehicles.count) vehicle(s)")
+            print(encodePrettyJSON(vehicles))
+
+        case .vehicleStatus:
+            let fuelType = options.fuelType ?? .gas
+            let vehicle = Vehicle(
+                vin: options.vin,
+                regId: "parse-mode",
+                model: "parse-mode",
+                accountId: UUID(),
+                fuelType: fuelType,
+                generation: 2,
+                odometer: Distance(length: 0, units: .miles)
+            )
+            let status = try parseVehicleStatus(client: client, data: data, vehicle: vehicle)
+            printSuccess("Parsed vehicle status")
+            print(encodePrettyJSON(status))
+        }
+
+        return 0
+    } catch let error as APIError {
+        printError("\(error.errorType): \(error.message)")
+        return 1
+    } catch {
+        printError(error.localizedDescription)
+        return 1
+    }
+}
+
+@MainActor
+func parseVehicles(client: any APIClientProtocol, data: Data, options: ParseOptions) throws -> [Vehicle] {
+    if let hyundaiUSA = client as? HyundaiUSAAPIClient {
+        return try hyundaiUSA.parseVehiclesResponse(data)
+    } else if let hyundaiCanada = client as? HyundaiCanadaAPIClient {
+        return try hyundaiCanada.parseCanadaVehiclesResponse(data)
+    } else if let hyundaiEurope = client as? HyundaiEuropeAPIClient {
+        return try hyundaiEurope.parseVehiclesResponse(data)
+    } else if let kiaUSA = client as? KiaUSAAPIClient {
+        return try kiaUSA.parseVehiclesResponse(data)
+    } else {
+        throw APIError(message: "Unsupported client type for vehicle parsing")
+    }
+}
+
+@MainActor
+func parseVehicleStatus(client: any APIClientProtocol, data: Data, vehicle: Vehicle) throws -> VehicleStatus {
+    if let hyundaiUSA = client as? HyundaiUSAAPIClient {
+        return try hyundaiUSA.parseVehicleStatusResponse(data, for: vehicle)
+    } else if let hyundaiCanada = client as? HyundaiCanadaAPIClient {
+        return try hyundaiCanada.parseCanadaVehicleStatusResponse(data, for: vehicle)
+    } else if let hyundaiEurope = client as? HyundaiEuropeAPIClient {
+        return try hyundaiEurope.parseVehicleStatusResponse(data, for: vehicle)
+    } else if let kiaUSA = client as? KiaUSAAPIClient {
+        return try kiaUSA.parseVehicleStatusResponse(data, for: vehicle)
+    } else {
+        throw APIError(message: "Unsupported client type for status parsing")
+    }
+}
+
 // MARK: - Main
 
 @MainActor
@@ -552,7 +790,13 @@ func runCLI() async -> Int32 {
 }
 
 Task { @MainActor in
-    let exitCode = await runCLI()
+    // Check if first argument is "parse" subcommand
+    let exitCode: Int32
+    if CommandLine.arguments.count > 1 && CommandLine.arguments[1] == "parse" {
+        exitCode = await runParseMode()
+    } else {
+        exitCode = await runCLI()
+    }
     exit(exitCode)
 }
 

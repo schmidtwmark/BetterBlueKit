@@ -61,13 +61,20 @@ public func isTestAccount(username: String, password: String) -> Bool {
 public enum FuelType: String, CaseIterable, Codable, Sendable {
     case gas
     case electric
+    case phev
 
-    init(number: Int) {
+    public init(number: Int) {
         self = switch number {
         case 0: .gas
+        case 1: .phev
         case 2: .electric
         default: .gas
         }
+    }
+
+    /// Whether this fuel type has electric/EV capability (true for both pure EV and PHEV)
+    public var hasElectricCapability: Bool {
+        self != .gas
     }
 }
 

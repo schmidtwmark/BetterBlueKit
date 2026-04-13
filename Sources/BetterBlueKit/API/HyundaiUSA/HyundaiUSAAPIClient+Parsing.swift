@@ -29,7 +29,7 @@ extension HyundaiUSAAPIClient {
         )
     }
 
-    func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] {
+    package func parseVehiclesResponse(_ data: Data) throws -> [Vehicle] {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let vehicleArray = json["enrolledVehicleDetails"] as? [[String: Any]] else {
             throw APIError.logError("Invalid vehicles response", apiName: apiName)
@@ -55,14 +55,14 @@ extension HyundaiUSAAPIClient {
                 regId: regId,
                 model: nickname,
                 accountId: accountId,
-                isElectric: evStatus == "E",
+                fuelType: evStatus == "E" ? .electric : evStatus == "P" ? .phev : .gas,
                 generation: Int(generation) ?? 1,
                 odometer: odometer
             )
         }
     }
 
-    func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus {
+    package func parseVehicleStatusResponse(_ data: Data, for vehicle: Vehicle) throws -> VehicleStatus {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let statusData = json["vehicleStatus"] as? [String: Any] else {
             throw APIError.logError("Invalid status response", apiName: apiName)
@@ -164,7 +164,7 @@ extension HyundaiUSAAPIClient {
     // MARK: - Status Parsing Helpers
 
     private func parseEVStatus(from statusData: [String: Any], vehicle: Vehicle) -> VehicleStatus.EVStatus? {
-        guard vehicle.isElectric,
+        guard vehicle.fuelType.hasElectricCapability,
               let evStatusData = statusData["evStatus"] as? [String: Any] else { return nil }
 
         let ranges = fuelRanges(from: statusData)
@@ -223,7 +223,6 @@ extension HyundaiUSAAPIClient {
                     units: Distance.Units(extractNumber(from: gasRange["unit"]) ?? 2)
                 )
             }
-            
             if let totalRange = rangeByFuelData["totalAvailableRange"] as? [String: Any], dict.isEmpty {
                 dict[FuelType(number: type)] = Distance(
                     length: extractNumber(from: totalRange["value"]) ?? 0,
@@ -234,18 +233,17 @@ extension HyundaiUSAAPIClient {
     }
 
     private func parseGasRange(from statusData: [String: Any], vehicle: Vehicle) -> VehicleStatus.FuelRange? {
-        guard !vehicle.isElectric else { return nil }
-        let percentage = extractNumber(from: statusData["fuelLevel"]) ?? -1.0
-        // Sometimes, gas vehicles don't have the fuelLevel member set
-        // Report a percentage of -1 if we don't know it, which gets ignored by the UI
+        // Pure EVs don't have gas range — skip to avoid misinterpreting dte/fuelLevel fields
+        guard vehicle.fuelType != .electric else { return nil }
+        guard let percentage: Double = extractNumber(from: statusData["fuelLevel"]) else { return nil }
 
         // Gas range can be in two places: evStatus rangeByFuel section or dte field
         if let gasRange = fuelRanges(from: statusData)[.gas] {
             return VehicleStatus.FuelRange(range: gasRange, percentage: percentage)
         } else if let dte = statusData["dte"] as? [String: Any],
-                  let gasRange: Double  = extractNumber(from: statusData["value"]) {
-            let units = Distance.Units(extractNumber(from: statusData["unit"]) ?? 2)
-            return VehicleStatus.FuelRange(range: Distance(length: gasRange, units: units), percentage: percentage )
+                  let gasRange: Double = extractNumber(from: dte["value"]) {
+            let units = Distance.Units(extractNumber(from: dte["unit"]) ?? 2)
+            return VehicleStatus.FuelRange(range: Distance(length: gasRange, units: units), percentage: percentage)
         } else {
             return nil
         }

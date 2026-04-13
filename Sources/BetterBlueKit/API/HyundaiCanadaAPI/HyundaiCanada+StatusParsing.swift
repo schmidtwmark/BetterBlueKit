@@ -11,24 +11,27 @@ extension HyundaiCanadaAPIClient {
 
     // MARK: - Status Parsing Helpers
 
-    func detectElectricVehicle(from vehicleData: [String: Any]) -> Bool {
+    func detectFuelType(from vehicleData: [String: Any]) -> FuelType {
         if let evStatus = vehicleData["evStatus"] as? String {
-            return evStatus.uppercased().hasPrefix("E")
+            let status = evStatus.uppercased()
+            if status.hasPrefix("E") { return .electric }
+            if status.hasPrefix("P") { return .phev }
+            return .gas
         }
-        if let fuelType: Int = extractNumber(from: vehicleData["fuelType"]) {
-            return fuelType != 3
+        if let fuelTypeNum: Int = extractNumber(from: vehicleData["fuelType"]) {
+            return FuelType(number: fuelTypeNum)
         }
         if let modelName = (vehicleData["modelName"] as? String)?.lowercased() {
-            return modelName.contains("ev") || modelName.contains("electric")
+            if modelName.contains("ev") || modelName.contains("electric") { return .electric }
         }
-        return true
+        return .electric
     }
 
     func parseCanadaEVStatus(
         from statusData: [String: Any],
         vehicle: Vehicle
     ) -> VehicleStatus.EVStatus? {
-        guard vehicle.isElectric,
+        guard vehicle.fuelType.hasElectricCapability,
               let evStatusData = statusData["evStatus"] as? [String: Any] else {
             return nil
         }
@@ -56,7 +59,7 @@ extension HyundaiCanadaAPIClient {
         from statusData: [String: Any],
         vehicle: Vehicle
     ) -> VehicleStatus.FuelRange? {
-        guard !vehicle.isElectric,
+        guard vehicle.fuelType == .gas,
               let fuelLevel: Double = extractNumber(from: statusData["fuelLevel"]) else {
             return nil
         }
