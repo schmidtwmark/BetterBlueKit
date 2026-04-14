@@ -24,12 +24,19 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
     }
 
     // Device ID is a simple uppercase UUID (matches Python: str(uuid.uuid4()).upper())
-    let deviceId: String = UUID().uuidString.uppercased()
+    // Use persisted device ID from configuration if available, so the server recognizes
+    // the same device across re-authentications and the rmToken remains valid.
+    let deviceId: String
 
     // Client UUID is a UUID5 hash of device_id using DNS namespace
     var clientUUID: String {
         let namespaceUUID = UUID(uuidString: "6ba7b810-9dad-11d1-80b4-00c04fd430c8")!
         return generateUUID5(namespace: namespaceUUID, name: deviceId).uuidString.lowercased()
+    }
+
+    public override init(configuration: APIClientConfiguration, urlSession: URLSession = .shared) {
+        self.deviceId = configuration.deviceId ?? UUID().uuidString.uppercased()
+        super.init(configuration: configuration, urlSession: urlSession)
     }
 
     public override var apiName: String { "KiaUSA" }
@@ -229,12 +236,13 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
         let url = commandURL(for: command)
         let body = commandBody(for: command, vehicle: vehicle)
+        let method = commandMethod(for: command)
 
         let (data, _, _) = try await performJSONRequest(
             url: url,
-            method: .POST,
+            method: method,
             headers: authorizedHeaders(authToken: authToken, vehicleKey: vehicle.vehicleKey),
-            body: body,
+            body: method == .GET ? nil : body,
             requestType: .sendCommand
         )
 

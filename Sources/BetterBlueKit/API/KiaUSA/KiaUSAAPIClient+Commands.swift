@@ -11,6 +11,15 @@ import Foundation
 
 extension KiaUSAAPIClient {
 
+    func commandMethod(for command: VehicleCommand) -> HTTPMethod {
+        switch command {
+        case .stopClimate, .stopCharge:
+            .GET
+        default:
+            .POST
+        }
+    }
+
     func commandURL(for command: VehicleCommand) -> String {
         let path: String = switch command {
         case .lock: "rems/door/lock"
@@ -29,6 +38,7 @@ extension KiaUSAAPIClient {
         case .startClimate(let options):
             let heatingAccessory: [String: Int] = [
                 "steeringWheel": options.steeringWheel > 0 ? 1 : 0,
+                "steeringWheelStep": options.steeringWheel,
                 "rearWindow": options.rearDefrostEnabled ? 1 : 0,
                 "sideMirror": options.rearDefrostEnabled ? 1 : 0
             ]

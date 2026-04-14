@@ -19,6 +19,7 @@ public struct APIClientConfiguration {
     public let logSink: HTTPLogSink?
     public let rememberMeToken: String?
     public let redactPII: Bool
+    public let deviceId: String?
 
     public init(
         region: Region,
@@ -29,7 +30,8 @@ public struct APIClientConfiguration {
         accountId: UUID,
         logSink: HTTPLogSink? = nil,
         rememberMeToken: String? = nil,
-        redactPII: Bool = true
+        redactPII: Bool = true,
+        deviceId: String? = nil
     ) {
         self.region = region
         self.brand = brand
@@ -40,6 +42,7 @@ public struct APIClientConfiguration {
         self.logSink = logSink
         self.rememberMeToken = rememberMeToken
         self.redactPII = redactPII
+        self.deviceId = deviceId
     }
 }
 
