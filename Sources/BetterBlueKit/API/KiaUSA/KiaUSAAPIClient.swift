@@ -209,13 +209,19 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
             "KiaUSA: Fetching status for VIN: \(vehicle.vin), vehicleKey: \(vehicleKeyLog), cached: \(cached)"
         )
 
-        // The `cmm/gvi` endpoint only accepts `vehicleStatus: "1"` (cached
-        // snapshot); sending "2" returns the server error 9001 "Incorrect
-        // request payload format". Real-time polling on Kia USA lives on a
-        // separate endpoint (`rems/rvs`) that isn't wired up yet — until it
-        // is, we honour `cached: false` by returning the freshest cached
-        // snapshot. Callers still benefit from bypassing our in-memory TTL
-        // (see CachedAPIClient), just not from a real vehicle modem poll.
+        // When the caller asks for a real-time reading, hit `rems/rvs` first
+        // to make Kia's backend poll the vehicle modem (same endpoint the
+        // Kia Access app's pull-to-refresh uses). It's an async server call
+        // that blocks until the vehicle responds (20–60 s typical). After
+        // it returns we fall through to `cmm/gvi`, which now returns the
+        // freshly-refreshed cached snapshot. If the real-time call fails
+        // we log and continue — a stale snapshot beats surfacing an error.
+        if !cached {
+            try await triggerRealTimeStatusRefresh(for: vehicle, authToken: authToken)
+        }
+
+        // `cmm/gvi` only accepts `vehicleStatus: "1"`. Sending anything else
+        // returns the server-side 9001 "Incorrect request payload format".
         let body: [String: Any] = [
             "vehicleConfigReq": [
                 "airTempRange": "0",
@@ -246,6 +252,38 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
         )
 
         return try parseVehicleStatusResponse(data, for: vehicle)
+    }
+
+    /// Asks Kia's backend to poll the vehicle's telematics modem for fresh
+    /// data. The response comes back once the modem replies — usually within
+    /// ~30 seconds. Errors are logged but swallowed so the caller still gets
+    /// a (possibly stale) snapshot from the follow-up `cmm/gvi` call.
+    private func triggerRealTimeStatusRefresh(
+        for vehicle: Vehicle,
+        authToken: AuthToken
+    ) async throws {
+        BBLogger.info(.api, "KiaUSA: Requesting real-time status refresh for VIN \(vehicle.vin)")
+
+        do {
+            let (data, _, _) = try await performJSONRequest(
+                url: "\(apiURL)rems/rvs",
+                method: .POST,
+                headers: authorizedHeaders(authToken: authToken, vehicleKey: vehicle.vehicleKey),
+                body: ["requestType": 0],
+                requestType: .fetchVehicleStatus,
+                vin: vehicle.vin
+            )
+            try checkForKiaErrors(data: data)
+        } catch let error as APIError where error.errorType == .invalidCredentials {
+            // Bubble auth failures up — the caller (BBAccount) knows how to
+            // re-authenticate. Swallowing would mask a session that really
+            // needs refreshing.
+            throw error
+        } catch {
+            // Swallow everything else: the user-visible UX is "refresh took
+            // a while and maybe the data is 30 s stale", not a failure.
+            BBLogger.warning(.api, "KiaUSA: rems/rvs real-time refresh failed, falling back to cached: \(error)")
+        }
     }
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {

@@ -108,8 +108,71 @@ extension HyundaiCanadaAPIClient {
             defrostOn: statusData["defrost"] as? Bool ?? false,
             airControlOn: (statusData["airCtrlOn"] as? Bool) ?? (statusData["airCtrl"] as? Bool) ?? false,
             steeringWheelHeatingOn: (extractNumber(from: statusData["steerWheelHeat"]) ?? 0) != 0,
-            temperature: Temperature(units: extractNumber(from: airTemp["unit"]), value: stringify(airTemp["value"]))
+            temperature: parseCanadaAirTemp(
+                airTempBlock: airTemp,
+                airTempUnitTopLevel: statusData["airTempUnit"] as? String
+            )
         )
+    }
+
+    /// Decodes Hyundai Canada's Gen3 `airTemp` block.
+    ///
+    /// Unlike the US API (which returns `"72"` / `"70"` style numeric strings),
+    /// the Canadian endpoint returns a hex-encoded code, e.g. `"00H"`, `"0EH"`,
+    /// `"32H"`. The hex byte indexes into a half-degree scale starting at 14°C
+    /// (matches the ladder used by the in-car HVAC UI and matches the
+    /// `hyundai_kia_connect_api` / bluelinky decoders):
+    ///
+    ///     celsius = (hex_value * 0.5) + 14
+    ///
+    /// Missing or unparseable values fall through to the legacy
+    /// `Temperature(units:value:)` initializer so downstream display code
+    /// still gets a value (albeit one `TemperatureDisplay.isPlausibleForDisplay`
+    /// will likely reject).
+    private func parseCanadaAirTemp(
+        airTempBlock: [String: Any],
+        airTempUnitTopLevel: String?
+    ) -> Temperature {
+        let rawValue = stringify(airTempBlock["value"])
+        let unitField: Int? = extractNumber(from: airTempBlock["unit"])
+
+        // Canadian responses carry the human unit as a top-level string
+        // ("C"/"F"). The nested `unit` field is an index into that unit's
+        // scale, *not* the unit itself — many Gen3 payloads ship `unit: 0`
+        // regardless of whether the top-level says "C" or "F".
+        let units: Temperature.Units = {
+            if let topLevel = airTempUnitTopLevel?.uppercased() {
+                if topLevel == "F" { return .fahrenheit }
+                if topLevel == "C" { return .celsius }
+            }
+            return Temperature.Units(unitField)
+        }()
+
+        // "HI" / "LOW" string constants flow through unchanged.
+        if let raw = rawValue, raw == "HI" {
+            return Temperature(value: Temperature.maximum, units: units)
+        }
+        if let raw = rawValue, raw == "LOW" {
+            return Temperature(value: Temperature.minimum, units: units)
+        }
+
+        // Hex-code path: "00H", "0EH", etc.
+        if let raw = rawValue,
+           raw.count >= 2,
+           raw.uppercased().hasSuffix("H"),
+           let hex = UInt8(raw.dropLast(), radix: 16) {
+            let celsius = (Double(hex) * 0.5) + 14.0
+            let value = units == .fahrenheit ? celsius * 9.0 / 5.0 + 32.0 : celsius
+            return Temperature(value: value, units: units)
+        }
+
+        // Plain numeric path, for payloads that don't use the hex encoding.
+        if let raw = rawValue, let number = Double(raw) {
+            return Temperature(value: number, units: units)
+        }
+
+        // Fall back to the legacy initializer so we always return something.
+        return Temperature(units: unitField, value: rawValue)
     }
 
     func parseCanadaSyncDate(from statusData: [String: Any]) -> Date? {
