@@ -75,12 +75,8 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
         return try parseCanadaVehiclesResponse(data)
     }
 
-    // Backwards-compatible implementation - forward to the new cached-aware API
-    public func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken) async throws -> VehicleStatus {
-        return try await fetchVehicleStatus(for: vehicle, authToken: authToken, cached: true)
-    }
-
-    // New API: allow callers to request cached (sltvhcl) or real-time (rltmvhclsts) status
+    // Cached (sltvhcl) vs real-time (rltmvhclsts) status. Real-time wakes
+    // the vehicle modem; use sparingly.
     public func fetchVehicleStatus(
         for vehicle: Vehicle,
         authToken: AuthToken,
@@ -94,7 +90,8 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
             method: .POST,
             headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId),
             body: ["vehicleId": vehicle.regId],
-            requestType: .fetchVehicleStatus
+            requestType: .fetchVehicleStatus,
+            vin: vehicle.vin
         )
 
         let statusData = cached ? primaryData : try await fetchRealtimeStatusData(
@@ -125,7 +122,8 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
                 method: .POST,
                 headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId),
                 body: ["vehicleId": vehicle.regId],
-                requestType: .fetchVehicleStatus
+                requestType: .fetchVehicleStatus,
+                vin: vehicle.vin
             )
             finalData = cachedData
         } catch {
@@ -143,7 +141,8 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
                 method: .POST,
                 headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: pAuth),
                 body: ["pin": pin],
-                requestType: .fetchVehicleStatus
+                requestType: .fetchVehicleStatus,
+                vin: vehicle.vin
             )
             let location = try parseCanadaLocationResponse(locationData)
 
@@ -249,7 +248,8 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
             method: .POST,
             headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: authCode),
             body: makeCommandBody(command: command, useRemoteControl: useRemoteControl),
-            requestType: .sendCommand
+            requestType: .sendCommand,
+            vin: vehicle.vin
         )
 
         try validateCommandResponse(data, context: "command")

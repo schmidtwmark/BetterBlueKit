@@ -37,16 +37,22 @@ public struct HTTPLog: Identifiable, Codable, Sendable {
     public let responseStatus: Int?, responseHeaders: [String: String]
     public let responseBody: String?, error: String?
     public let apiError: String?, duration: TimeInterval, stackTrace: String?
+    /// VIN of the vehicle this request pertains to, if any. Populated for
+    /// per-vehicle requests (status fetch, commands). Nil for account-wide
+    /// requests (login, fetchVehicles).
+    public let vin: String?
 
     public init(timestamp: Date, accountId: UUID, requestType: HTTPRequestType, method: String, url: String,
                 requestHeaders: [String: String], requestBody: String?, responseStatus: Int?,
                 responseHeaders: [String: String], responseBody: String?, error: String?,
-                apiError: String? = nil, duration: TimeInterval, stackTrace: String? = nil) {
+                apiError: String? = nil, duration: TimeInterval, stackTrace: String? = nil,
+                vin: String? = nil) {
         (self.timestamp, self.accountId, self.requestType, self.method, self.url) =
             (timestamp, accountId, requestType, method, url)
         (self.requestHeaders, self.requestBody, self.responseStatus, self.responseHeaders, self.responseBody) =
             (requestHeaders, requestBody, responseStatus, responseHeaders, responseBody)
         (self.error, self.apiError, self.duration, self.stackTrace) = (error, apiError, duration, stackTrace)
+        self.vin = vin
     }
 
     public var statusText: String {

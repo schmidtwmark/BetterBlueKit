@@ -38,7 +38,8 @@ open class APIClientBase {
         method: HTTPMethod = .GET,
         headers: [String: String] = [:],
         body: Data? = nil,
-        requestType: HTTPRequestType
+        requestType: HTTPRequestType,
+        vin: String? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         guard let requestUrl = URL(string: url) else {
             throw APIError(message: "Invalid URL: \(url)", apiName: apiName)
@@ -56,7 +57,7 @@ open class APIClientBase {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
 
-        return try await performLoggedRequest(request, requestType: requestType)
+        return try await performLoggedRequest(request, requestType: requestType, vin: vin)
     }
 
     /// Performs an HTTP request and returns parsed JSON
@@ -65,7 +66,8 @@ open class APIClientBase {
         method: HTTPMethod = .GET,
         headers: [String: String] = [:],
         body: [String: Any]? = nil,
-        requestType: HTTPRequestType
+        requestType: HTTPRequestType,
+        vin: String? = nil
     ) async throws -> (Data, [String: Any], HTTPURLResponse) { // swiftlint:disable:this large_tuple
         let bodyData = body.flatMap { try? JSONSerialization.data(withJSONObject: $0) }
 
@@ -74,7 +76,8 @@ open class APIClientBase {
             method: method,
             headers: headers,
             body: bodyData,
-            requestType: requestType
+            requestType: requestType,
+            vin: vin
         )
 
         let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
@@ -85,7 +88,8 @@ open class APIClientBase {
 
     func performLoggedRequest(
         _ request: URLRequest,
-        requestType: HTTPRequestType
+        requestType: HTTPRequestType,
+        vin: String? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         let startTime = Date()
         let requestHeaders = request.allHTTPHeaderFields ?? [:]
@@ -102,7 +106,8 @@ open class APIClientBase {
             request: request,
             requestHeaders: requestHeaders,
             requestBody: requestBody,
-            startTime: startTime
+            startTime: startTime,
+            vin: vin
         )
 
         do {
@@ -141,7 +146,8 @@ open class APIClientBase {
             responseBody: responseBody,
             error: nil,
             apiError: apiError,
-            startTime: context.startTime
+            startTime: context.startTime,
+            vin: context.vin
         ))
 
         try validateHTTPResponse(httpResponse, data: data, responseBody: responseBody)
@@ -189,6 +195,7 @@ open class APIClientBase {
         let requestHeaders: [String: String]
         let requestBody: String?
         let startTime: Date
+        let vin: String?
     }
 
     struct HTTPRequestLogData {
@@ -202,6 +209,7 @@ open class APIClientBase {
         let error: String?
         let apiError: String?
         let startTime: Date
+        let vin: String?
     }
 
     func logHTTPRequest(_ logData: HTTPRequestLogData) {
@@ -242,7 +250,8 @@ open class APIClientBase {
             error: logData.error,
             apiError: logData.apiError,
             duration: duration,
-            stackTrace: stackTrace
+            stackTrace: stackTrace,
+            vin: logData.vin
         )
 
         logSink?(httpLog)
@@ -259,7 +268,8 @@ open class APIClientBase {
             responseBody: nil,
             error: error,
             apiError: nil,
-            startTime: context.startTime
+            startTime: context.startTime,
+            vin: context.vin
         )
     }
 

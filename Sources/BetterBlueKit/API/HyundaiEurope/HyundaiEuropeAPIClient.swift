@@ -266,12 +266,19 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
 
     // MARK: - Vehicle Status
 
-    public func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken) async throws -> VehicleStatus {
+    public func fetchVehicleStatus(
+        for vehicle: Vehicle,
+        authToken: AuthToken,
+        cached _: Bool
+    ) async throws -> VehicleStatus {
+        // Europe uses a single "latest" endpoint; no force-refresh knob is
+        // currently wired up here, so the cached flag is a no-op.
         let (data, _, _) = try await performJSONRequest(
             url: "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)/ccs2/carstatus/latest",
             method: .GET,
             headers: authorizedHeaders(authToken: authToken),
-            requestType: .fetchVehicleStatus
+            requestType: .fetchVehicleStatus,
+            vin: vehicle.vin
         )
 
         return try parseVehicleStatusResponse(data, for: vehicle)
@@ -288,7 +295,8 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
             method: .POST,
             headers: authorizedHeaders(authToken: authToken),
             body: body,
-            requestType: .sendCommand
+            requestType: .sendCommand,
+            vin: vehicle.vin
         )
     }
 }

@@ -53,7 +53,14 @@ public struct APIClientConfiguration {
 public protocol APIClientProtocol {
     func login() async throws -> AuthToken
     func fetchVehicles(authToken: AuthToken) async throws -> [Vehicle]
-    func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken) async throws -> VehicleStatus
+    /// Fetch the latest status for a vehicle.
+    /// - Parameter cached: When true, return the server-cached snapshot (cheap, instant).
+    ///   When false, request a real-time poll from the vehicle (slow, wakes the modem,
+    ///   may be rate-limited). Manual user-initiated refreshes and post-command
+    ///   verification should pass `false`; widget timelines and background refreshes
+    ///   should pass `true`. Brands that don't expose a real-time endpoint may treat
+    ///   both modes identically.
+    func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken, cached: Bool) async throws -> VehicleStatus
     func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws
 
     /// Optional: Fetch EV trip details for a vehicle (not all brands/APIs support this)
@@ -72,8 +79,6 @@ public protocol APIClientProtocol {
 
     /// Complete login after MFA verification
     func completeMFALogin(sid: String, rmToken: String) async throws -> AuthToken
-
-    func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken, cached: Bool) async throws -> VehicleStatus
 }
 
 // MARK: - MFA Method
@@ -110,13 +115,12 @@ extension APIClientProtocol {
         throw APIError(message: "MFA not supported for this API", apiName: "APIClient")
     }
 
-    // Backwards-compatible overload: default implementation defers to the legacy method.
+    /// Convenience overload — defaults to cached fetch.
     public func fetchVehicleStatus(
         for vehicle: Vehicle,
-        authToken: AuthToken,
-        cached: Bool = true
+        authToken: AuthToken
     ) async throws -> VehicleStatus {
-        try await fetchVehicleStatus(for: vehicle, authToken: authToken)
+        try await fetchVehicleStatus(for: vehicle, authToken: authToken, cached: true)
     }
 }
 

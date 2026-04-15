@@ -73,7 +73,11 @@ public class FakeAPIClient: APIClientProtocol {
         return vehicles
     }
 
-    public func fetchVehicleStatus(for vehicle: Vehicle, authToken _: AuthToken) async throws -> VehicleStatus {
+    public func fetchVehicleStatus(
+        for vehicle: Vehicle,
+        authToken _: AuthToken,
+        cached: Bool
+    ) async throws -> VehicleStatus {
         // Check for debug status fetch failure
         if try await vehicleProvider.shouldFailStatusFetch(for: vehicle.vin, accountId: accountId) {
             BBLogger.warning(.fakeAPI, "Debug: Simulating status fetch failure")
@@ -81,7 +85,7 @@ public class FakeAPIClient: APIClientProtocol {
         }
 
         let status = try await vehicleProvider.getVehicleStatus(for: vehicle.vin, accountId: accountId)
-        BBLogger.info(.fakeAPI, "Fetched vehicle status for fake vehicle '\(vehicle.vin)'")
+        BBLogger.info(.fakeAPI, "Fetched vehicle status for fake vehicle '\(vehicle.vin)' (cached: \(cached))")
         return status
     }
 

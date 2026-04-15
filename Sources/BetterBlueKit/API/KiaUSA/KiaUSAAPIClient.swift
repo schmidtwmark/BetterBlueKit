@@ -198,10 +198,24 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
         return try parseVehiclesResponse(data)
     }
 
-    public func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken) async throws -> VehicleStatus {
+    public func fetchVehicleStatus(
+        for vehicle: Vehicle,
+        authToken: AuthToken,
+        cached: Bool
+    ) async throws -> VehicleStatus {
         let vehicleKeyLog = vehicle.vehicleKey ?? "nil"
-        BBLogger.debug(.api, "KiaUSA: Fetching status for VIN: \(vehicle.vin), vehicleKey: \(vehicleKeyLog)")
+        BBLogger.debug(
+            .api,
+            "KiaUSA: Fetching status for VIN: \(vehicle.vin), vehicleKey: \(vehicleKeyLog), cached: \(cached)"
+        )
 
+        // The `cmm/gvi` endpoint only accepts `vehicleStatus: "1"` (cached
+        // snapshot); sending "2" returns the server error 9001 "Incorrect
+        // request payload format". Real-time polling on Kia USA lives on a
+        // separate endpoint (`rems/rvs`) that isn't wired up yet — until it
+        // is, we honour `cached: false` by returning the freshest cached
+        // snapshot. Callers still benefit from bypassing our in-memory TTL
+        // (see CachedAPIClient), just not from a real vehicle modem poll.
         let body: [String: Any] = [
             "vehicleConfigReq": [
                 "airTempRange": "0",
@@ -227,7 +241,8 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
             method: .POST,
             headers: authorizedHeaders(authToken: authToken, vehicleKey: vehicle.vehicleKey),
             body: body,
-            requestType: .fetchVehicleStatus
+            requestType: .fetchVehicleStatus,
+            vin: vehicle.vin
         )
 
         return try parseVehicleStatusResponse(data, for: vehicle)
@@ -243,7 +258,8 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
             method: method,
             headers: authorizedHeaders(authToken: authToken, vehicleKey: vehicle.vehicleKey),
             body: method == .GET ? nil : body,
-            requestType: .sendCommand
+            requestType: .sendCommand,
+            vin: vehicle.vin
         )
 
         try checkForKiaErrors(data: data)

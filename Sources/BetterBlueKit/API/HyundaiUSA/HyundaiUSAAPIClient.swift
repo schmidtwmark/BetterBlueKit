@@ -43,7 +43,7 @@ public final class HyundaiUSAAPIClient: APIClientBase, APIClientProtocol {
         ]
     }
 
-    func authorizedHeaders(authToken: AuthToken, vehicle: Vehicle? = nil) -> [String: String] {
+    func authorizedHeaders(authToken: AuthToken, vehicle: Vehicle? = nil, refresh: Bool = false) -> [String: String] {
         var result = headers()
         result["accessToken"] = authToken.accessToken
         result["language"] = "0"
@@ -56,7 +56,10 @@ public final class HyundaiUSAAPIClient: APIClientBase, APIClientProtocol {
         result["referer"] = "https://\(apiHost)/login"
         result["username"] = username
         result["blueLinkServicePin"] = pin
-        result["refresh"] = "false"
+        // "refresh: true" forces the backend to poll the vehicle's modem for
+        // current state instead of returning the last cached snapshot. This
+        // is what MyHyundai uses for pull-to-refresh.
+        result["refresh"] = refresh ? "true" : "false"
 
         if let vehicle {
             result["gen"] = String(vehicle.generation)
@@ -100,14 +103,19 @@ public final class HyundaiUSAAPIClient: APIClientBase, APIClientProtocol {
         return try parseVehiclesResponse(data)
     }
 
-    public func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken) async throws -> VehicleStatus {
-        let statusHeaders = authorizedHeaders(authToken: authToken, vehicle: vehicle)
+    public func fetchVehicleStatus(
+        for vehicle: Vehicle,
+        authToken: AuthToken,
+        cached: Bool
+    ) async throws -> VehicleStatus {
+        let statusHeaders = authorizedHeaders(authToken: authToken, vehicle: vehicle, refresh: !cached)
 
         let (data, _, _) = try await performJSONRequest(
             url: "\(baseURL)/ac/v2/rcs/rvs/vehicleStatus",
             method: .GET,
             headers: statusHeaders,
-            requestType: .fetchVehicleStatus
+            requestType: .fetchVehicleStatus,
+            vin: vehicle.vin
         )
 
         return try parseVehicleStatusResponse(data, for: vehicle)
@@ -122,7 +130,8 @@ public final class HyundaiUSAAPIClient: APIClientBase, APIClientProtocol {
             method: .POST,
             headers: authorizedHeaders(authToken: authToken, vehicle: vehicle),
             body: body,
-            requestType: .sendCommand
+            requestType: .sendCommand,
+            vin: vehicle.vin
         )
 
         try parseCommandResponse(data)
@@ -137,7 +146,8 @@ public final class HyundaiUSAAPIClient: APIClientBase, APIClientProtocol {
             url: "\(baseURL)/ac/v2/ts/alerts/maintenance/evTripDetails",
             method: .GET,
             headers: tripHeaders,
-            requestType: .fetchEVTripDetails
+            requestType: .fetchEVTripDetails,
+            vin: vehicle.vin
         )
 
         return try parseEVTripDetailsResponse(data)

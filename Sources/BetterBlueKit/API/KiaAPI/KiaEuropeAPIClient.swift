@@ -28,7 +28,11 @@ public final class KiaEuropeAPIClient: APIClientBase, APIClientProtocol {
         throw APIError.regionNotSupported("Kia Europe is not yet implemented.", apiName: apiName)
     }
 
-    public func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken) async throws -> VehicleStatus {
+    public func fetchVehicleStatus(
+        for vehicle: Vehicle,
+        authToken: AuthToken,
+        cached _: Bool
+    ) async throws -> VehicleStatus {
         throw APIError.regionNotSupported("Kia Europe is not yet implemented.", apiName: apiName)
     }
 
