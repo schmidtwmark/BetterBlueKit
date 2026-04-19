@@ -26,6 +26,14 @@ let package = Package(
             name: "BetterBlueKit",
             dependencies: [],
             path: "Sources/BetterBlueKit",
+            resources: [
+                // Bundles the shared troubleshooting document so the main
+                // app and Watch app can both surface it in-UI via
+                // `TroubleshootingDocument.markdown`. The file at the
+                // repo root is a symlink to the same source so GitHub
+                // renders it at its standard location.
+                .process("Resources")
+            ],
             swiftSettings: [
                 .define("DEBUG", .when(configuration: .debug)),
                 .define("RELEASE", .when(configuration: .release))
