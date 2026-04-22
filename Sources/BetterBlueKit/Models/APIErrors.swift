@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - Error Types
 
-public struct APIError: Error, Codable {
+public struct APIError: LocalizedError, Codable {
     public let message: String, code: Int?
     public let apiName: String?, errorType: ErrorType
     public let userInfo: [String: String]?
@@ -18,7 +18,32 @@ public struct APIError: Error, Codable {
         case general, invalidVehicleSession, invalidCredentials
         case serverError, invalidPin, concurrentRequest, failedRetryLogin
         case requiresMFA, kiaInvalidRequest, regionNotSupported
+
+        /// Human-readable label for UI. Prefer this over the raw enum
+        /// name when rendering the error type to users.
+        public var displayLabel: String {
+            switch self {
+            case .general: "Error"
+            case .invalidVehicleSession: "Session Expired"
+            case .invalidCredentials: "Invalid Credentials"
+            case .serverError: "Server Error"
+            case .invalidPin: "Invalid PIN"
+            case .concurrentRequest: "Request In Progress"
+            case .failedRetryLogin: "Reauthentication Failed"
+            case .requiresMFA: "Verification Required"
+            case .kiaInvalidRequest: "Request Rejected"
+            case .regionNotSupported: "Region Not Supported"
+            }
+        }
     }
+
+    // `LocalizedError` is what `Error.localizedDescription` actually
+    // dispatches to. Without this conformance `NSError` picks up the
+    // Codable type and emits strings like
+    // "The operation couldn't be completed. (BetterBlueKit.APIError error 1.)"
+    // which are useless to users and to support.
+    public var errorDescription: String? { message }
+    public var failureReason: String? { errorType.displayLabel }
 
     public init(
         message: String,
