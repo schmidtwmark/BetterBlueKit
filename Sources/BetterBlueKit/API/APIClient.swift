@@ -14,6 +14,7 @@ public struct APIClientConfiguration {
     public let brand: Brand
     public let username: String
     public let password: String
+    public let refreshToken: String?
     public let pin: String
     public let accountId: UUID
     public let logSink: HTTPLogSink?
@@ -33,6 +34,7 @@ public struct APIClientConfiguration {
         brand: Brand,
         username: String,
         password: String,
+        refreshToken: String? = nil,
         pin: String,
         accountId: UUID,
         logSink: HTTPLogSink? = nil,
@@ -45,6 +47,7 @@ public struct APIClientConfiguration {
         self.brand = brand
         self.username = username
         self.password = password
+        self.refreshToken = refreshToken
         self.pin = pin
         self.accountId = accountId
         self.logSink = logSink
@@ -52,6 +55,22 @@ public struct APIClientConfiguration {
         self.redactPII = redactPII
         self.deviceId = deviceId
         self.onRememberMeTokenRotated = onRememberMeTokenRotated
+    }
+
+    public func with(deviceId: String? = nil, refreshToken: String? = nil) -> Self {
+        .init(
+            region: region,
+            brand: brand,
+            username: username,
+            password: password,
+            refreshToken: refreshToken ?? self.refreshToken,
+            pin: pin,
+            accountId: accountId,
+            logSink: logSink,
+            rememberMeToken: rememberMeToken,
+            redactPII: redactPII,
+            deviceId: deviceId ?? self.deviceId
+        )
     }
 }
 
@@ -88,6 +107,9 @@ public protocol APIClientProtocol {
 
     /// Complete login after MFA verification
     func completeMFALogin(sid: String, rmToken: String) async throws -> AuthToken
+
+    /// Register device
+    func registerDevice() async throws -> String?
 }
 
 // MARK: - MFA Method
@@ -130,6 +152,11 @@ extension APIClientProtocol {
         authToken: AuthToken
     ) async throws -> VehicleStatus {
         try await fetchVehicleStatus(for: vehicle, authToken: authToken, cached: true)
+    }
+
+    /// default because otherwise FakeAPIClient throws error when calling this func in Account
+    public func registerDevice() async throws -> String? {
+        UUID().uuidString.uppercased()
     }
 }
 

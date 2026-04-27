@@ -69,17 +69,25 @@ public struct Temperature: Codable, Hashable, Sendable {
         public func format(_ temperature: Double, to targetUnits: Units) -> String {
             let convertedTemperature: Double
 
-            convertedTemperature = switch (self, targetUnits) {
-            case (.celsius, .fahrenheit): (temperature * 9.0 / 5.0) + 32.0
-            case (.fahrenheit, .celsius): (temperature - 32.0) * 5.0 / 9.0
-            default: temperature
-            }
+            convertedTemperature = self.convert(temperature, to: targetUnits)
 
             let formatter = NumberFormatter()
             formatter.maximumFractionDigits = 0
             let formattedNumber = formatter.string(from: NSNumber(value: convertedTemperature)) ?? "0"
 
             return "\(formattedNumber)\(targetUnits.symbol)"
+        }
+
+        public func convert(_ temperature: Double, to targetUnits: Units) -> Double {
+            let convertedTemperature: Double
+
+            convertedTemperature = switch (self, targetUnits) {
+            case (.celsius, .fahrenheit): (temperature * 9.0 / 5.0) + 32.0
+            case (.fahrenheit, .celsius): (temperature - 32.0) * 5.0 / 9.0
+            default: temperature
+            }
+
+            return convertedTemperature
         }
     }
 
@@ -91,9 +99,9 @@ public struct Temperature: Codable, Hashable, Sendable {
         self.value = if let value, let number = Double(value) {
             number
         } else if value == "HI" {
-            Temperature.maximum
+            Units.fahrenheit.convert(Temperature.maximum, to: self.units)
         } else {
-            Temperature.minimum
+            Units.fahrenheit.convert(Temperature.minimum, to: self.units)
         }
     }
 

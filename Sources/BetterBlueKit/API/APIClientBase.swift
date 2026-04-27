@@ -13,7 +13,7 @@ import Foundation
 /// Subclasses implement `APIClientProtocol` methods directly for their specific region/brand.
 @MainActor
 open class APIClientBase {
-    public let configuration: APIClientConfiguration
+    public var configuration: APIClientConfiguration
     public let urlSession: URLSession
 
     // Convenience accessors
@@ -28,6 +28,15 @@ open class APIClientBase {
     public init(configuration: APIClientConfiguration, urlSession: URLSession = .shared) {
         self.configuration = configuration
         self.urlSession = urlSession
+    }
+
+    // MARK: - default so set deviceId in configuration
+    public func registerDevice() async throws -> String? {
+        // Generate a stable device ID for Kia accounts so the rmToken stays valid
+        // across API client re-initializations
+        let deviceId = UUID().uuidString.uppercased()
+        configuration = configuration.with(deviceId: deviceId)
+        return deviceId
     }
 
     // MARK: - HTTP Request Execution
