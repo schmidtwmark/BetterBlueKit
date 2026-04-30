@@ -20,6 +20,13 @@ public struct APIClientConfiguration {
     public let rememberMeToken: String?
     public let redactPII: Bool
     public let deviceId: String?
+    /// Invoked when the API client observes that the server returned a
+    /// rotated `rmToken` (or equivalent long-lived "remember-me" credential)
+    /// in a login response. The caller is expected to persist the new
+    /// value so subsequent `login()` calls present the latest token.
+    /// Currently used only by `KiaUSAAPIClient`; other implementations
+    /// may opt in by capturing their respective rotated tokens.
+    public let onRememberMeTokenRotated: (@MainActor @Sendable (String) -> Void)?
 
     public init(
         region: Region,
@@ -31,7 +38,8 @@ public struct APIClientConfiguration {
         logSink: HTTPLogSink? = nil,
         rememberMeToken: String? = nil,
         redactPII: Bool = true,
-        deviceId: String? = nil
+        deviceId: String? = nil,
+        onRememberMeTokenRotated: (@MainActor @Sendable (String) -> Void)? = nil
     ) {
         self.region = region
         self.brand = brand
@@ -43,6 +51,7 @@ public struct APIClientConfiguration {
         self.rememberMeToken = rememberMeToken
         self.redactPII = redactPII
         self.deviceId = deviceId
+        self.onRememberMeTokenRotated = onRememberMeTokenRotated
     }
 }
 

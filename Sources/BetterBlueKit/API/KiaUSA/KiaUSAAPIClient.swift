@@ -15,6 +15,14 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
 
     // MARK: - Constants
 
+    /// How long we treat a Kia session ID (`sid`) as valid before forcing
+    /// a re-login. Matches the Python `hyundai_kia_connect_api` reference's
+    /// `LOGIN_TOKEN_LIFETIME = 23h`. The previous BetterBlueKit value of
+    /// 1 hour drove ~23x more `authUser` calls than the reference and
+    /// appears to be the cause of the recurring MFA prompts users were
+    /// hitting on Kia USA accounts.
+    static let loginTokenLifetime: TimeInterval = 23 * 3600
+
     var baseURL: String {
         region.apiBaseURL(for: .kia)
     }

@@ -53,8 +53,24 @@ extension KiaUSAAPIClient {
             throw APIError.logError("Login response missing session ID header", apiName: apiName)
         }
 
-        let validUntil = Date().addingTimeInterval(3600)
+        // Match the Python `hyundai_kia_connect_api` reference, which uses
+        // 23 hours. The previous 1-hour value forced ~23x more `authUser`
+        // calls than the reference for the same user activity, which
+        // appears to be why the rmToken-based re-login eventually trips
+        // Kia's anti-fraud heuristics and demands MFA again.
+        let validUntil = Date().addingTimeInterval(KiaUSAAPIClient.loginTokenLifetime)
         BBLogger.info(.auth, "KiaUSA: Authentication completed successfully for user \(username)")
+
+        // Capture any rotated `rmToken` the server included in the
+        // response and hand it back to the caller. Kia hasn't been
+        // observed to rotate this on every successful `authUser`, but
+        // the cost of capturing is tiny and it's the kind of bug that
+        // would otherwise look indistinguishable from a flaky session.
+        let rotatedRmToken = headers["rmToken"] ?? headers["rmtoken"] ?? headers["RmToken"]
+        if let rotatedRmToken {
+            BBLogger.info(.auth, "KiaUSA: authUser response carried an updated rmToken — rotating cache")
+            configuration.onRememberMeTokenRotated?(rotatedRmToken)
+        }
 
         return AuthToken(
             accessToken: sessionId,
