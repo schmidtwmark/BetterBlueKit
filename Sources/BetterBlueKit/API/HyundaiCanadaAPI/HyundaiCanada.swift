@@ -97,7 +97,7 @@ extension HyundaiCanadaAPIClient {
         }
 
         let error = json["error"] as? [String: Any]
-        let errorDesc = (error?["errorDesc"] as? String) ?? "Unknown Canada API error"
+        let errorDesc = (error?["errorDesc"] as? String) ?? "Unknown Canada API error: \(json)"
         let lower = errorDesc.lowercased()
 
         if responseCode == 1,
