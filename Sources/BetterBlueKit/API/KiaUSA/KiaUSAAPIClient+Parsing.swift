@@ -108,11 +108,32 @@ extension KiaUSAAPIClient {
                 regId: regId,
                 model: nickname,
                 accountId: accountId,
-                fuelType: FuelType(number: fuelType),
+                fuelType: Self.kiaUSAFuelType(from: fuelType),
                 generation: Int(generation) ?? 1,
                 odometer: odometer,
                 vehicleKey: vehicleKey
             )
+        }
+    }
+
+    /// Maps Kia USA's `fuelType` integer to our `FuelType` enum.
+    ///
+    /// Kia USA uses a different code scheme than `FuelType.init(number:)`
+    /// (which is calibrated for Hyundai). Confirmed mappings, cross-checked
+    /// against the Python `hyundai_kia_connect_api` reference and live
+    /// vehicle data:
+    ///
+    /// - `4` → EV (confirmed by 2020 Niro EV and 2024 EV9)
+    ///
+    /// Other values (gas / hybrid / PHEV) are not yet confirmed against
+    /// a real Kia USA response, so we conservatively default to `.gas`
+    /// — the same approach the Python lib takes. If we mis-classify a
+    /// PHEV here, downstream status fetches that return both `evStatus`
+    /// and `gasRange` will still surface the gas range correctly.
+    static func kiaUSAFuelType(from fuelType: Int) -> FuelType {
+        switch fuelType {
+        case 4: return .electric
+        default: return .gas
         }
     }
 
@@ -199,13 +220,31 @@ extension KiaUSAAPIClient {
     }
 
     private func parseGasRange(from vehicleStatus: [String: Any]) -> VehicleStatus.FuelRange? {
-        guard let distanceToEmptyData = vehicleStatus["distanceToEmpty"] as? [String: Any],
+        // Kia uses `fuelLevel: false` (a JSON boolean) as the "no gas
+        // tank" signal for pure EVs. The generic `extractNumber<Double>`
+        // happily coerces NSNumber-wrapped `false` to `0.0`, which would
+        // make every Kia EV report a phantom 0% gas range — and (now
+        // that `BBVehicle.updateStatus` self-heals fuelType from the
+        // status payload's shape) every Kia EV would get mis-classified
+        // as a PHEV. Reject booleans explicitly before extracting.
+        guard let fuelLevelRaw = vehicleStatus["fuelLevel"],
+              !Self.isJSONBoolean(fuelLevelRaw),
+              let fuelLevel: Double = extractNumber(from: fuelLevelRaw),
+              let distanceToEmptyData = vehicleStatus["distanceToEmpty"] as? [String: Any],
               let gasRangeValue: Double = extractNumber(from: distanceToEmptyData["value"]),
-              let gasRangeUnit: Int = extractNumber(from: distanceToEmptyData["unit"]),
-              let fuelLevel: Double = extractNumber(from: vehicleStatus["fuelLevel"]) else { return nil }
+              let gasRangeUnit: Int = extractNumber(from: distanceToEmptyData["unit"]) else { return nil }
 
         let gasRangeDistance = Distance(length: gasRangeValue, units: Distance.Units(gasRangeUnit))
         return VehicleStatus.FuelRange(range: gasRangeDistance, percentage: fuelLevel)
+    }
+
+    /// `JSONSerialization` returns `kCFBooleanTrue/False` for JSON
+    /// booleans, which bridge into Swift as `NSNumber` and silently
+    /// coerce to `0` / `1` via `extractNumber`. Distinguish booleans
+    /// from numbers via the underlying CoreFoundation type ID.
+    static func isJSONBoolean(_ value: Any) -> Bool {
+        guard let number = value as? NSNumber else { return false }
+        return CFGetTypeID(number) == CFBooleanGetTypeID()
     }
 
     private func parseLocation(from lastVehicleInfo: [String: Any]) -> VehicleStatus.Location {
