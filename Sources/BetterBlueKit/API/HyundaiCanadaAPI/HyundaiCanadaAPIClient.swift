@@ -18,7 +18,17 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     let clientSecret = "CLISCR01AHSPA"
     let userAgent = "MyHyundai/2.0.25 (iPhone; iOS 18.3; Scale/3.00)"
 
-    let deviceId = UUID().uuidString.uppercased()
+    /// Stable per-account device ID. Hyundai Canada's anti-fraud
+    /// challenge fires every time a "new device" logs in — using a
+    /// fresh random UUID per session guarantees the user sees an OTP
+    /// challenge (errorCode 7110) on every login. `BBAccount` already
+    /// generates and persists a stable UUID per account; honor that
+    /// when present, fall back to a random UUID only if the host
+    /// didn't supply one (e.g. bbcli without a stored config).
+    /// (Matches the hyundai_kia_connect_api Python reference, which
+    /// derives a deterministic device ID from MAC + hostname for the
+    /// same reason.)
+    lazy var deviceId: String = configuration.deviceId ?? UUID().uuidString.uppercased()
 
     let hvacFahrenheitValues: [Double] = Array(62...82).map { Double($0) }
     let hvacCelsiusValues: [Double] = [
@@ -31,6 +41,25 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     ]
 
     var cloudFlareCookie: String?
+
+    // MARK: - MFA Flow State
+    //
+    // Hyundai Canada's MFA differs slightly from Kia USA's: the OTP key
+    // is only issued AFTER the user picks email/SMS (Kia returns it in
+    // the initial challenge). We stash everything we learn at each step
+    // here so the protocol's three-method MFA contract still works.
+    /// `userInfoUuid` returned by `mfa/selverifmeth`. Surfaced as `xid`
+    /// in the `requiresMFA` error and threaded through every later call.
+    var mfaUserInfoUuid: String?
+    /// Email associated with the account, returned by `selverifmeth` and
+    /// echoed back by `sendotp` / `genmfatkn`.
+    var mfaEmail: String?
+    /// `otpKey` returned by `mfa/sendotp`, consumed by `mfa/validateotp`.
+    var mfaOtpKey: String?
+    /// Final auth token built from `mfa/genmfatkn`'s response. Returned
+    /// from `completeMFALogin` so the caller never sees the multi-step
+    /// dance under the hood.
+    var mfaCompletedAuthToken: AuthToken?
 
     var baseURL: String { region.apiBaseURL(for: .hyundai) }
     var apiBaseURL: String { "\(baseURL)/tods/api" }
@@ -59,7 +88,82 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
             requestType: .login
         )
 
+        // Intercept the OTP-required response (errorCode 7110) before
+        // the generic parser runs — it would otherwise throw a generic
+        // "Canada login failed" error and the caller couldn't tell that
+        // an MFA challenge is what's needed.
+        if isOTPRequiredResponse(data) {
+            try await beginMFAFlow(cookie: cookie)
+            // beginMFAFlow always throws requiresMFA on success
+        }
+
         return try parseCanadaLoginResponse(data)
+    }
+
+    /// Detects the `errorCode == "7110"` (OTP Required) response shape
+    /// without invoking the throwing parser.
+    private func isOTPRequiredResponse(_ data: Data) -> Bool {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let header = json["responseHeader"] as? [String: Any],
+              let code: Int = extractNumber(from: header["responseCode"]),
+              code == 1,
+              let error = json["error"] as? [String: Any] else {
+            return false
+        }
+        // The Python reference compares as a string ("7110"). The API
+        // has been seen sending it as both a string and a number, so
+        // accept either form.
+        if let codeString = error["errorCode"] as? String, codeString == "7110" { return true }
+        if let codeInt: Int = extractNumber(from: error["errorCode"]), codeInt == 7110 { return true }
+        return false
+    }
+
+    /// Calls `mfa/selverifmeth` to learn which contact methods the
+    /// account has on file, stashes the userInfoUuid + email for later
+    /// `sendotp` / `genmfatkn` calls, then throws `requiresMFA` so the
+    /// existing iOS MFA UI can pick up the challenge.
+    private func beginMFAFlow(cookie: String) async throws {
+        BBLogger.info(.mfa, "HyundaiCanada: OTP required (errorCode 7110), starting MFA flow")
+
+        var mfaHeaders = headers()
+        mfaHeaders["Cookie"] = cookie
+
+        let (data, _, _) = try await performJSONRequest(
+            url: "\(apiBaseURL)/mfa/selverifmeth",
+            method: .POST,
+            headers: mfaHeaders,
+            body: [
+                "mfaApiCode": "0107",
+                "userAccount": username
+            ],
+            requestType: .sendMFA
+        )
+
+        let json = try parseCanadaResponse(data, context: "mfa/selverifmeth")
+        guard let result = json["result"] as? [String: Any] else {
+            throw APIError.logError("Invalid Canada selverifmeth response", apiName: apiName)
+        }
+
+        let userInfoUuid = result["userInfoUuid"] as? String ?? ""
+        let emailList = result["emailList"] as? [String] ?? []
+        let phone = result["userPhone"] as? String
+
+        let email = emailList.first
+        // Stash for the subsequent send / verify / complete calls.
+        mfaUserInfoUuid = userInfoUuid
+        mfaEmail = email ?? username
+        mfaOtpKey = nil
+        mfaCompletedAuthToken = nil
+
+        throw APIError.requiresMFA(
+            xid: userInfoUuid,
+            otpKey: nil,
+            hasEmail: email != nil,
+            hasPhone: !(phone?.isEmpty ?? true),
+            email: email,
+            phone: (phone?.isEmpty ?? true) ? nil : phone,
+            apiName: apiName
+        )
     }
 
     public func fetchVehicles(authToken: AuthToken) async throws -> [Vehicle] {
