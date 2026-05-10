@@ -32,6 +32,74 @@ extension HyundaiCanadaAPIClient {
         true
     }
 
+    // MARK: - Login-time challenge detection
+
+    /// Detects the `errorCode == "7110"` (OTP Required) response shape
+    /// without invoking the throwing parser.
+    func isOTPRequiredResponse(_ data: Data) -> Bool {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let header = json["responseHeader"] as? [String: Any],
+              let code: Int = extractNumber(from: header["responseCode"]),
+              code == 1,
+              let error = json["error"] as? [String: Any] else {
+            return false
+        }
+        // The Python reference compares as a string ("7110"). The API
+        // has been seen sending it as both a string and a number, so
+        // accept either form.
+        if let codeString = error["errorCode"] as? String, codeString == "7110" { return true }
+        if let codeInt: Int = extractNumber(from: error["errorCode"]), codeInt == 7110 { return true }
+        return false
+    }
+
+    /// Calls `mfa/selverifmeth` to learn which contact methods the
+    /// account has on file, stashes the userInfoUuid + email for later
+    /// `sendotp` / `genmfatkn` calls, then throws `requiresMFA` so the
+    /// existing iOS MFA UI can pick up the challenge.
+    func beginMFAFlow(cookie: String) async throws {
+        BBLogger.info(.mfa, "HyundaiCanada: OTP required (errorCode 7110), starting MFA flow")
+
+        var loginMfaHeaders = headers()
+        loginMfaHeaders["Cookie"] = cookie
+
+        let (data, _, _) = try await performJSONRequest(
+            url: "\(apiBaseURL)/mfa/selverifmeth",
+            method: .POST,
+            headers: loginMfaHeaders,
+            body: [
+                "mfaApiCode": "0107",
+                "userAccount": username
+            ],
+            requestType: .sendMFA
+        )
+
+        let json = try parseCanadaResponse(data, context: "mfa/selverifmeth")
+        guard let result = json["result"] as? [String: Any] else {
+            throw APIError.logError("Invalid Canada selverifmeth response", apiName: apiName)
+        }
+
+        let userInfoUuid = result["userInfoUuid"] as? String ?? ""
+        let emailList = result["emailList"] as? [String] ?? []
+        let phone = result["userPhone"] as? String
+
+        let email = emailList.first
+        // Stash for the subsequent send / verify / complete calls.
+        mfaUserInfoUuid = userInfoUuid
+        mfaEmail = email ?? username
+        mfaOtpKey = nil
+        mfaCompletedAuthToken = nil
+
+        throw APIError.requiresMFA(
+            xid: userInfoUuid,
+            otpKey: nil,
+            hasEmail: email != nil,
+            hasPhone: !(phone?.isEmpty ?? true),
+            email: email,
+            phone: (phone?.isEmpty ?? true) ? nil : phone,
+            apiName: apiName
+        )
+    }
+
     public func sendMFACode(xid: String, otpKey _: String, method: MFAMethod) async throws {
         // We deliberately ignore the `otpKey` param: Hyundai Canada
         // doesn't issue an otpKey until AFTER `sendotp`. Use the
@@ -98,66 +166,9 @@ extension HyundaiCanadaAPIClient {
         }
         let email = mfaEmail ?? username
 
-        var mfaHeaders = headers()
-        if let cookie = cloudFlareCookie {
-            mfaHeaders["Cookie"] = cookie
-        }
+        let validationKey = try await validateOTP(code: code, otpKey: storedOtpKey, email: email)
+        let auth = try await genMFAToken(validationKey: validationKey, email: email)
 
-        // Step 4: validate the code the user typed.
-        let (validateData, _, _) = try await performJSONRequest(
-            url: "\(apiBaseURL)/mfa/validateotp",
-            method: .POST,
-            headers: mfaHeaders,
-            body: [
-                "otpNo": code,
-                "userAccount": email,
-                "otpKey": storedOtpKey,
-                "mfaApiCode": "0107"
-            ],
-            requestType: .verifyMFA
-        )
-
-        let validateJSON = try parseCanadaResponse(validateData, context: "mfa/validateotp")
-        guard let validateResult = validateJSON["result"] as? [String: Any] else {
-            throw APIError.logError("Invalid Canada validateotp response", apiName: apiName)
-        }
-        let verified = validateResult["verifiedOtp"] as? Bool ?? false
-        guard verified, let validationKey = validateResult["otpValidationKey"] as? String else {
-            throw APIError.invalidCredentials(
-                "OTP verification failed",
-                apiName: apiName
-            )
-        }
-
-        // Step 5: trade the validation key for a real session.
-        let (tokenData, _, _) = try await performJSONRequest(
-            url: "\(apiBaseURL)/mfa/genmfatkn",
-            method: .POST,
-            headers: mfaHeaders,
-            body: [
-                "userAccount": email,
-                "otpEmail": email,
-                "mfaApiCode": "0107",
-                "otpValidationKey": validationKey,
-                "mfaYn": "Y"
-            ],
-            requestType: .verifyMFA
-        )
-
-        let tokenJSON = try parseCanadaResponse(tokenData, context: "mfa/genmfatkn")
-        guard let tokenResult = tokenJSON["result"] as? [String: Any],
-              let token = tokenResult["token"] as? [String: Any],
-              let accessToken = token["accessToken"] as? String else {
-            throw APIError.logError("Invalid Canada genmfatkn response", apiName: apiName)
-        }
-        let expiresIn: Int = extractNumber(from: token["expireIn"]) ?? 3600
-        let refreshToken = token["refreshToken"] as? String ?? ""
-
-        let auth = AuthToken(
-            accessToken: accessToken,
-            refreshToken: refreshToken,
-            expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn))
-        )
         // Stash so completeMFALogin (called immediately after by the
         // existing protocol flow) can return the real token.
         mfaCompletedAuthToken = auth
@@ -168,7 +179,77 @@ extension HyundaiCanadaAPIClient {
         // Hyundai Canada has no separate "remember me" channel — the
         // refresh token *is* the long-lived credential. Surface it
         // here so the host persists it.
-        return (rememberMeToken: refreshToken, sid: accessToken)
+        return (rememberMeToken: auth.refreshToken, sid: auth.accessToken)
+    }
+
+    /// Step 4 of the OTP flow — exchange the code the user typed for
+    /// an `otpValidationKey` we can hand to `genmfatkn`.
+    private func validateOTP(code: String, otpKey: String, email: String) async throws -> String {
+        let (data, _, _) = try await performJSONRequest(
+            url: "\(apiBaseURL)/mfa/validateotp",
+            method: .POST,
+            headers: mfaHeaders(),
+            body: [
+                "otpNo": code,
+                "userAccount": email,
+                "otpKey": otpKey,
+                "mfaApiCode": "0107"
+            ],
+            requestType: .verifyMFA
+        )
+
+        let json = try parseCanadaResponse(data, context: "mfa/validateotp")
+        guard let result = json["result"] as? [String: Any] else {
+            throw APIError.logError("Invalid Canada validateotp response", apiName: apiName)
+        }
+        let verified = result["verifiedOtp"] as? Bool ?? false
+        guard verified, let validationKey = result["otpValidationKey"] as? String else {
+            throw APIError.invalidCredentials("OTP verification failed", apiName: apiName)
+        }
+        return validationKey
+    }
+
+    /// Step 5 of the OTP flow — trade the validation key for a real
+    /// session token.
+    private func genMFAToken(validationKey: String, email: String) async throws -> AuthToken {
+        let (data, _, _) = try await performJSONRequest(
+            url: "\(apiBaseURL)/mfa/genmfatkn",
+            method: .POST,
+            headers: mfaHeaders(),
+            body: [
+                "userAccount": email,
+                "otpEmail": email,
+                "mfaApiCode": "0107",
+                "otpValidationKey": validationKey,
+                "mfaYn": "Y"
+            ],
+            requestType: .verifyMFA
+        )
+
+        let json = try parseCanadaResponse(data, context: "mfa/genmfatkn")
+        guard let result = json["result"] as? [String: Any],
+              let token = result["token"] as? [String: Any],
+              let accessToken = token["accessToken"] as? String else {
+            throw APIError.logError("Invalid Canada genmfatkn response", apiName: apiName)
+        }
+        let expiresIn: Int = extractNumber(from: token["expireIn"]) ?? 3600
+        let refreshToken = token["refreshToken"] as? String ?? ""
+
+        return AuthToken(
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn))
+        )
+    }
+
+    /// Default header set for any MFA endpoint — mirrors the standard
+    /// `headers()` helper plus the cached cookie when we have one.
+    private func mfaHeaders() -> [String: String] {
+        var result = headers()
+        if let cookie = cloudFlareCookie {
+            result["Cookie"] = cookie
+        }
+        return result
     }
 
     public func completeMFALogin(sid _: String, rmToken _: String) async throws -> AuthToken {
