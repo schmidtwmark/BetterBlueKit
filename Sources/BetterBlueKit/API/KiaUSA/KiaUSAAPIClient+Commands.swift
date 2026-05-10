@@ -69,9 +69,13 @@ extension KiaUSAAPIClient {
         case .startCharge:
             return ["chargeRatio": 100]
         case .setTargetSOC(let acLevel, let dcLevel):
+            // Kia US encodes plugType 0 as DC fast charge and plugType 1
+            // as AC (matches hyundai_kia_connect_api). The previous
+            // mapping was inverted, so users saw — and set — AC/DC
+            // limits swapped (issue #41).
             return ["targetSOClist": [
-                ["targetSOClevel": acLevel, "plugType": 0],
-                ["targetSOClevel": dcLevel, "plugType": 1]
+                ["targetSOClevel": dcLevel, "plugType": 0],
+                ["targetSOClevel": acLevel, "plugType": 1]
             ]]
         default:
             return [:]

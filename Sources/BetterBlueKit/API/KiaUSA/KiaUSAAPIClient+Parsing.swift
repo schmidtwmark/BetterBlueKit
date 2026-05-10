@@ -197,11 +197,15 @@ extension KiaUSAAPIClient {
 
         let batteryPlugin: Int = extractNumber(from: evStatusData["batteryPlugin"]) ?? 0
 
+        // Kia US encodes plugType 0 as DC fast charging and plugType 1
+        // as AC (matches hyundai_kia_connect_api). Earlier code had it
+        // inverted, which made the in-app AC/DC limits show — and set
+        // — swapped vs. Kia Access (issue #41).
         let targetSOC = evStatusData["targetSOC"] as? [[String: Any]] ?? []
         var targetSocAC: Double?, targetSocDC: Double?
         for target in targetSOC {
             if let plugType = target["plugType"] as? Int, let soc = target["targetSOClevel"] as? Double {
-                if plugType == 0 { targetSocAC = soc } else if plugType == 1 { targetSocDC = soc }
+                if plugType == 0 { targetSocDC = soc } else if plugType == 1 { targetSocAC = soc }
             }
         }
 
