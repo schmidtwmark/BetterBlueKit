@@ -35,12 +35,13 @@ extension HyundaiCanadaAPIClient {
     // MARK: - Login-time challenge detection
 
     /// Detects the `errorCode == "7110"` (OTP Required) response shape
-    /// without invoking the throwing parser.
+    /// without invoking the throwing parser. The server marks this as
+    /// a *failure* (`responseCode == true` in the modern bool form, `1`
+    /// in the older int form) carrying an `error.errorCode` of "7110".
     func isOTPRequiredResponse(_ data: Data) -> Bool {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let header = json["responseHeader"] as? [String: Any],
-              let code: Int = extractNumber(from: header["responseCode"]),
-              code == 1,
+              !isCanadaResponseSuccess(header["responseCode"]),
               let error = json["error"] as? [String: Any] else {
             return false
         }
@@ -80,12 +81,17 @@ extension HyundaiCanadaAPIClient {
 
         let userInfoUuid = result["userInfoUuid"] as? String ?? ""
         let emailList = result["emailList"] as? [String] ?? []
+        // The server has been seen returning the email-from-loginId in
+        // `userAccount` if `emailList` is empty — fall back to it so
+        // the OTP flow has *something* to identify the user with.
+        let serverUserAccount = result["userAccount"] as? String
         let phone = result["userPhone"] as? String
 
-        let email = emailList.first
+        let email = emailList.first ?? serverUserAccount
         // Stash for the subsequent send / verify / complete calls.
         mfaUserInfoUuid = userInfoUuid
         mfaEmail = email ?? username
+        mfaPhone = (phone?.isEmpty ?? true) ? nil : phone
         mfaOtpKey = nil
         mfaCompletedAuthToken = nil
 
@@ -121,12 +127,9 @@ extension HyundaiCanadaAPIClient {
             body["userPhone"] = ""
         case .sms:
             body["otpMethod"] = "S"
-            // The Python reference echoes whatever phone selverifmeth
-            // returned back here; we don't have it on hand without
-            // refetching, but the server only requires it for SMS
-            // delivery. Fall back to empty string and let the API
-            // surface a clearer error if SMS isn't available.
-            body["userPhone"] = ""
+            // Echo back whatever phone digits selverifmeth returned —
+            // the server uses this to locate the SMS destination.
+            body["userPhone"] = mfaPhone ?? ""
         }
 
         var mfaHeaders = headers()

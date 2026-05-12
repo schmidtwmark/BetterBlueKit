@@ -56,6 +56,10 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     var mfaEmail: String?
     /// `otpKey` returned by `mfa/sendotp`, consumed by `mfa/validateotp`.
     var mfaOtpKey: String?
+    /// Last-4 (or full, depending on server) of the SMS number echoed
+    /// by `selverifmeth`. Threaded back into `sendotp` for the SMS
+    /// delivery path.
+    var mfaPhone: String?
     /// Final auth token built from `mfa/genmfatkn`'s response. Returned
     /// from `completeMFALogin` so the caller never sees the multi-step
     /// dance under the hood.
