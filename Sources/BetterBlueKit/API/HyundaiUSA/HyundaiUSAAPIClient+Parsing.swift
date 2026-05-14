@@ -168,15 +168,28 @@ extension HyundaiUSAAPIClient {
               let evStatusData = statusData["evStatus"] as? [String: Any] else { return nil }
 
         let ranges = fuelRanges(from: statusData)
-        let evRange: Distance
+        let rawEvRange: Distance
         if let range = ranges.first, ranges.count == 1 {
-            evRange = range.value
+            rawEvRange = range.value
         } else {
             guard let range = ranges[.electric] else { return nil }
-            evRange = range
+            rawEvRange = range
         }
 
         let fuelPercentage: Double = extractNumber(from: evStatusData["batteryStatus"]) ?? 0
+        // Sanity-check the unit. The Hyundai USA API has been observed
+        // returning the EV range value in km while still labeling its
+        // `unit` field as miles (issue: widget showed 369 mi when the
+        // car was actually at 229 mi; 369 km == 229 mi). The
+        // `targetSOClist` block reports its own unit, and the raw
+        // value field is reliably in those units — so we use it as a
+        // cross-reference and override the EV range's unit when the
+        // numeric values agree at the current SOC.
+        let evRange = unitCorrectedEVRange(
+            parsed: rawEvRange,
+            evStatusData: evStatusData,
+            currentSOCPercent: fuelPercentage
+        )
         let remainTime2 = evStatusData["remainTime2"] as? [String: Any] ?? [:]
         let atc = remainTime2["atc"] as? [String: Any] ?? [:]
         let chargeTimeMinutes: Int = extractNumber(from: atc["value"]) ?? 0
@@ -203,6 +216,71 @@ extension HyundaiUSAAPIClient {
             targetSocAC: targetSocAC,
             targetSocDC: targetSocDC
         )
+    }
+
+    /// Cross-check the parsed EV range's unit against the
+    /// `targetSOClist` block. The Hyundai USA backend has been
+    /// observed returning the value in kilometers while still
+    /// labelling its `unit` field as miles (real example: dte.value=369
+    /// unit=3 was km even though unit=3 means miles per spec; the
+    /// user's actual range was 229 mi == 369 km).
+    ///
+    /// Approach: there are four possible (parsed-unit, target-unit)
+    /// interpretations of the same numbers — both miles, both km, or
+    /// either mismatch. For each combination, build the candidate
+    /// distance and compute what each target *should* be at the
+    /// current SOC; convert both to a common unit; sum the absolute
+    /// differences. The combination with the lowest total mismatch
+    /// is the most internally consistent reading. We override the
+    /// parsed range's unit to whatever that interpretation says it is.
+    ///
+    /// Returns the parsed range unchanged when no usable target
+    /// exists.
+    private func unitCorrectedEVRange(
+        parsed: Distance,
+        evStatusData: [String: Any],
+        currentSOCPercent: Double
+    ) -> Distance {
+        guard currentSOCPercent > 0 else { return parsed }
+
+        let reserveChargeInfos = evStatusData["reservChargeInfos"] as? [String: Any] ?? [:]
+        let targets = (reserveChargeInfos["targetSOClist"] as? [[String: Any]] ?? [])
+            .compactMap { entry -> (rawValue: Double, soc: Double)? in
+                guard let soc: Double = extractNumber(from: entry["targetSOClevel"]),
+                      soc > 0,
+                      let dteDict = entry["dte"] as? [String: Any],
+                      let rangeByFuel = dteDict["rangeByFuel"] as? [String: Any],
+                      let evMode = rangeByFuel["evModeRange"] as? [String: Any],
+                      let value: Double = extractNumber(from: evMode["value"]),
+                      value > 0 else { return nil }
+                return (value, soc)
+            }
+        guard !targets.isEmpty else { return parsed }
+
+        let unitChoices: [Distance.Units] = [.miles, .kilometers]
+        var bestParsedUnit = parsed.units
+        var bestErrorKm = Double.infinity
+
+        for parsedUnit in unitChoices {
+            let candidateInKm = parsedUnit.convert(parsed.length, to: .kilometers)
+            for targetUnit in unitChoices {
+                // Project each target down to the user's current SOC,
+                // expressed in km, then total up the |error| against
+                // the candidate. Same-unit interpretations naturally
+                // bubble up because both targets line up coherently.
+                let totalErrorKm = targets.reduce(0.0) { acc, target in
+                    let targetKm = targetUnit.convert(target.rawValue, to: .kilometers)
+                    let impliedKm = targetKm * (currentSOCPercent / target.soc)
+                    return acc + abs(candidateInKm - impliedKm)
+                }
+                if totalErrorKm < bestErrorKm {
+                    bestErrorKm = totalErrorKm
+                    bestParsedUnit = parsedUnit
+                }
+            }
+        }
+
+        return Distance(length: parsed.length, units: bestParsedUnit)
     }
 
     private func fuelRanges(from statusData: [String: Any]) -> [FuelType: Distance] {
