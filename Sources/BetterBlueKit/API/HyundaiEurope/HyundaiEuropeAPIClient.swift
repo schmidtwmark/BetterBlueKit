@@ -82,7 +82,19 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
 
         if let refreshToken = configuration.refreshToken, !refreshToken.isEmpty {
             BBLogger.info(.auth, "HyundaiEurope: Starting login flow (refresh token)")
-            token = try await getAccessTokenFromRefreshToken()
+            do {
+                token = try await getAccessTokenFromRefreshToken()
+            } catch {
+                if let error = error as? APIError,
+                    error.errorType == .invalidCredentials,
+                    !password.isEmpty {
+                    // remove refresh token and try login with credentials
+                    configuration = configuration.with(refreshToken: "")
+                    return try await self.login()
+                } else {
+                    throw error
+                }
+            }
         } else {
             BBLogger.info(.auth, "HyundaiEurope: refresh token is nil or empty, using username/password login")
             let code = try await signin()
@@ -118,12 +130,13 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
 
     /// use username and password to get code for token exchange
     private func signin() async throws -> String {
+        let state = UUID().uuidString
         let body = ["client_id": Self.clientId,
                     "encryptedPassword": "false",
                     "username": username,
                     "password": password,
                     "redirect_uri": "\(baseURL)/api/v1/user/oauth2/token",
-                    "state": "ccsp",
+                    "state": state,
                     "remember_me": "false"
         ]
 
@@ -137,10 +150,20 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
         request.allHTTPHeaderFields = loginHeaders()
         let (data, response) = try await urlSession.data(for: request)
 
-        let location = response.url?.absoluteString
-        let exp = /[?&]code=([^&]+)/
-        let match = try exp.firstMatch(in: location!)
-        let code = match != nil ? String( match!.1) : ""
+        guard let http = response as? HTTPURLResponse,
+              let finalURL = http.url,
+              let comps = URLComponents(url: finalURL, resolvingAgainstBaseURL: false) else {
+            return ""
+        }
+        // State validate ← no possible anymore CSRF
+        guard comps.queryItems?.first(where: { $0.name == "state" })?.value == state else {
+                return ""
+        }
+        guard let code = comps.queryItems?.first(where: { $0.name == "code" })?.value,
+                  !code.isEmpty else {
+                return ""
+        }
+
         return code
     }
 
