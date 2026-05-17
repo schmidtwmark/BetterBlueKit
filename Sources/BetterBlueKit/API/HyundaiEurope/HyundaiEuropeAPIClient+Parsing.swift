@@ -34,7 +34,6 @@ extension HyundaiEuropeAPIClient {
                 case "P", "PE": .phev
                 default: .gas
                 }
-            let ownerInfo = vehicleData["master"] as? [String: Any] ?? [:]
             let generation = 2  // always 2 there is no such attribute
             let ccs2: Bool = getBoolFromJson( from: vehicleData, key: "ccuCCS2ProtocolSupport" )
 
@@ -51,7 +50,7 @@ extension HyundaiEuropeAPIClient {
         }
     }
 
-    package func parseVehicleStatusResponse( _ data: Data, _ locationData: Data, for vehicle: Vehicle )
+    package func parseVehicleStatusResponse( _ data: Data, _ locationData: Data?, for vehicle: Vehicle )
         throws -> VehicleStatus {
         guard
             let statusJson = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -60,10 +59,13 @@ extension HyundaiEuropeAPIClient {
             throw APIError.logError("Invalid status response", apiName: apiName)
         }
 
-        guard let parkJson = try JSONSerialization.jsonObject(with: locationData) as? [String: Any],
-            let parkData = parkJson["resMsg"] as? [String: Any]
-        else {
-            throw APIError.logError( "Invalid location response", apiName: apiName )
+        // park data are optional -> location from vehicle status is used in case of error
+        var parkData: [String: Any] = [:]
+        do {
+            let parkJson = try JSONSerialization.jsonObject(with: locationData!, options: []) as? [String: Any]
+            parkData = parkJson?["resMsg"] as? [String: Any] ?? [:]
+        } catch {
+            BBLogger.warning(.api, "Failed to parse park data: \(error.localizedDescription)" )
         }
 
         let pathMap = HyEuResponseKeyPathMap(profile: vehicle.marketOptions.ccs2Supported ? .ccs2 : .legacy)
@@ -121,7 +123,7 @@ extension HyundaiEuropeAPIClient {
         let plugType: Int = extractNumber(from: getAnyFromJson(from: vehicleState,
                                                 key: pathMap[.pluggedIn])) ?? 0
         let estimatedRange = getDoubleFromJson(from: vehicleState, key: pathMap[.rangeTotal])
-        let driveUnit = Int(getDoubleFromJson(from: vehicleState, key: pathMap[.rangeUnit])) ?? 1
+        let driveUnit = Int(getDoubleFromJson(from: vehicleState, key: pathMap[.rangeUnit]))
         var targetAC: Double?
         var targetDC: Double?
         var isCharging: Bool
