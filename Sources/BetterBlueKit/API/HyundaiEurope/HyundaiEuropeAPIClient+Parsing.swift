@@ -102,7 +102,7 @@ extension HyundaiEuropeAPIClient {
               let rToken = isRefresh ? json["refresh_token"] as? String : configuration.refreshToken,
               let expiresIn = json["expires_in"] as? Int,
               let accessToken = json["access_token"] as? String else {
-            throw APIError(message: "Failed to parse integration info", apiName: apiName)
+            throw APIError(message: "Failed to parse AuthToken info", apiName: apiName, errorType: .invalidCredentials)
         }
 
         return AuthToken(
