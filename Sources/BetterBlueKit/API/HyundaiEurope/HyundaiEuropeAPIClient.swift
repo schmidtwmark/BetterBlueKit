@@ -290,7 +290,7 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
     ) async throws -> VehicleStatus {
 
         // CCS2 or Gen5W endpoint?
-        var endpoint: String = vehicle.marketOptions.ccs2Supported ? "/ccs2/carstatus/latest" : "/status/latest"
+        let endpoint: String = vehicle.marketOptions.ccs2Supported ? "/ccs2/carstatus/latest" : "/status/latest"
         // Europe uses a single "latest" endpoint; no force-refresh knob is
         // currently wired up here, so the cached flag is a no-op.
         let (statusData, _, _) = try await performJSONRequest(

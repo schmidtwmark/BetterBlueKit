@@ -20,6 +20,7 @@ final class CLIState {
     var username: String = ""
     var password: String = ""
     var pin: String = ""
+    var refreshToken: String = ""
 
     var brand: Brand = .hyundai
     var region: Region = .usa
@@ -86,6 +87,11 @@ func parseArguments(state: CLIState) {
                 state.password = args[argIndex + 1]
                 argIndex += 1
             }
+        case "-rt", "--token":
+            if argIndex + 1 < args.count {
+                state.refreshToken = args[argIndex + 1]
+                argIndex += 1
+            }
         case "--pin":
             if argIndex + 1 < args.count {
                 state.pin = args[argIndex + 1]
@@ -135,6 +141,7 @@ func printUsage() {
     Interactive Mode Options:
       -u, --username <email>    Account username/email
       -p, --password <pass>     Account password
+      -rt, --token <token>      Account refresh token (optional, no password in case of use needed)
       --pin <pin>               Vehicle PIN (required for Hyundai)
       -b, --brand <brand>       Brand: 'hyundai' or 'kia' (default: hyundai)
       -r, --region <region>     Region: 'USA', 'Canada', 'Europe' (default: USA)
@@ -172,6 +179,7 @@ func performLogin(state: CLIState) async throws {
     let region = state.region
     let username = state.username
     let password = state.password
+    let refreshToken = state.refreshToken
     let pin = state.pin
 
     printHeader("Login")
@@ -215,6 +223,7 @@ func performLogin(state: CLIState) async throws {
         brand: brand,
         username: username,
         password: password,
+        refreshToken: refreshToken.isEmpty ? nil : refreshToken,
         pin: pin,
         accountId: UUID(),
         logSink: logSink,
@@ -233,6 +242,7 @@ func performLogin(state: CLIState) async throws {
 
     do {
         print("Attempting login...")
+        let deviceId = try await client.registerDevice()
         let token = try await client.login()
         state.authToken = token
         printSuccess("Login successful!")
@@ -744,7 +754,7 @@ func parseVehicleStatus(client: any APIClientProtocol, data: Data, vehicle: Vehi
     } else if let hyundaiCanada = client as? HyundaiCanadaAPIClient {
         return try hyundaiCanada.parseCanadaVehicleStatusResponse(data, for: vehicle)
     } else if let hyundaiEurope = client as? HyundaiEuropeAPIClient {
-        return try hyundaiEurope.parseVehicleStatusResponse(data, for: vehicle)
+        return try hyundaiEurope.parseVehicleStatusResponse(data, nil, for: vehicle)
     } else if let kiaUSA = client as? KiaUSAAPIClient {
         return try kiaUSA.parseVehicleStatusResponse(data, for: vehicle)
     } else {
@@ -763,8 +773,11 @@ func runCLI() async -> Int32 {
     if state.username.isEmpty {
         state.username = prompt("Username/Email: ")
     }
-    if state.password.isEmpty {
+    if state.password.isEmpty && state.refreshToken.isEmpty {
         state.password = prompt("Password: ")
+    }
+    if state.password.isEmpty && state.refreshToken.isEmpty {
+        state.refreshToken = prompt("Refresh Token: ")
     }
     if state.brand == .hyundai && state.pin.isEmpty {
         let rawPin = prompt("PIN: ")
