@@ -68,7 +68,8 @@ extension HyundaiEuropeAPIClient {
             BBLogger.warning(.api, "Failed to parse park data: \(error.localizedDescription)" )
         }
 
-        let pathMap = HyEuResponseKeyPathMap(profile: vehicle.marketOptions.ccs2Supported ? .ccs2 : .legacy)
+            let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
+        let pathMap = HyEuResponseKeyPathMap(profile: ccs2 ? .ccs2 : .legacy)
 
         let vehicleData = getChildFromJson( from: resMsg, key: pathMap[.vehicleState] )
 

@@ -290,13 +290,14 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
     ) async throws -> VehicleStatus {
 
         // CCS2 or Gen5W endpoint?
-        let endpoint: String = vehicle.marketOptions.ccs2Supported ? "/ccs2/carstatus/latest" : "/status/latest"
+        let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
+        let endpoint: String = ccs2 ? "/ccs2/carstatus/latest" : "/status/latest"
         // Europe uses a single "latest" endpoint; no force-refresh knob is
         // currently wired up here, so the cached flag is a no-op.
         let (statusData, _, _) = try await performJSONRequest(
             url: "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)\(endpoint)",
             method: .GET,
-            headers: authorizedHeaders(authToken: authToken, ccs2: vehicle.marketOptions.ccs2Supported),
+            headers: authorizedHeaders(authToken: authToken, ccs2: ccs2),
             requestType: .fetchVehicleStatus,
             vin: vehicle.vin
         )
@@ -304,7 +305,7 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
         let (parkData, _, _) = try await performJSONRequest(
             url: "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)/location/park",
             method: .GET,
-            headers: authorizedHeaders(authToken: authToken, ccs2: vehicle.marketOptions.ccs2Supported),
+            headers: authorizedHeaders(authToken: authToken, ccs2: ccs2),
             requestType: .fetchVehicleStatus,
             vin: vehicle.vin
         )
@@ -316,11 +317,12 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
         let (path, body) = commandPathAndBody(for: command)
+        let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
         let url =
-            "\(baseURL)/api/\(vehicle.marketOptions.ccs2Supported ? "v2" : "v1")"
+            "\(baseURL)/api/\(ccs2 ? "v2" : "v1")"
             + "/spa/vehicles/\(vehicle.regId)/\(path)"
         try await setCommandToken(authToken: authToken)
-        let header = commandHeaders(authToken: authToken, ccs2: vehicle.marketOptions.ccs2Supported)
+        let header = commandHeaders(authToken: authToken, ccs2: ccs2)
 
         _ = try await performJSONRequest(
             url: url,

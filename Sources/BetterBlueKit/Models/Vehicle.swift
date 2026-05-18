@@ -14,7 +14,7 @@ public struct Vehicle: Codable, Identifiable, Equatable, Sendable {
     public var regId: String, vin: String, model: String
     public var accountId: UUID, fuelType: FuelType
     public var generation: Int, odometer: Distance, vehicleKey: String?
-    public var marketOptions: VehicleMarketOptions
+    public var marketOptions: VehicleMarketOptions?
 
     public init(vin: String, regId: String, model: String, accountId: UUID,
                 fuelType: FuelType, generation: Int, odometer: Distance,
