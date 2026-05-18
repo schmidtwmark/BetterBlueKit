@@ -234,8 +234,15 @@ extension HyundaiUSAAPIClient {
     /// is the most internally consistent reading. We override the
     /// parsed range's unit to whatever that interpretation says it is.
     ///
+    /// This depends on the target list being *real per-SOC
+    /// projections* — i.e. the value at SOC 90% should be larger than
+    /// the value at SOC 80%. We've also observed the API returning
+    /// degenerate target lists where every entry echoes the current
+    /// range regardless of SOC. In that case the projection math is
+    /// based on a false premise and we trust the parsed unit instead.
+    ///
     /// Returns the parsed range unchanged when no usable target
-    /// exists.
+    /// exists or when the targets aren't real projections.
     private func unitCorrectedEVRange(
         parsed: Distance,
         evStatusData: [String: Any],
@@ -247,15 +254,32 @@ extension HyundaiUSAAPIClient {
         let targets = (reserveChargeInfos["targetSOClist"] as? [[String: Any]] ?? [])
             .compactMap { entry -> (rawValue: Double, soc: Double)? in
                 guard let soc: Double = extractNumber(from: entry["targetSOClevel"]),
-                      soc > 0,
-                      let dteDict = entry["dte"] as? [String: Any],
-                      let rangeByFuel = dteDict["rangeByFuel"] as? [String: Any],
-                      let evMode = rangeByFuel["evModeRange"] as? [String: Any],
+                      soc > 0 else { return nil }
+                // The API serves the per-target range at two different
+                // JSON paths depending on the response variant — the
+                // refresh=true shape has `rangeByFuel` directly under
+                // the entry, while the refresh=false shape wraps it
+                // in `dte`. Try both.
+                let rangeByFuel = (entry["rangeByFuel"] as? [String: Any])
+                    ?? ((entry["dte"] as? [String: Any])?["rangeByFuel"] as? [String: Any])
+                guard let evMode = rangeByFuel?["evModeRange"] as? [String: Any],
                       let value: Double = extractNumber(from: evMode["value"]),
                       value > 0 else { return nil }
                 return (value, soc)
             }
-        guard !targets.isEmpty else { return parsed }
+        guard targets.count >= 2 else { return parsed }
+
+        // Guard against degenerate target lists where every entry
+        // reports the same range regardless of SOC. The API has been
+        // observed doing this on cached/background reads — both
+        // targetSOClevel=80 and =90 echoing the current 167mi range.
+        // The projection math we rely on (`target × current/target.soc`)
+        // assumes the value scales with SOC; if it doesn't, the
+        // best-fit search picks an interpretation by coincidence
+        // rather than signal. Bail and trust the parsed unit.
+        let firstValue = targets[0].rawValue
+        let allEqual = targets.allSatisfy { abs($0.rawValue - firstValue) < 0.01 }
+        if allEqual { return parsed }
 
         let unitChoices: [Distance.Units] = [.miles, .kilometers]
         var bestParsedUnit = parsed.units
