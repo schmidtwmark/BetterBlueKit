@@ -81,16 +81,19 @@ extension HyundaiCanadaAPIClient {
 
         let userInfoUuid = result["userInfoUuid"] as? String ?? ""
         let emailList = result["emailList"] as? [String] ?? []
-        // The server has been seen returning the email-from-loginId in
-        // `userAccount` if `emailList` is empty — fall back to it so
-        // the OTP flow has *something* to identify the user with.
-        let serverUserAccount = result["userAccount"] as? String
         let phone = result["userPhone"] as? String
 
-        let email = emailList.first ?? serverUserAccount
-        // Stash for the subsequent send / verify / complete calls.
+        // Match the Python reference (`hyundai_kia_connect_api`): when
+        // `emailList` is empty fall back to the original `username`,
+        // NOT the server-normalised `userAccount` field. The server
+        // upper-cases its echo (e.g. "gingmar@gmail.com" comes back
+        // as "GINGXXX@GMAIL.COM"), and downstream `validateotp`
+        // hashes `userAccount` as part of the OTP check — sending the
+        // upper-cased form yields errorCode 7999 even with a correct
+        // code.
+        let email = emailList.first ?? username
         mfaUserInfoUuid = userInfoUuid
-        mfaEmail = email ?? username
+        mfaEmail = email
         mfaPhone = (phone?.isEmpty ?? true) ? nil : phone
         mfaOtpKey = nil
         mfaCompletedAuthToken = nil
@@ -98,7 +101,10 @@ extension HyundaiCanadaAPIClient {
         throw APIError.requiresMFA(
             xid: userInfoUuid,
             otpKey: nil,
-            hasEmail: email != nil,
+            // Email delivery is always available since we fall back
+            // to `username` (the user's email-shaped login) when
+            // `selverifmeth` doesn't surface a separate email list.
+            hasEmail: true,
             hasPhone: !(phone?.isEmpty ?? true),
             email: email,
             phone: (phone?.isEmpty ?? true) ? nil : phone,
@@ -167,10 +173,14 @@ extension HyundaiCanadaAPIClient {
                 apiName: apiName
             )
         }
-        let email = mfaEmail ?? username
-
-        let validationKey = try await validateOTP(code: code, otpKey: storedOtpKey, email: email)
-        let auth = try await genMFAToken(validationKey: validationKey, email: email)
+        // `validateotp` and `genmfatkn` need the *original* user-typed
+        // username for their `userAccount` field — the Python
+        // reference uses `username` directly there, and the server
+        // returns errorCode 7999 if we send the server-normalised
+        // (often upper-cased) form back. `mfaEmail` is only used as
+        // the `otpEmail` payload in `genmfatkn`.
+        let validationKey = try await validateOTP(code: code, otpKey: storedOtpKey)
+        let auth = try await genMFAToken(validationKey: validationKey, otpEmail: mfaEmail ?? username)
 
         // Stash so completeMFALogin (called immediately after by the
         // existing protocol flow) can return the real token.
@@ -186,20 +196,40 @@ extension HyundaiCanadaAPIClient {
     }
 
     /// Step 4 of the OTP flow — exchange the code the user typed for
-    /// an `otpValidationKey` we can hand to `genmfatkn`.
-    private func validateOTP(code: String, otpKey: String, email: String) async throws -> String {
+    /// an `otpValidationKey` we can hand to `genmfatkn`. `userAccount`
+    /// is the *original* username the user logged in with — the
+    /// server-normalised form returned by `selverifmeth` is rejected
+    /// here with errorCode 7999 even when the OTP is correct.
+    private func validateOTP(code: String, otpKey: String) async throws -> String {
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/mfa/validateotp",
             method: .POST,
             headers: mfaHeaders(),
             body: [
                 "otpNo": code,
-                "userAccount": email,
+                "userAccount": username,
                 "otpKey": otpKey,
                 "mfaApiCode": "0107"
             ],
             requestType: .verifyMFA
         )
+
+        // 7999 = "We apologize, but your request could not be
+        // processed." Hyundai's catch-all when the OTP is wrong /
+        // expired or any other validation step trips. Surface it as
+        // an invalid-credentials error so the iOS UI shows "Try
+        // again or request a new code" instead of the cryptic raw
+        // server text.
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let header = json["responseHeader"] as? [String: Any],
+           !isCanadaResponseSuccess(header["responseCode"]),
+           let error = json["error"] as? [String: Any],
+           (error["errorCode"] as? String) == "7999" {
+            throw APIError.invalidCredentials(
+                "Verification rejected. Try again or request a new code.",
+                apiName: apiName
+            )
+        }
 
         let json = try parseCanadaResponse(data, context: "mfa/validateotp")
         guard let result = json["result"] as? [String: Any] else {
@@ -213,15 +243,17 @@ extension HyundaiCanadaAPIClient {
     }
 
     /// Step 5 of the OTP flow — trade the validation key for a real
-    /// session token.
-    private func genMFAToken(validationKey: String, email: String) async throws -> AuthToken {
+    /// session token. `userAccount` uses the *original* username (per
+    /// Python ref) while `otpEmail` is the email-form returned by
+    /// `selverifmeth`.
+    private func genMFAToken(validationKey: String, otpEmail: String) async throws -> AuthToken {
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/mfa/genmfatkn",
             method: .POST,
             headers: mfaHeaders(),
             body: [
-                "userAccount": email,
-                "otpEmail": email,
+                "userAccount": username,
+                "otpEmail": otpEmail,
                 "mfaApiCode": "0107",
                 "otpValidationKey": validationKey,
                 "mfaYn": "Y"
