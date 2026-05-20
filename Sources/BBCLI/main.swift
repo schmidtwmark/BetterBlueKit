@@ -242,7 +242,7 @@ func performLogin(state: CLIState) async throws {
 
     do {
         print("Attempting login...")
-        let deviceId = try await client.registerDevice()
+        _ = try await client.registerDevice()
         let token = try await client.login()
         state.authToken = token
         printSuccess("Login successful!")

@@ -51,7 +51,7 @@ extension HyundaiEuropeAPIClient {
     }
 
     package func parseVehicleStatusResponse( _ data: Data, _ locationData: Data?, for vehicle: Vehicle )
-        throws -> VehicleStatus {
+    throws -> VehicleStatus {
         guard
             let statusJson = try JSONSerialization.jsonObject(with: data) as? [String: Any],
             let resMsg = statusJson["resMsg"] as? [String: Any]
@@ -61,21 +61,23 @@ extension HyundaiEuropeAPIClient {
 
         // park data are optional -> location from vehicle status is used in case of error
         var parkData: [String: Any] = [:]
-        do {
-            let parkJson = try JSONSerialization.jsonObject(with: locationData!, options: []) as? [String: Any]
-            parkData = parkJson?["resMsg"] as? [String: Any] ?? [:]
-        } catch {
-            BBLogger.warning(.api, "Failed to parse park data: \(error.localizedDescription)" )
+        if let locationData = locationData,
+           let parkJson = try? JSONSerialization.jsonObject(with: locationData, options: []) as? [String: Any] {
+            parkData = parkJson["resMsg"] as? [String: Any] ?? [:]
+        } else {
+            BBLogger.warning(.api, "Failed to parse park data using location from vehicle status" )
+            parkData = [:]
         }
 
-            let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
+        let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
         let pathMap = HyEuResponseKeyPathMap(profile: ccs2 ? .ccs2 : .legacy)
 
         let vehicleData = getChildFromJson( from: resMsg, key: pathMap[.vehicleState] )
 
-        // get timestamp in milliseconds from response (utc) and transform it to date
-        let syncDate = Date( timeIntervalSince1970: getDoubleFromJson( from: resMsg,
-                key: pathMap[.syncDate] ) / 1000 )
+        // get datetime string from response (utc) and transform it to date
+        let syncDate = BluelinkDateParser.parse(getAnyFromJson( from: resMsg,
+                                                                key: pathMap[.syncDate] ) as? String,
+                                                timeZone: TimeZone(identifier: "Europe/Berlin"))
         // get odometer from drivetrain data
         let odo = Distance(
             length: getDoubleFromJson(from: vehicleData, key: pathMap[.odo]),
@@ -86,7 +88,7 @@ extension HyundaiEuropeAPIClient {
             vin: vehicle.vin,
             gasRange: nil,
             evStatus: vehicle.fuelType.hasElectricCapability
-                ? parseEVStatus(from: vehicleData, pathMap: pathMap) : nil,
+            ? parseEVStatus(from: vehicleData, pathMap: pathMap) : nil,
             location: parseLocation(from: vehicleData, park: parkData, pathMap: pathMap),
             lockStatus: parseLockStatus(from: vehicleData, pathMap: pathMap),
             climateStatus: parseClimateStatus(from: vehicleData, pathMap: pathMap),
@@ -96,7 +98,8 @@ extension HyundaiEuropeAPIClient {
             doorOpen: parseDoorOpen(from: vehicleData, pathMap: pathMap),
             trunkOpen: getBoolFromJson(from: vehicleData, key: pathMap[.trunk]),
             hoodOpen: getBoolFromJson(from: vehicleData, key: pathMap[.hood]),
-            tirePressureWarning: parseTirePressure(from: vehicleData, pathMap: pathMap)
+            tirePressureWarning: parseTirePressure(from: vehicleData, pathMap: pathMap),
+            engineOn: getBoolFromJson(from: vehicleData, key: pathMap[.engineOn])
         )
     }
 
@@ -120,7 +123,6 @@ extension HyundaiEuropeAPIClient {
 
         let batterySOC = getDoubleFromJson(from: vehicleState, key: pathMap[.soc])
         let remainChargeTime = getDoubleFromJson(from: vehicleState, key: pathMap[.chargeTime])
-        let pluggedIn = getBoolFromJson(from: vehicleState, key: pathMap[.pluggedIn])
         let plugType: Int = extractNumber(from: getAnyFromJson(from: vehicleState,
                                                 key: pathMap[.pluggedIn])) ?? 0
         let estimatedRange = getDoubleFromJson(from: vehicleState, key: pathMap[.rangeTotal])
@@ -133,9 +135,9 @@ extension HyundaiEuropeAPIClient {
             targetDC = getDoubleFromJson(from: vehicleState, key: pathMap[.targetDC])
             isCharging = remainChargeTime > 0
         } else {
-            let targetSocList = getChildFromJson(from: vehicleState,
-                                                 key: pathMap[.targetSocList]) as? [[String: Any]] ?? []
-            for target in targetSocList {
+            let targetSocList = getAnyFromJson(from: vehicleState, key: pathMap[.targetSocList])
+            let socList = targetSocList as? [[String: Any]] ?? []
+            for target in socList {
                 if let plugType = target["plugType"] as? Int,
                    let soc = target["targetSOClevel"] as? Double {
                     if plugType == 1 {
@@ -143,11 +145,12 @@ extension HyundaiEuropeAPIClient {
                     } else if plugType == 0 {
                         targetDC = soc
                     }
-                 }
+                }
             }
             isCharging = getBoolFromJson(from: vehicleState, key: pathMap[.isCharging])
         }
-        let chargePower = getDoubleFromJson(from: vehicleState, key: pathMap[.chargePower])
+        let chargePower = max(getDoubleFromJson(from: vehicleState, key: pathMap[.chargePowerStd]),
+                              getDoubleFromJson(from: vehicleState, key: pathMap[.chargePowerFst]))
 
         return VehicleStatus.EVStatus(
             charging: isCharging,
@@ -171,7 +174,7 @@ extension HyundaiEuropeAPIClient {
         pathMap: HyEuResponseKeyPathMap
     ) -> VehicleStatus.DoorStatus? {
         guard
-            let doorData = getAnyFromJson(from: vehicleState, key: pathMap[.doorFrontLeft]) as? Int
+            getAnyFromJson(from: vehicleState, key: pathMap[.doorFrontLeft]) is Int
         else { return nil }
         return VehicleStatus.DoorStatus(
             frontLeft: getBoolFromJson(from: vehicleState, key: pathMap[.doorFrontLeft]),
@@ -218,12 +221,19 @@ extension HyundaiEuropeAPIClient {
 
         let temp = Temperature(
             units: getAnyFromJson(from: vehicleState, key: pathMap[.tempUnit]) as? Int ?? 0,
-            value: getAnyFromJson(from: vehicleState, key: pathMap[.airTemp]) as? String
+            value: getAnyFromJson(from: vehicleState, key: pathMap[.airTemp]) as? String ?? "",
         )
+
+        var airConOn: Bool = false
+        if pathMap.apiProfile == .legacy {
+            airConOn = getBoolFromJson(from: vehicleState, key: pathMap[.airControlOn])
+        } else {
+            airConOn = getAnyFromJson(from: vehicleState, key: pathMap[.airconSpeed]) as? Int ?? 0 > 0
+        }
 
         return VehicleStatus.ClimateStatus(
             defrostOn: getBoolFromJson(from: vehicleState, key: pathMap[.defrostOn]),
-            airControlOn: (getAnyFromJson(from: vehicleState, key: pathMap[.airconSpeed]) as? Int ?? 0) > 0,
+            airControlOn: airConOn,
             steeringWheelHeatingOn: getBoolFromJson(from: vehicleState, key: pathMap[.steeringWheelHeatOn]),
             temperature: temp
         )
@@ -240,22 +250,19 @@ extension HyundaiEuropeAPIClient {
          * Workaround because CCS2 location in status is currently stale
          * normally we would just use coords from vehicleState without time check
          */
-        let dateFormatter = DateFormatter()
-        dateFormatter.timeZone = TimeZone.current
-        dateFormatter.dateFormat = "yyyyMMddHHmmss"
 
         // park date is always in exact Zone
-        let parkDate = dateFormatter.date(from: parkDateString)!
+        let parkDate = BluelinkDateParser.parse(parkDateString, timeZone: TimeZone.current)
 
         /*
-         * status location is currently in UTC
+         * status location is currently in UTC for ccs2 cars
          * "Offset" value seems to be a hint what timezone the car is in
          */
-        dateFormatter.timeZone = TimeZone.gmt
-        dateFormatter.dateFormat = "yyyyMMddHHmmss.SSS"
-        let locationDate = dateFormatter.date(from: locationDateString)!
+        let locationTimeZone = pathMap.apiProfile == .legacy ? TimeZone(identifier: "Europe/Berlin") : TimeZone.gmt
+        let locationDate = BluelinkDateParser.parse(locationDateString, timeZone: locationTimeZone)
 
-        if locationDate.compare(parkDate).rawValue <= 0 {
+        // location date is older than parking endpoint date -> use parking location
+        if let parkDate, let locationDate, locationDate.compare(parkDate).rawValue <= 0 {
             return VehicleStatus.Location(
                 latitude: getDoubleFromJson(from: park, key: pathMap[.parkLat]),
                 longitude: getDoubleFromJson(from: park, key: pathMap[.parkLon])
@@ -324,15 +331,29 @@ extension HyundaiEuropeAPIClient {
     }
 
     private func getAnyFromJson(from data: [String: Any], key keyString: String?) -> Any? {
-        if keyString == nil || keyString!.isEmpty { return nil }
-        var current = data
-        for (key) in keyString!.split(separator: ".") {
-            if let value = current[String(key)] as? [String: Any] {
-                current = value
+        guard let keyString, !keyString.isEmpty else { return nil }
+
+        var current: Any = data
+
+        for key in keyString.split(separator: ".") {
+            let keyStr = String(key)
+
+            if let dict = current as? [String: Any] {
+                // default dictionary access
+                guard let next = dict[keyStr] else { return nil }
+                current = next
+
+            } else if let array = current as? [Any] {
+                // array access with index ("drvDistance.0.rangeByFuel")
+                guard let index = Int(keyStr), array.indices.contains(index) else { return nil }
+                current = array[index]
+
             } else {
-                return current[String(key)]
+                // no Dict or Array → no further child found
+                return nil
             }
         }
-        return nil
+
+        return current
     }
 }

@@ -8,12 +8,12 @@
 import Foundation
 
 public enum HyEuResponseKeys: String, CaseIterable, Sendable {
-    case vehicleState, syncDate, odo, soc, battery12v, chargeTime, isCharging, pluggedIn
-    case rangeTotal, rangeUnit, targetAC, targetDC, targetSocList, chargePower
+    case vehicleState, syncDate, odo, soc, battery12v, chargeTime, isCharging, pluggedIn, engineOn
+    case rangeTotal, rangeUnit, targetAC, targetDC, targetSocList, chargePowerStd, chargePowerFst
     case lock1L, lock1R, lock2L, lock2R, lockStatus
     case doorFrontLeft, doorFrontRight, doorRearLeft, doorRearRight
     case locationDate, trunk, hood, parkDate, locationLat, locationLon, parkLat, parkLon
-    case airconSpeed, defrostOn, steeringWheelHeatOn, airTemp, tempUnit
+    case airconSpeed, defrostOn, steeringWheelHeatOn, airTemp, tempUnit, airControlOn
     case tpmsFrontLeft, tpmsFrontRight, tpmsRearLeft, tpmsRearRight, tpmsStatus
 }
 
@@ -36,6 +36,7 @@ public enum HyEuResponseKeyPath {
         .odo: "Drivetrain.Odometer",
         .soc: "Green.BatteryManagement.BatteryRemain.Ratio",
         .battery12v: "Electronics.Battery.Level",
+        .engineOn: "DrivingReady",
         .chargeTime: "Green.ChargingInformation.Charging.RemainTime",
         .isCharging: "Green.ChargingInformation.Charging.RemainTime",
         .pluggedIn: "Green.ChargingInformation.ConnectorFastening.State",
@@ -43,7 +44,8 @@ public enum HyEuResponseKeyPath {
         .rangeUnit: "Drivetrain.FuelSystem.DTE.Unit",
         .targetAC: "Green.ChargingInformation.TargetSoC.Standard",
         .targetDC: "Green.ChargingInformation.TargetSoC.Quick",
-        .chargePower: "Green.Electric.SmartGrid.RealTimePower",
+        .chargePowerStd: "Green.Electric.SmartGrid.RealTimePower",
+        .chargePowerFst: "Green.Electric.SmartGrid.RealTimePower",
         .lock1L: "Cabin.Door.Row1.Driver.Lock",
         .lock1R: "Cabin.Door.Row1.Passenger.Lock",
         .lock2L: "Cabin.Door.Row2.Left.Lock",
@@ -73,34 +75,41 @@ public enum HyEuResponseKeyPath {
     ]
 
     private static let legacy: [HyEuResponseKeys: String?] = [
-        .vehicleState: "vehicleStatusInfo.vehicleStatus",
-        .syncDate: "time",
+        .vehicleState: "vehicleStatusInfo",
+        .syncDate: "vehicleStatusInfo.vehicleStatus.time",
         .odo: "odometer.value",
-        .soc: "evStatus.batteryStatus",
-        .battery12v: "battery.batSoc",
-        .chargeTime: "evStatus.remainTime2.atc.value",
-        .isCharging: "evStatus.batteryCharge",
-        .pluggedIn: "evStatus.batteryPlugin",
-        .rangeTotal: "evStatus.drvDistance.0.rangeByFuel.evModeRange.value",
-        .rangeUnit: "evStatus.drvDistance.0.rangeByFuel.evModeRange.unit",
-        .targetSocList: "evStatus.reservChargeInfos.targetSOClist",
-        .chargePower: "batteryPower.batteryStndChrgPower",
-        .lockStatus: "doorLock",
-        .doorFrontLeft: "doorOpen.frontLeft",
-        .doorFrontRight: "doorOpen.frontRight",
-        .doorRearLeft: "doorOpen.backLeft",
-        .doorRearRight: "doorOpen.backRight",
-        .trunk: "trunkOpen",
-        .hood: "hoodOpen",
-        .defrostOn: "defrost",
-        .steeringWheelHeatOn: "steerWheelHeat",
-        .airTemp: "airTemp.value",
-        .tempUnit: "airTemp.unit",
-        .tpmsFrontLeft: "tirePressureLamp.tirePressureLampFL",
-        .tpmsFrontRight: "tirePressureLamp.tirePressureLampFR",
-        .tpmsRearLeft: "tirePressureLamp.tirePressureLampRL",
-        .tpmsRearRight: "tirePressureLamp.tirePressureLampRR",
-        .tpmsStatus: "tirePressureLamp.tirePressureLampAll"
+        .soc: "vehicleStatus.evStatus.batteryStatus",
+        .battery12v: "vehicleStatus.battery.batSoc",
+        .engineOn: "vehicleStatus.engine",
+        .chargeTime: "vehicleStatus.evStatus.remainTime2.atc.value",
+        .isCharging: "vehicleStatus.evStatus.batteryCharge",
+        .pluggedIn: "vehicleStatus.evStatus.batteryPlugin",
+        .rangeTotal: "vehicleStatus.evStatus.drvDistance.0.rangeByFuel.evModeRange.value",
+        .rangeUnit: "vehicleStatus.evStatus.drvDistance.0.rangeByFuel.evModeRange.unit",
+        .targetSocList: "vehicleStatus.evStatus.reservChargeInfos.targetSOClist",
+        .chargePowerStd: "vehicleStatus.evStatus.batteryPower.batteryStndChrgPower",
+        .chargePowerFst: "vehicleStatus.evStatus.batteryPower.batteryFstChrgPower",
+        .lockStatus: "vehicleStatus.doorLock",
+        .doorFrontLeft: "vehicleStatus.doorOpen.frontLeft",
+        .doorFrontRight: "vehicleStatus.doorOpen.frontRight",
+        .doorRearLeft: "vehicleStatus.doorOpen.backLeft",
+        .doorRearRight: "vehicleStatus.doorOpen.backRight",
+        .trunk: "vehicleStatus.trunkOpen",
+        .hood: "vehicleStatus.hoodOpen",
+        .locationDate: "vehicleLocation.time",
+        .parkDate: "time",
+        .locationLat: "vehicleLocation.coord.lat",
+        .locationLon: "vehicleLocation.coord.lon",
+        .airControlOn: "vehicleStatus.airCtrlOn",
+        .defrostOn: "vehicleStatus.defrost",
+        .steeringWheelHeatOn: "vehicleStatus.steerWheelHeat",
+        .airTemp: "vehicleStatus.airTemp.value",
+        .tempUnit: "vehicleStatus.airTemp.unit",
+        .tpmsFrontLeft: "vehicleStatus.tirePressureLamp.tirePressureLampFL",
+        .tpmsFrontRight: "vehicleStatus.tirePressureLamp.tirePressureLampFR",
+        .tpmsRearLeft: "vehicleStatus.tirePressureLamp.tirePressureLampRL",
+        .tpmsRearRight: "vehicleStatus.tirePressureLamp.tirePressureLampRR",
+        .tpmsStatus: "vehicleStatus.tirePressureLamp.tirePressureLampAll"
     ]
 
     static func path(for key: HyEuResponseKeys, profile: HyEuAPIProfile) -> String? {
@@ -112,4 +121,34 @@ public enum HyEuResponseKeyPath {
 public enum HyEuAPIProfile: Sendable {
     case legacy
     case ccs2
+}
+
+enum BluelinkDateParser {
+    private static let formats = [
+        "yyyyMMddHHmmss",
+        "yyyyMMddHHmmss.SSS"
+    ]
+
+    static func parse(_ value: String?, timeZone: TimeZone? = nil) -> Date? {
+        guard let value else { return nil }
+        let raw = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return nil }
+
+        // 1) first fixed API formats (example: 20260517161031)
+        for format in formats {
+            let frmt = DateFormatter()
+            frmt.locale = Locale(identifier: "en_US_POSIX")
+            frmt.timeZone = timeZone ?? TimeZone(secondsFromGMT: 0)
+            frmt.dateFormat = format
+            if let date = frmt.date(from: raw) { return date }
+        }
+
+        // 2) next epoch if not an api format
+        if raw.allSatisfy(\.isNumber), let timeStamp = Double(raw) {
+            if raw.count == 13 { return Date(timeIntervalSince1970: timeStamp / 1000.0) } // ms
+            if raw.count == 10 { return Date(timeIntervalSince1970: timeStamp) }          // s
+        }
+
+        return nil
+    }
 }

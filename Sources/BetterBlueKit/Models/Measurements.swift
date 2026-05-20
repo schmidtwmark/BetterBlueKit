@@ -100,6 +100,8 @@ public struct Temperature: Codable, Hashable, Sendable {
             number
         } else if value == "HI" {
             Units.fahrenheit.convert(Temperature.maximum, to: self.units)
+        } else if let value, !value.isEmpty, value.hasSuffix("H") {
+            Temperature.parseAirTempFromHEX(value, to: self.units)
         } else {
             Units.fahrenheit.convert(Temperature.minimum, to: self.units)
         }
@@ -107,5 +109,17 @@ public struct Temperature: Codable, Hashable, Sendable {
 
     public init(value: Double, units: Units) {
         (self.value, self.units) = (value, units)
+    }
+
+    private static func parseAirTempFromHEX(_ rawValue: String, to targetUnits: Units) -> Double {
+        // Hyundai/Kia HEX format "02H", "0AH", ...
+        let hexPart = String(rawValue.dropLast())
+        guard let index = Int(hexPart, radix: 16), (0..<32).contains(index) else {
+            return Units.fahrenheit.convert(Temperature.minimum, to: targetUnits)
+        }
+
+        // => tempC = (28 + index) * 0.5
+        let tempC = Double(28 + index) * 0.5
+        return Units.celsius.convert(tempC, to: targetUnits)
     }
 }
