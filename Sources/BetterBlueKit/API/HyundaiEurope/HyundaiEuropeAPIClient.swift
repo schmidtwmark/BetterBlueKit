@@ -79,7 +79,7 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
             "client_secret": Self.clientSecret
         ]
 
-        let (data, _, response) = try await performJSONRequest(
+        let (data, _, _) = try await performJSONRequest(
             url: "\(authBaseURL)/auth/api/v2/user/oauth2/token",
             method: .POST,
             headers: loginHeaders(),
@@ -110,7 +110,7 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
         request.httpMethod = "POST"
         request.httpBody = bodyData
         request.allHTTPHeaderFields = loginHeaders()
-        let (data, response) = try await urlSession.data(for: request)
+        let (_, response) = try await urlSession.data(for: request)
 
         guard let http = response as? HTTPURLResponse,
               let finalURL = http.url,
