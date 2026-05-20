@@ -1,20 +1,9 @@
 //
-//  KiaSampleJSON.swift
+//  HyEuAPIParsingTests.swift
 //  BetterBlueKit
 //
-//  Created by Martin Böhm on 19.05.26.
+//  Tests for Hyundai EU API client functionality
 //
-
-
-//
-//  KiaAPIParsingTests.swift
-//  BetterBlueKit
-//
-//  Tests for Kia API client functionality
-//
-//  Note: Parsing tests have been removed as the parsing methods are now
-//  private implementation details of KiaUSAAPIClient. This file retains
-//  sample JSON data for documentation and integration testing reference.
 //
 
 import Foundation
