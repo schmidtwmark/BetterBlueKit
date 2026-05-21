@@ -25,6 +25,14 @@ public final class KiaEuropeAPIClient: APIClientBase, APIClientProtocol {
     static let authCfb = "wLTVxwidmH8CfJYBWSnHD6E0huk0ozdiuygB4hLkM5XCgzAL1Dk5sE36d/bx5PFMbZs="
     static let pushType = "APNS"
 
+    /// The `_CCS_APP_AOS` suffix is what gets past Cloudflare on
+    /// `idpconnect-eu.kia.com` — without it, the authorize endpoint
+    /// returns 400. Discovered in hyundai_kia_connect_api PR #1123.
+    static let mobileUserAgent =
+        "Mozilla/5.0 (Linux; Android 4.1.1; Galaxy Nexus Build/JRO03C) " +
+        "AppleWebKit/535.19 (KHTML, like Gecko) " +
+        "Chrome/18.0.1025.166 Mobile Safari/535.19_CCS_APP_AOS"
+
     var stamp = ""
     var commandToken: String = ""
     var commandTokenExpiration: Date = Date()
@@ -35,16 +43,159 @@ public final class KiaEuropeAPIClient: APIClientBase, APIClientProtocol {
     var authBaseURL: String { "https://idpconnect-eu.kia.com" }
     var apiHost = Brand.kiaBaseUrl(region: Region.europe).replacing(/https:\/\//, with: "")
 
+    var oauthRedirectURI: String { "\(baseURL)/api/v1/user/oauth2/redirect" }
+
     public override var apiName: String { "KiaEurope" }
 
-    // MARK: - Login (stub — implemented in Fase 2)
+    // MARK: - Login
 
     public func login() async throws -> AuthToken {
-        throw APIError.regionNotSupported(
-            "Kia Europe login flow is not yet implemented. " +
-            "Tracked in branch kia-europe-support.",
-            apiName: apiName
-        )
+        var token: AuthToken!
+
+        if let refreshToken = configuration.refreshToken, !refreshToken.isEmpty {
+            BBLogger.info(.auth, "KiaEurope: Starting login flow (refresh token)")
+            do {
+                token = try await getAccessTokenFromRefreshToken()
+            } catch {
+                if let apiError = error as? APIError,
+                    apiError.errorType == .invalidCredentials,
+                    !password.isEmpty {
+                    configuration = configuration.with(refreshToken: "")
+                    return try await self.login()
+                } else {
+                    throw error
+                }
+            }
+        } else {
+            BBLogger.info(.auth, "KiaEurope: refresh token is nil or empty, using username/password login")
+            let code = try await signin()
+            token = try await exchangeForToken(code: code)
+            configuration = configuration.with(refreshToken: token.refreshToken)
+        }
+
+        BBLogger.info(.auth, "KiaEurope: Login completed successfully")
+        return token
+    }
+
+    /// IDPConnect headless signin: authorize → certs → encrypted-signin → 302 with ?code=
+    private func signin() async throws -> String {
+        // Step 1: GET authorize — sets session cookies on idpconnect-eu.kia.com
+        let encodedRedirect = oauthRedirectURI.addingPercentEncoding(
+            withAllowedCharacters: .urlQueryAllowed
+        ) ?? oauthRedirectURI
+        let authorizeURL =
+            "\(authBaseURL)/auth/api/v2/user/oauth2/authorize"
+            + "?response_type=code&client_id=\(Self.clientId)"
+            + "&redirect_uri=\(encodedRedirect)&lang=en&state=ccsp&country=de"
+        var authorizeReq = URLRequest(url: URL(string: authorizeURL)!)
+        authorizeReq.setValue(Self.mobileUserAgent, forHTTPHeaderField: "User-Agent")
+        _ = try await urlSession.data(for: authorizeReq)
+
+        // Step 2: GET certs — pull JWK (n, e, kid) for password encryption
+        var certsReq = URLRequest(url: URL(string: "\(authBaseURL)/auth/api/v1/accounts/certs")!)
+        certsReq.setValue(Self.mobileUserAgent, forHTTPHeaderField: "User-Agent")
+        let (certsData, _) = try await urlSession.data(for: certsReq)
+        guard let certsJson = try JSONSerialization.jsonObject(with: certsData) as? [String: Any],
+              let retValue = certsJson["retValue"] as? [String: Any],
+              let nStr = retValue["n"] as? String,
+              let eStr = retValue["e"] as? String,
+              let kid = retValue["kid"] as? String else {
+            throw APIError(message: "Failed to parse JWK from /accounts/certs", apiName: apiName)
+        }
+
+        // Step 3: RSA-PKCS1v1.5-encrypt password, hex-encode
+        let encryptedHex = try rsaEncryptPKCS1(password: password, jwkN: nStr, jwkE: eStr)
+
+        // Step 4: POST signin (form-encoded). URLSession follows the 302 to
+        // the redirect_uri — the final URL carries `?code=…` in its query.
+        let signinFields: [(String, String)] = [
+            ("client_id", Self.clientId),
+            ("encryptedPassword", "true"),
+            ("password", encryptedHex),
+            ("redirect_uri", oauthRedirectURI),
+            ("scope", ""),
+            ("nonce", ""),
+            ("state", "ccsp"),
+            ("username", username),
+            ("connector_session_key", ""),
+            ("kid", kid),
+            ("_csrf", "")
+        ]
+        var signinReq = URLRequest(url: URL(string: "\(authBaseURL)/auth/account/signin")!)
+        signinReq.httpMethod = "POST"
+        signinReq.setValue(Self.mobileUserAgent, forHTTPHeaderField: "User-Agent")
+        signinReq.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        signinReq.httpBody = Self.formEncode(signinFields).data(using: .utf8)
+
+        let (_, signinResp) = try await urlSession.data(for: signinReq)
+        guard let http = signinResp as? HTTPURLResponse,
+              let finalURL = http.url,
+              let comps = URLComponents(url: finalURL, resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidCredentials("Signin returned no redirect", apiName: apiName)
+        }
+
+        if let code = comps.queryItems?.first(where: { $0.name == "code" })?.value,
+           !code.isEmpty {
+            return code
+        }
+
+        // Translate IDPConnect error redirects into BetterBlueKit errors
+        if let errorDesc = comps.queryItems?.first(where: { $0.name == "error_description" })?.value {
+            throw APIError.invalidCredentials(
+                "Authentication rejected: \(errorDesc)", apiName: apiName
+            )
+        }
+        if comps.path.contains("/web/v1/user/authorization") {
+            throw APIError(
+                message: "Kia account consent required — log in via a browser once to accept the terms",
+                apiName: apiName
+            )
+        }
+        if comps.path.contains("authorize") {
+            throw APIError.invalidCredentials(
+                "Authentication failed — returned to login page. Check username and password.",
+                apiName: apiName
+            )
+        }
+        throw APIError(message: "Unexpected redirect after signin: \(finalURL.absoluteString)", apiName: apiName)
+    }
+
+    /// Exchange `?code=…` from the signin redirect for access + refresh tokens
+    private func exchangeForToken(code: String) async throws -> AuthToken {
+        let fields: [(String, String)] = [
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("redirect_uri", oauthRedirectURI),
+            ("client_id", Self.clientId),
+            ("client_secret", Self.clientSecret)
+        ]
+        var request = URLRequest(url: URL(string: "\(authBaseURL)/auth/api/v2/user/oauth2/token")!)
+        request.httpMethod = "POST"
+        request.setValue(Self.mobileUserAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Self.formEncode(fields).data(using: .utf8)
+
+        let (data, _) = try await urlSession.data(for: request)
+        return try parseAuthToken(from: data, isRefresh: true)
+    }
+
+    /// Refresh-grant: trade stored refresh_token for a fresh access_token
+    private func getAccessTokenFromRefreshToken() async throws -> AuthToken {
+        let fields: [(String, String)] = [
+            ("grant_type", "refresh_token"),
+            ("refresh_token", configuration.refreshToken ?? ""),
+            ("redirect_uri", oauthRedirectURI),
+            ("client_id", Self.clientId),
+            ("client_secret", Self.clientSecret)
+        ]
+        var request = URLRequest(url: URL(string: "\(authBaseURL)/auth/api/v2/user/oauth2/token")!)
+        request.httpMethod = "POST"
+        request.setValue(Self.mobileUserAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Self.formEncode(fields).data(using: .utf8)
+
+        let (data, _) = try await urlSession.data(for: request)
+        return try parseAuthToken(from: data, isRefresh: false)
     }
 
     // MARK: - Vehicles (stub — implemented in Fase 3)
