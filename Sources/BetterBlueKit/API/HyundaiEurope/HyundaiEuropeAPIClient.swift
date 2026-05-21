@@ -20,7 +20,6 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
     static let clientSecret = "KUy49XxPzLpLuoK0xhBC77W6VXhmtQR9iQhmIFjjoY4IpxsV"
     static let appId = "014d2225-8495-4735-812d-2616334fd15d"
     static let authCfb = "RFtoRq/vDXJmRndoZaZQyfOot7OrIqGVFj96iY2WL3yyH5Z/pUvlUhqmCxD2t+D65SQ="
-    var stamp = ""
     var commandToken: String = ""
     var commandTokenExpiration: Date = Date()
 
@@ -152,7 +151,7 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
     }
 
     public override func registerDevice() async throws -> String? {
-        stamp = generateStamp()
+        let stamp = generateStamp()
         let body = [
             "pushRegId": stamp,
             "pushType": "GCM",
