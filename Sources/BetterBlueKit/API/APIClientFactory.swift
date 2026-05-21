@@ -55,7 +55,9 @@ private func createKiaClient(configuration: APIClientConfiguration) throws -> an
     switch configuration.region {
     case .usa:
         return KiaUSAAPIClient(configuration: configuration)
-    case .canada, .europe, .australia, .china, .india:
+    case .europe:
+        return KiaEuropeAPIClient(configuration: configuration)
+    case .canada, .australia, .china, .india:
         throw APIError.regionNotSupported(
             "\(Brand.kia.displayName) is not yet supported in \(configuration.region.rawValue)"
         )
@@ -70,7 +72,7 @@ public func supportedRegions(for brand: Brand) -> [Region] {
     case .hyundai:
         return [.usa, .canada, .europe]
     case .kia:
-        return [.usa]
+        return [.usa, .europe]
     case .fake:
         return Region.allCases
     }
@@ -80,6 +82,8 @@ public func betaRegions(for brand: Brand) -> [Region] {
     switch brand {
     case .hyundai:
         return [.canada, .europe]
+    case .kia:
+        return [.europe]
     default: return []
     }
 }

@@ -198,10 +198,56 @@ public final class KiaEuropeAPIClient: APIClientBase, APIClientProtocol {
         return try parseAuthToken(from: data, isRefresh: false)
     }
 
-    // MARK: - Vehicles (stub — implemented in Fase 3)
+    // MARK: - Device registration
+
+    public override func registerDevice() async throws -> String? {
+        stamp = generateStamp()
+        let body = [
+            "pushRegId": stamp,
+            "pushType": Self.pushType,
+            "uuid": UUID().uuidString
+        ]
+
+        let headers = [
+            "ccsp-service-id": Self.clientId,
+            "ccsp-application-id": Self.appId,
+            "Stamp": stamp,
+            "Content-Type": "application/json;charset=UTF-8",
+            "Host": apiHost,
+            "Connection": "Keep-Alive",
+            "Accept-Encoding": "gzip",
+            "User-Agent": "okhttp/3.14.9"
+        ]
+
+        let bodyData = try? JSONSerialization.data(withJSONObject: body, options: [])
+
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/v1/spa/notifications/register")!)
+        request.httpMethod = "POST"
+        request.httpBody = bodyData
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+
+        let (data, _) = try await urlSession.data(for: request)
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let resMsg = json["resMsg"] as? [String: Any],
+              let devId = resMsg["deviceId"] as? String else {
+            throw APIError(message: "Failed to get device id", apiName: apiName)
+        }
+        configuration = configuration.with(deviceId: devId)
+        return devId
+    }
+
+    // MARK: - Vehicles
 
     public func fetchVehicles(authToken: AuthToken) async throws -> [Vehicle] {
-        throw APIError.regionNotSupported("Kia Europe is not yet implemented.", apiName: apiName)
+        let (data, _, _) = try await performJSONRequest(
+            url: "\(baseURL)/api/v1/spa/vehicles",
+            method: .GET,
+            headers: authorizedHeaders(authToken: authToken),
+            requestType: .fetchVehicles
+        )
+        return try parseVehiclesResponse(data)
     }
 
     public func fetchVehicleStatus(
@@ -209,13 +255,32 @@ public final class KiaEuropeAPIClient: APIClientBase, APIClientProtocol {
         authToken: AuthToken,
         cached _: Bool
     ) async throws -> VehicleStatus {
-        throw APIError.regionNotSupported("Kia Europe is not yet implemented.", apiName: apiName)
+        let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
+        let endpoint: String = ccs2 ? "/ccs2/carstatus/latest" : "/status/latest"
+
+        let (statusData, _, _) = try await performJSONRequest(
+            url: "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)\(endpoint)",
+            method: .GET,
+            headers: authorizedHeaders(authToken: authToken, ccs2: ccs2),
+            requestType: .fetchVehicleStatus,
+            vin: vehicle.vin
+        )
+
+        let (parkData, _, _) = try await performJSONRequest(
+            url: "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)/location/park",
+            method: .GET,
+            headers: authorizedHeaders(authToken: authToken, ccs2: ccs2),
+            requestType: .fetchVehicleStatus,
+            vin: vehicle.vin
+        )
+
+        return try parseVehicleStatusResponse(statusData, parkData, for: vehicle)
     }
 
     // MARK: - Commands (stub — implemented in Fase 4)
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
-        throw APIError.regionNotSupported("Kia Europe is not yet implemented.", apiName: apiName)
+        throw APIError.regionNotSupported("Kia Europe commands not yet implemented.", apiName: apiName)
     }
 
     public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
