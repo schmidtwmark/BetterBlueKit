@@ -107,11 +107,12 @@ public enum Region: String, CaseIterable, Codable, Sendable {
 
 public enum VehicleMarketOptions: Codable, Equatable, Sendable {
     case hyundaiEurope(ccs2Supported: Bool)
+    case kiaEurope(ccs2Supported: Bool)
     case generic
 
     var ccs2Supported: Bool {
         switch self {
-        case let .hyundaiEurope(ccs2Supported):
+        case let .hyundaiEurope(ccs2Supported), let .kiaEurope(ccs2Supported):
             return ccs2Supported
         case .generic:
             return false
