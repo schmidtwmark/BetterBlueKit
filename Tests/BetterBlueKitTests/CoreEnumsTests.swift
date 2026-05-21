@@ -104,6 +104,7 @@ struct CoreEnumsTests {
     @Test("FuelType initialization from number")
     func testFuelTypeFromNumber() {
         #expect(FuelType(number: 0) == .gas)
+        #expect(FuelType(number: 1) == .phev)
         #expect(FuelType(number: 2) == .electric)
         #expect(FuelType(number: 5) == .gas) // default case
         #expect(FuelType(number: -1) == .gas) // default case
@@ -112,9 +113,10 @@ struct CoreEnumsTests {
     @Test("FuelType all cases exist")
     func testFuelTypeAllCases() {
         let allCases = FuelType.allCases
-        #expect(allCases.count == 2)
+        #expect(allCases.count == 3)
         #expect(allCases.contains(.gas))
         #expect(allCases.contains(.electric))
+        #expect(allCases.contains(.phev))
     }
 
     // MARK: - Utility Function Tests
