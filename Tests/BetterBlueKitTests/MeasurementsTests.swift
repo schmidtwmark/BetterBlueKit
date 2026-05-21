@@ -192,7 +192,11 @@ struct MeasurementsTests {
 
         let temp3 = Temperature(units: nil, value: nil)
         #expect(temp3.units == .celsius)
-        #expect(temp3.value == Temperature.minimum)
+        // `Temperature.minimum` is defined in Fahrenheit (62.0). When
+        // units default to Celsius, the init converts the minimum
+        // through `Units.fahrenheit.convert(_:to: .celsius)` so the
+        // resulting value matches the chosen units.
+        #expect(temp3.value == Temperature.Units.fahrenheit.convert(Temperature.minimum, to: .celsius))
     }
 
     @Test("Temperature initialization with HI value")
