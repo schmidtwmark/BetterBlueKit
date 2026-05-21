@@ -172,7 +172,7 @@ extension KiaEuropeAPIClient {
 
     private func parseDoorOpen(from vehicleState: [String: Any], pathMap: HyEuResponseKeyPathMap)
         -> VehicleStatus.DoorStatus? {
-        guard getAnyFromJson(from: vehicleState, key: pathMap[.doorFrontLeft]) as? Int != nil else {
+        guard getAnyFromJson(from: vehicleState, key: pathMap[.doorFrontLeft]) is Int else {
             return nil
         }
         return VehicleStatus.DoorStatus(

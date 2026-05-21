@@ -88,11 +88,11 @@ extension KiaEuropeAPIClient {
     }
 
     static func base64urlDecode(_ input: String) -> Data? {
-        var s = input.replacingOccurrences(of: "-", with: "+")
-                     .replacingOccurrences(of: "_", with: "/")
-        let pad = (4 - s.count % 4) % 4
-        if pad > 0 { s.append(String(repeating: "=", count: pad)) }
-        return Data(base64Encoded: s)
+        var padded = input.replacingOccurrences(of: "-", with: "+")
+                          .replacingOccurrences(of: "_", with: "/")
+        let pad = (4 - padded.count % 4) % 4
+        if pad > 0 { padded.append(String(repeating: "=", count: pad)) }
+        return Data(base64Encoded: padded)
     }
 
     /// Build a PKCS#1 RSAPublicKey DER blob (`SEQUENCE { INTEGER n, INTEGER e }`),
@@ -131,9 +131,9 @@ extension KiaEuropeAPIClient {
         var allowed = CharacterSet.urlQueryAllowed
         allowed.remove(charactersIn: "+&=")
         return fields.map { key, value in
-            let k = key.addingPercentEncoding(withAllowedCharacters: allowed) ?? key
-            let v = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
-            return "\(k)=\(v)"
+            let encodedKey = key.addingPercentEncoding(withAllowedCharacters: allowed) ?? key
+            let encodedValue = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+            return "\(encodedKey)=\(encodedValue)"
         }.joined(separator: "&")
     }
 }
