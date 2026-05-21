@@ -277,10 +277,54 @@ public final class KiaEuropeAPIClient: APIClientBase, APIClientProtocol {
         return try parseVehicleStatusResponse(statusData, parkData, for: vehicle)
     }
 
-    // MARK: - Commands (stub — implemented in Fase 4)
+    // MARK: - Command token (PIN exchange)
+
+    private func setCommandToken(authToken: AuthToken) async throws {
+        // controlTokens expire after `expiresTime` seconds; refresh ~5 min early.
+        if Date() < commandTokenExpiration.addingTimeInterval(-300) && !commandToken.isEmpty {
+            return
+        }
+
+        let body = ["deviceId": configuration.deviceId ?? "", "pin": pin]
+        let headers = authorizedHeaders(authToken: authToken)
+        let bodyData = try? JSONSerialization.data(withJSONObject: body, options: [])
+
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/v1/user/pin?token=")!)
+        request.httpMethod = "PUT"
+        request.httpBody = bodyData
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+
+        let (data, _) = try await urlSession.data(for: request)
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let token = json["controlToken"] as? String,
+              let expires = json["expiresTime"] as? Int else {
+            throw APIError(message: "Failed to get command token (check PIN)", apiName: apiName)
+        }
+
+        commandToken = token
+        commandTokenExpiration = Date().addingTimeInterval(TimeInterval(expires))
+    }
+
+    // MARK: - Commands
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
-        throw APIError.regionNotSupported("Kia Europe commands not yet implemented.", apiName: apiName)
+        let (path, body) = commandPathAndBody(for: command)
+        let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
+        let url = "\(baseURL)/api/\(ccs2 ? "v2" : "v1")"
+            + "/spa/vehicles/\(vehicle.regId)/\(path)"
+        try await setCommandToken(authToken: authToken)
+        let headers = commandHeaders(authToken: authToken, ccs2: ccs2)
+
+        _ = try await performJSONRequest(
+            url: url,
+            method: .POST,
+            headers: headers,
+            body: body,
+            requestType: .sendCommand,
+            vin: vehicle.vin
+        )
     }
 
     public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
