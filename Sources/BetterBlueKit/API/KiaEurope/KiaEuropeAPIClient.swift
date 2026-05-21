@@ -33,7 +33,6 @@ public final class KiaEuropeAPIClient: APIClientBase, APIClientProtocol {
         "AppleWebKit/535.19 (KHTML, like Gecko) " +
         "Chrome/18.0.1025.166 Mobile Safari/535.19_CCS_APP_AOS"
 
-    var stamp = ""
     var commandToken: String = ""
     var commandTokenExpiration: Date = Date()
 
@@ -201,7 +200,7 @@ public final class KiaEuropeAPIClient: APIClientBase, APIClientProtocol {
     // MARK: - Device registration
 
     public override func registerDevice() async throws -> String? {
-        stamp = generateStamp()
+        let stamp = generateStamp()
         let body = [
             "pushRegId": stamp,
             "pushType": Self.pushType,

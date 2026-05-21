@@ -29,7 +29,9 @@ extension KiaEuropeAPIClient {
             "Host": apiHost,
             "Connection": "Keep-Alive",
             "Accept-Encoding": "gzip",
-            "Stamp": stamp
+            // Fresh HMAC per request — Stamp is an `<appId>:<ISO8601>` signature
+            // and the server appears to validate the timestamp window.
+            "Stamp": generateStamp()
         ]
     }
 
