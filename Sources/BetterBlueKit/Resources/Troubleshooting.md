@@ -34,7 +34,7 @@ If none of the below fixes your issue, [open a GitHub issue](https://github.com/
 | Hyundai — Australia | ❌ |
 | Kia — USA | ✅ |
 | Kia — Canada | ❌ |
-| Kia — Europe | ❌ |
+| Kia — Europe | ✅ |
 | Kia — Australia | ❌ |
 | China / India | ❌ |
 
