@@ -414,8 +414,7 @@ struct RegionSpecificTests {
         let unsupportedConfigs: [(Region, Brand)] = [
             (.canada, .kia),
             (.australia, .hyundai),
-            (.australia, .kia),
-            (.europe, .kia)  // Kia Europe not yet implemented
+            (.australia, .kia)
         ]
 
         for (region, brand) in unsupportedConfigs {
