@@ -23,17 +23,32 @@ extension KiaEuropeAPIClient {
                 ? ("ccs2/control/door", ["command": "open"])
                 : ("/control/door", ["action": "open", "deviceId": deviceId])
         case .startClimate(let options):
-            let tempCelsius = options.temperature.units == .celsius
+            // CCS2 climate payload shape is fundamentally different from the legacy
+            // (non-CCS2) shape used elsewhere in this file. Mirrors the Python
+            // reference in hyundai-kia-connect/hyundai_kia_connect_api,
+            // ApiImplType1.start_climate (CCS2 branch).
+            let tempCelsiusRaw = options.temperature.units == .celsius
                 ? options.temperature.value
                 : (options.temperature.value - 32.0) * 5.0 / 9.0
+            // Kia EU only accepts temperatures on the 0.5°C grid (14.0–29.5).
+            // Sending 22.22 (from 72°F) silently no-ops on the car.
+            let tempCelsius = (tempCelsiusRaw * 2).rounded() / 2
             return ("ccs2/control/temperature", [
                 "command": "start",
-                "hvacInfo": [
-                    "airCtrl": options.climate ? 1 : 0,
-                    "defrost": options.defrost,
-                    "heating1": options.heatValue,
-                    "airTemp": ["value": String(format: "%.1f", tempCelsius), "unit": 0]
-                ]
+                "ignitionDuration": options.duration,
+                "strgWhlHeating": options.steeringWheel,
+                "hvacTempType": 1,
+                "hvacTemp": tempCelsius,
+                "sideRearMirrorHeating": 1,
+                "drvSeatLoc": "R",
+                "seatClimateInfo": [
+                    "drvSeatClimateState": options.frontLeftSeat,
+                    "psgSeatClimateState": options.frontRightSeat,
+                    "rrSeatClimateState": options.rearRightSeat,
+                    "rlSeatClimateState": options.rearLeftSeat
+                ],
+                "tempUnit": "C",
+                "windshieldFrontDefogState": options.defrost
             ])
         case .stopClimate:
             return ccs2
