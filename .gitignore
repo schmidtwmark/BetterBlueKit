@@ -17,5 +17,5 @@ build/
 .LSOverride
 ._*
 
-# SwiftLint
-.swiftlint.yml
+# SwiftLint config is checked in (see .swiftlint.yml) so contributors
+# share the same lint rules.

@@ -1,0 +1,43 @@
+# SwiftLint configuration for BetterBlueKit.
+#
+# Tests aren't linted — fixture-heavy parsing tests legitimately
+# accumulate long files and long string literals that don't read
+# well after splitting. Production source still uses (slightly
+# relaxed) rules so accidents stay rare.
+
+excluded:
+  - .build
+  - .swiftpm
+  - Tests
+
+# Two-letter identifiers like `eu` (enum case for the EU HVAC
+# lookup table) are common and readable.
+identifier_name:
+  min_length:
+    warning: 2
+    error: 1
+
+# BBCLI's command dispatchers naturally branch heavily; bump the
+# function-body, file-length, complexity, and line-length defaults
+# enough that single command handlers don't trigger one of each.
+file_length:
+  warning: 1000
+  error: 1500
+
+function_body_length:
+  warning: 80
+  error: 120
+
+cyclomatic_complexity:
+  warning: 20
+  error: 30
+
+line_length:
+  warning: 140
+  error: 200
+
+# KiaEurope's class is 1 line over the 250 default; bump slightly
+# so it (and similar mid-sized API clients) clear without warnings.
+type_body_length:
+  warning: 300
+  error: 500
