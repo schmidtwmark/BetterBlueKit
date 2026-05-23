@@ -87,3 +87,26 @@ public func betaRegions(for brand: Brand) -> [Region] {
     default: return []
     }
 }
+
+/// Whether a given brand/region pair requires the user to supply a
+/// Bluelink / Kia Connect service PIN at account-setup time. UIs
+/// can call this to show/hide the PIN field on the add-account form.
+///
+/// Today the gating is hardcoded:
+///   - Hyundai USA / EU
+///   - Kia EU
+///
+/// Everything else (Kia USA, Hyundai Canada, Fake) authenticates
+/// without a PIN. Hyundai Canada *uses* a PIN inside command
+/// payloads, but the value is allowed to be empty for setup —
+/// see `HyundaiCanadaAPIClient` — so it's not surfaced here.
+public func requiresPin(brand: Brand, region: Region) -> Bool {
+    switch (brand, region) {
+    case (.hyundai, .usa),
+         (.hyundai, .europe),
+         (.kia, .europe):
+        return true
+    default:
+        return false
+    }
+}

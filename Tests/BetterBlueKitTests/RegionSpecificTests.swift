@@ -409,6 +409,24 @@ struct RegionSpecificTests {
         #expect(hyundaiCanadaClient is HyundaiCanadaAPIClient)
     }
 
+    @Test("requiresPin matrix")
+    func testRequiresPin() {
+        // PIN-required combinations
+        #expect(requiresPin(brand: .hyundai, region: .usa))
+        #expect(requiresPin(brand: .hyundai, region: .europe))
+        #expect(requiresPin(brand: .kia, region: .europe))
+
+        // PIN-not-required combinations
+        #expect(!requiresPin(brand: .hyundai, region: .canada))
+        #expect(!requiresPin(brand: .kia, region: .usa))
+        #expect(!requiresPin(brand: .fake, region: .usa))
+
+        // Unsupported combinations still answer (false) — the
+        // helper is a UI gate, not a regional-support check.
+        #expect(!requiresPin(brand: .kia, region: .canada))
+        #expect(!requiresPin(brand: .kia, region: .australia))
+    }
+
     @Test("API client creation for unsupported regions throws")
     @MainActor func testAPIClientCreationForUnsupportedRegions() {
         let unsupportedConfigs: [(Region, Brand)] = [
