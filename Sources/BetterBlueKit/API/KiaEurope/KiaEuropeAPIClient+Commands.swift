@@ -23,37 +23,7 @@ extension KiaEuropeAPIClient {
                 ? ("ccs2/control/door", ["command": "open"])
                 : ("/control/door", ["action": "open", "deviceId": deviceId])
         case .startClimate(let options):
-            // CCS2 climate payload shape is fundamentally different from the legacy
-            // (non-CCS2) shape used elsewhere in this file. Mirrors the Python
-            // reference in hyundai-kia-connect/hyundai_kia_connect_api,
-            // ApiImplType1.start_climate (CCS2 branch).
-            // Kia EU only accepts temperatures on the 0.5°C grid
-            // (15.0–30.0). Sending 22.22 (linear F→C of 72°F)
-            // silently no-ops on the car. `hvacConvert` snaps to
-            // the EU lookup table.
-            let tempCelsius = Temperature.hvacConvert(
-                options.temperature.value,
-                from: options.temperature.units,
-                to: .celsius,
-                table: .eu
-            )
-            return ("ccs2/control/temperature", [
-                "command": "start",
-                "ignitionDuration": options.duration,
-                "strgWhlHeating": options.steeringWheel,
-                "hvacTempType": 1,
-                "hvacTemp": tempCelsius,
-                "sideRearMirrorHeating": 1,
-                "drvSeatLoc": "R",
-                "seatClimateInfo": [
-                    "drvSeatClimateState": options.frontLeftSeat,
-                    "psgSeatClimateState": options.frontRightSeat,
-                    "rrSeatClimateState": options.rearRightSeat,
-                    "rlSeatClimateState": options.rearLeftSeat
-                ],
-                "tempUnit": "C",
-                "windshieldFrontDefogState": options.defrost
-            ])
+            return ("ccs2/control/temperature", startClimateBody(options: options))
         case .stopClimate:
             return ccs2
                 ? ("ccs2/control/temperature", ["command": "stop"])
@@ -80,5 +50,40 @@ extension KiaEuropeAPIClient {
                 ]
             ])
         }
+    }
+
+    /// CCS2 climate start payload. Lifted out of `commandPathAndBody`
+    /// so the dispatcher stays under the function-body-length limit
+    /// and the payload shape is easier to find. Shape mirrors the
+    /// Python reference in hyundai-kia-connect/hyundai_kia_connect_api
+    /// (ApiImplType1.start_climate, CCS2 branch).
+    private func startClimateBody(options: ClimateOptions) -> [String: Any] {
+        // Kia EU only accepts temperatures on the 0.5°C grid
+        // (15.0–30.0). Sending 22.22 (linear F→C of 72°F)
+        // silently no-ops on the car — `hvacConvert` snaps to the
+        // EU lookup table.
+        let tempCelsius = Temperature.hvacConvert(
+            options.temperature.value,
+            from: options.temperature.units,
+            to: .celsius,
+            table: .european
+        )
+        return [
+            "command": "start",
+            "ignitionDuration": options.duration,
+            "strgWhlHeating": options.steeringWheel,
+            "hvacTempType": 1,
+            "hvacTemp": tempCelsius,
+            "sideRearMirrorHeating": 1,
+            "drvSeatLoc": "R",
+            "seatClimateInfo": [
+                "drvSeatClimateState": options.frontLeftSeat,
+                "psgSeatClimateState": options.frontRightSeat,
+                "rrSeatClimateState": options.rearRightSeat,
+                "rlSeatClimateState": options.rearLeftSeat
+            ],
+            "tempUnit": "C",
+            "windshieldFrontDefogState": options.defrost
+        ]
     }
 }

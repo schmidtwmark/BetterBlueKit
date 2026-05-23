@@ -31,7 +31,7 @@ extension HyundaiEuropeAPIClient {
                 options.temperature.value,
                 from: options.temperature.units,
                 to: .celsius,
-                table: .eu
+                table: .european
             )
             return ("ccs2/control/temperature", [
                 "command": "start",

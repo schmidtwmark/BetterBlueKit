@@ -272,7 +272,7 @@ struct MeasurementsTests {
     func testHvacConvertSnapsToEuGrid() {
         // 72°F → 22.0°C exactly under the EU table (not the
         // off-grid 22.22°C the linear formula produces).
-        let result = Temperature.hvacConvert(72, from: .fahrenheit, to: .celsius, table: .eu)
+        let result = Temperature.hvacConvert(72, from: .fahrenheit, to: .celsius, table: .european)
         #expect(result == 22.0)
     }
 
@@ -280,8 +280,8 @@ struct MeasurementsTests {
     func testHvacConvertRoundTripEu() {
         let pairs: [(Double, Int)] = [(15.0, 58), (18.0, 64), (22.0, 72), (25.0, 78), (30.0, 88)]
         for (c, f) in pairs {
-            #expect(Temperature.hvacConvert(c, from: .celsius, to: .fahrenheit, table: .eu) == Double(f))
-            #expect(Temperature.hvacConvert(Double(f), from: .fahrenheit, to: .celsius, table: .eu) == c)
+            #expect(Temperature.hvacConvert(c, from: .celsius, to: .fahrenheit, table: .european) == Double(f))
+            #expect(Temperature.hvacConvert(Double(f), from: .fahrenheit, to: .celsius, table: .european) == c)
         }
     }
 

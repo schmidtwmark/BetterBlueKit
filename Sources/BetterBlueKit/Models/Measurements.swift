@@ -56,14 +56,14 @@ public struct Distance: Codable, Hashable, Sendable {
 /// - `.standard`  — older Hyundai/Kia USA + Hyundai Canada vehicles.
 ///   Mostly linear but with two known non-linearities (17.5°C and
 ///   18.0°C both round to 63°F; 31.0°C and 31.5°C both round to 89°F).
-/// - `.eu`        — CCS2 EU vehicles (Hyundai EU, Kia EU). Strictly
+/// - `.european` — CCS2 EU vehicles (Hyundai EU, Kia EU). Strictly
 ///   0.5°C → integer °F with no duplicate mappings.
 ///
 /// The car only accepts values that exist in its table. Sending a
 /// linear-formula result like 22.22°C (from 72°F) silently no-ops
 /// — that's the bug the EU temperature cleanup is fixing.
 public enum HVACTemperatureTable: Sendable {
-    case standard, eu
+    case standard, european
 }
 
 public struct Temperature: Codable, Hashable, Sendable {
@@ -154,7 +154,7 @@ public struct Temperature: Codable, Hashable, Sendable {
         _ value: Double,
         from sourceUnits: Units,
         to targetUnits: Units,
-        table: HVACTemperatureTable = .eu
+        table: HVACTemperatureTable = .european
     ) -> Double {
         if sourceUnits == targetUnits { return value }
         let pairs = celsiusFahrenheitPairs(for: table)
@@ -235,7 +235,7 @@ public struct Temperature: Codable, Hashable, Sendable {
     ) -> [(celsius: Double, fahrenheit: Int)] {
         switch table {
         case .standard: standardTable
-        case .eu:       euTable
+        case .european: euTable
         }
     }
 }
