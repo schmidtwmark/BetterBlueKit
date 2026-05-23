@@ -413,11 +413,11 @@ struct RegionSpecificTests {
     func testRequiresPin() {
         // PIN-required combinations
         #expect(requiresPin(brand: .hyundai, region: .usa))
+        #expect(requiresPin(brand: .hyundai, region: .canada))
         #expect(requiresPin(brand: .hyundai, region: .europe))
         #expect(requiresPin(brand: .kia, region: .europe))
 
         // PIN-not-required combinations
-        #expect(!requiresPin(brand: .hyundai, region: .canada))
         #expect(!requiresPin(brand: .kia, region: .usa))
         #expect(!requiresPin(brand: .fake, region: .usa))
 

@@ -93,16 +93,14 @@ public func betaRegions(for brand: Brand) -> [Region] {
 /// can call this to show/hide the PIN field on the add-account form.
 ///
 /// Today the gating is hardcoded:
-///   - Hyundai USA / EU
+///   - Hyundai USA / Canada / EU
 ///   - Kia EU
 ///
-/// Everything else (Kia USA, Hyundai Canada, Fake) authenticates
-/// without a PIN. Hyundai Canada *uses* a PIN inside command
-/// payloads, but the value is allowed to be empty for setup —
-/// see `HyundaiCanadaAPIClient` — so it's not surfaced here.
+/// Kia USA and Fake authenticate without a PIN.
 public func requiresPin(brand: Brand, region: Region) -> Bool {
     switch (brand, region) {
     case (.hyundai, .usa),
+         (.hyundai, .canada),
          (.hyundai, .europe),
          (.kia, .europe):
         return true
