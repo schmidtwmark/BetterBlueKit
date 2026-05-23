@@ -153,7 +153,14 @@ extension KiaEuropeAPIClient {
             }
             isCharging = getBoolFromJson(from: vehicleState, key: pathMap[.isCharging])
         }
-        let chargePower = getDoubleFromJson(from: vehicleState, key: pathMap[.chargePower])
+        // Pre-existing bug: `pathMap[.chargePower]` referenced a
+        // non-existent enum case (the EU response keys split it
+        // into Std + Fst). Match HyundaiEurope's parser, which
+        // takes whichever of the two has a value.
+        let chargePower = max(
+            getDoubleFromJson(from: vehicleState, key: pathMap[.chargePowerStd]),
+            getDoubleFromJson(from: vehicleState, key: pathMap[.chargePowerFst])
+        )
 
         _ = pluggedIn // surfaced via plugType today; kept for future parity
         return VehicleStatus.EVStatus(

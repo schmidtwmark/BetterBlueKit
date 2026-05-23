@@ -22,9 +22,17 @@ extension HyundaiEuropeAPIClient {
             return ccs2 ? ("ccs2/control/door", ["command": "open"])
             : ("/control/door", ["action": "open", "deviceId": deviceId])
         case .startClimate(let options):
-            let tempCelsius = options.temperature.units == .celsius
-                ? options.temperature.value
-                : (options.temperature.value - 32.0) * 5.0 / 9.0
+            // EU CCS2 vehicles only accept temperatures on the
+            // 0.5°C grid (15.0–30.0). The car silently no-ops when
+            // it gets an off-grid value like 22.22°C (which is what
+            // a linear F→C of 72°F produces). `hvacConvert` snaps
+            // to the EU lookup table for us.
+            let tempCelsius = Temperature.hvacConvert(
+                options.temperature.value,
+                from: options.temperature.units,
+                to: .celsius,
+                table: .eu
+            )
             return ("ccs2/control/temperature", [
                 "command": "start",
                 "hvacInfo": [

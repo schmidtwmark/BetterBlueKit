@@ -27,12 +27,16 @@ extension KiaEuropeAPIClient {
             // (non-CCS2) shape used elsewhere in this file. Mirrors the Python
             // reference in hyundai-kia-connect/hyundai_kia_connect_api,
             // ApiImplType1.start_climate (CCS2 branch).
-            let tempCelsiusRaw = options.temperature.units == .celsius
-                ? options.temperature.value
-                : (options.temperature.value - 32.0) * 5.0 / 9.0
-            // Kia EU only accepts temperatures on the 0.5°C grid (14.0–29.5).
-            // Sending 22.22 (from 72°F) silently no-ops on the car.
-            let tempCelsius = (tempCelsiusRaw * 2).rounded() / 2
+            // Kia EU only accepts temperatures on the 0.5°C grid
+            // (15.0–30.0). Sending 22.22 (linear F→C of 72°F)
+            // silently no-ops on the car. `hvacConvert` snaps to
+            // the EU lookup table.
+            let tempCelsius = Temperature.hvacConvert(
+                options.temperature.value,
+                from: options.temperature.units,
+                to: .celsius,
+                table: .eu
+            )
             return ("ccs2/control/temperature", [
                 "command": "start",
                 "ignitionDuration": options.duration,

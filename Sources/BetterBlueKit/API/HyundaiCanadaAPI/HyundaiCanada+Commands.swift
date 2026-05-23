@@ -82,37 +82,18 @@ extension HyundaiCanadaAPIClient {
     }
 
     private func climateTemperatureValue(for options: ClimateOptions) -> String {
-        let values =
-            options.temperature.units == .fahrenheit
-            ? hvacFahrenheitValues
-            : hvacCelsiusValues
-
-        let targetValue = options.temperature.value
-        let index = nearestTemperatureIndex(in: values, to: targetValue)
-
-        guard index < hvacEncodedValues.count else {
-            return hvacEncodedValues.first ?? "06H"
-        }
-
-        return hvacEncodedValues[index]
-    }
-
-    private func nearestTemperatureIndex(in values: [Double], to target: Double) -> Int {
-        guard !values.isEmpty else {
-            return 0
-        }
-
-        var bestIndex = 0
-        var smallestDelta = abs(values[0] - target)
-
-        for (index, value) in values.enumerated() {
-            let delta = abs(value - target)
-            if delta < smallestDelta {
-                smallestDelta = delta
-                bestIndex = index
-            }
-        }
-
-        return bestIndex
+        // Hyundai Canada uses the legacy HEX scheme (e.g. "10H").
+        // Snap to the standard lookup table's 0.5°C grid first, then
+        // encode. Replaces the bespoke
+        // `hvacFahrenheitValues` / `hvacCelsiusValues` / `hvacEncodedValues`
+        // triple — they were redundant with the canonical Standard
+        // table + the inverse of `parseAirTempFromHEX`.
+        let tempCelsius = Temperature.hvacConvert(
+            options.temperature.value,
+            from: options.temperature.units,
+            to: .celsius,
+            table: .standard
+        )
+        return Temperature.encodeAirTempToHEX(celsiusValue: tempCelsius)
     }
 }

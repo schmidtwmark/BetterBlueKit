@@ -30,15 +30,10 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     /// same reason.)
     lazy var deviceId: String = configuration.deviceId ?? UUID().uuidString.uppercased()
 
-    let hvacFahrenheitValues: [Double] = Array(62...82).map { Double($0) }
-    let hvacCelsiusValues: [Double] = [
-        17, 17.5, 18, 18.5, 19, 19.5, 20, 20.5, 21, 21.5, 22, 22.5,
-        23, 23.5, 24, 24.5, 25, 25.5, 26, 26.5, 27
-    ]
-    let hvacEncodedValues: [String] = [
-        "06H", "07H", "08H", "09H", "0AH", "0BH", "0CH", "0DH", "0EH", "0FH",
-        "10H", "11H", "12H", "13H", "14H", "15H", "16H", "17H", "18H", "19H", "1AH"
-    ]
+    // Note: temperature lookup tables removed in the EU temperature
+    // cleanup — the canonical Standard table now lives on
+    // `Temperature` (see `Models/Measurements.swift`), and the HEX
+    // encoding goes through `Temperature.encodeAirTempToHEX`.
 
     var cloudFlareCookie: String?
 
