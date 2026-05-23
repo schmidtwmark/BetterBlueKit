@@ -940,7 +940,12 @@ struct HyJSONFormatTests {
         let jsonGen5W = try JSONSerialization.jsonObject(with: dataGen5W) as? [String: Any]
 
         #expect(jsonGen5W != nil)
-        #expect(jsonGen5W?["rsMsg"] != nil)
+        // Fixture uses `resMsg` (matching the actual Hyundai EU
+        // response envelope and the parser at
+        // HyundaiEuropeAPIClient+Parsing.swift). Previously
+        // misspelled as `rsMsg` here, so the assertion always
+        // failed without flagging a real bug.
+        #expect(jsonGen5W?["resMsg"] != nil)
     }
 
     @Test("HyEuAPIClient parsing")
