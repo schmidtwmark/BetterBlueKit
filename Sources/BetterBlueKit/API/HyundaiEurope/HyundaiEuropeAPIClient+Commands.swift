@@ -17,10 +17,10 @@ extension HyundaiEuropeAPIClient {
         switch command {
         case .lock:
             return ccs2 ? ("ccs2/control/door", ["command": "close"])
-            : ("/control/door", ["action": "close", "deviceId": deviceId])
+            : ("control/door", ["action": "close", "deviceId": deviceId])
         case .unlock:
             return ccs2 ? ("ccs2/control/door", ["command": "open"])
-            : ("/control/door", ["action": "open", "deviceId": deviceId])
+            : ("control/door", ["action": "open", "deviceId": deviceId])
         case .startClimate(let options):
             // EU CCS2 vehicles only accept temperatures on the
             // 0.5°C grid (15.0–30.0). The car silently no-ops when

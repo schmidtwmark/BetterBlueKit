@@ -199,30 +199,30 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
             return
         }
 
-        let body = [
-            "deviceId": configuration.deviceId,
+        let body: [String: Any] = [
+            "deviceId": configuration.deviceId ?? "",
             "pin": pin
         ]
 
-        let headers = authorizedHeaders(authToken: authToken)
-
-        let bodyData = try? JSONSerialization.data(
-            withJSONObject: body, options: []
+        // Route through performJSONRequest so the PIN/control-token
+        // request is captured in the HTTP logs and its status is
+        // validated. Previously this used a raw URLSession call, so a
+        // failure here was invisible to diagnostics and surfaced only
+        // as a generic "Failed to get command token".
+        let (_, json, _) = try await performJSONRequest(
+            url: "\(baseURL)/api/v1/user/pin?token=",
+            method: .PUT,
+            headers: authorizedHeaders(authToken: authToken),
+            body: body,
+            requestType: .sendCommand
         )
 
-        var request = URLRequest(url: URL(string: "\(baseURL)/api/v1/user/pin?token=")!)
-        request.httpMethod = "PUT"
-        request.httpBody = bodyData
-
-        for (key, value) in headers {
-            request.setValue(value, forHTTPHeaderField: key)
-        }
-
-        let (data, _) = try await urlSession.data(for: request)
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let token = json["controlToken"] as? String,
+        guard let token = json["controlToken"] as? String,
               let expires = json["expiresTime"] as? Int else {
-            throw APIError(message: "Failed to get command token", apiName: apiName)
+            throw APIError(
+                message: "PIN verification failed — check that the account PIN is correct.",
+                apiName: apiName
+            )
         }
 
         commandToken = token
@@ -277,13 +277,24 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
     // MARK: - Commands
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
-        let (path, body) = commandPathAndBody(for: command)
         let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
+        let (path, body) = commandPathAndBody(for: command, ccs2: ccs2)
         let url =
             "\(baseURL)/api/\(ccs2 ? "v2" : "v1")"
             + "/spa/vehicles/\(vehicle.regId)/\(path)"
-        try await setCommandToken(authToken: authToken)
-        let header = commandHeaders(authToken: authToken, ccs2: ccs2)
+
+        // CCS2 (Gen5W) cars authenticate commands with a PIN-derived
+        // control token; legacy cars use the normal access token and
+        // have no PIN step at all. Fetching a control token for a
+        // legacy car is what produced the "Failed to get command token"
+        // error — the PIN endpoint isn't part of the legacy flow.
+        let header: [String: String]
+        if ccs2 {
+            try await setCommandToken(authToken: authToken)
+            header = commandHeaders(authToken: authToken, ccs2: ccs2)
+        } else {
+            header = authorizedHeaders(authToken: authToken, ccs2: ccs2)
+        }
 
         _ = try await performJSONRequest(
             url: url,
