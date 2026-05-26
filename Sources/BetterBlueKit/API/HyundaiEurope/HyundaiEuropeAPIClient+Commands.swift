@@ -17,10 +17,10 @@ extension HyundaiEuropeAPIClient {
         switch command {
         case .lock:
             return ccs2 ? ("ccs2/control/door", ["command": "close"])
-            : ("/control/door", ["action": "close", "deviceId": deviceId])
+            : ("control/door", ["action": "close", "deviceId": deviceId])
         case .unlock:
             return ccs2 ? ("ccs2/control/door", ["command": "open"])
-            : ("/control/door", ["action": "open", "deviceId": deviceId])
+            : ("control/door", ["action": "open", "deviceId": deviceId])
         case .startClimate(let options):
             // EU vehicles share ApiImplType1.start_climate across
             // both brands — CCS2 uses a flat body (same as Kia EU);
