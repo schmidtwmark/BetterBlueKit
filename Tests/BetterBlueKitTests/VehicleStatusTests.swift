@@ -413,4 +413,20 @@ struct VehicleStatusTests {
         #expect(vehicleStatus.gasRange?.percentage == 0.0)
         #expect(vehicleStatus.gasRange?.range.length == 0.0)
     }
+
+    @Test("PlugType.fromBatteryPlugin handles all documented + observed codes")
+    func testPlugTypeFromBatteryPlugin() {
+        // Documented codes
+        #expect(VehicleStatus.PlugType(fromBatteryPlugin: 0) == .unplugged)
+        #expect(VehicleStatus.PlugType(fromBatteryPlugin: 1) == .dcCharger)
+        #expect(VehicleStatus.PlugType(fromBatteryPlugin: 2) == .acCharger)
+        #expect(VehicleStatus.PlugType(fromBatteryPlugin: 3) == .acCharger)
+        // `4` observed in the wild on an IONIQ 5 plugged into a J1772
+        // AC charger. Previously fell through to DC and showed the
+        // wrong icon — locked in here so the regression doesn't return.
+        #expect(VehicleStatus.PlugType(fromBatteryPlugin: 4) == .acCharger)
+        // Any other unknown non-zero value defaults to AC (the safer
+        // default — DC fast charging is the specific case).
+        #expect(VehicleStatus.PlugType(fromBatteryPlugin: 99) == .acCharger)
+    }
 }

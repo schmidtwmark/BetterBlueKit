@@ -25,16 +25,29 @@ public struct VehicleStatus: Codable, Hashable, Sendable {
     public enum PlugType: Int, Codable, Hashable, Sendable {
         case unplugged = 0
         case acCharger = 2
-        case dcCharger = 1 // DC is any value other than 0 or 2
+        case dcCharger = 1
 
+        /// Maps Hyundai/Kia's `batteryPlugin` int code to a typed plug.
+        /// Documented values (per hyundai_kia_connect_api):
+        ///   0 = unplugged
+        ///   1 = DC fast charger (CCS / CHAdeMO)
+        ///   2 = AC portable charger
+        ///   3 = AC station charger (J1772 / Type 2)
+        /// Some vehicles also report 4 — observed in the wild on
+        /// IONIQ 5s plugged into J1772 AC chargers, so it's AC.
+        ///
+        /// The DC code is specifically 1; ANY other non-zero value is
+        /// AC. Previously the default fell through to `.dcCharger`,
+        /// which caused J1772-plugged cars reporting `batteryPlugin: 4`
+        /// to display the CCS DC icon.
         public init(fromBatteryPlugin value: Int) {
             switch value {
             case 0:
                 self = .unplugged
-            case 2:
-                self = .acCharger
-            default:
+            case 1:
                 self = .dcCharger
+            default:
+                self = .acCharger
             }
         }
     }
