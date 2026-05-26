@@ -261,17 +261,33 @@ extension HyundaiEuropeAPIClient {
         let locationTimeZone = pathMap.apiProfile == .legacy ? TimeZone(identifier: "Europe/Berlin") : TimeZone.gmt
         let locationDate = BluelinkDateParser.parse(locationDateString, timeZone: locationTimeZone)
 
-        // location date is older than parking endpoint date -> use parking location
-        if let parkDate, let locationDate, locationDate.compare(parkDate).rawValue <= 0 {
-            return VehicleStatus.Location(
-                latitude: getDoubleFromJson(from: park, key: pathMap[.parkLat]),
-                longitude: getDoubleFromJson(from: park, key: pathMap[.parkLon])
-            )
-        }
-        return VehicleStatus.Location(
+        // Two candidate sources: the /location/park endpoint and the
+        // location embedded in the status response. Either can be empty —
+        // park returns no coordinates when the car has no recent park
+        // event, and the status-embedded location is often stale/missing.
+        let parkLocation = VehicleStatus.Location(
+            latitude: getDoubleFromJson(from: park, key: pathMap[.parkLat]),
+            longitude: getDoubleFromJson(from: park, key: pathMap[.parkLon])
+        )
+        let statusLocation = VehicleStatus.Location(
             latitude: getDoubleFromJson(from: vehicleState, key: pathMap[.locationLat]),
             longitude: getDoubleFromJson(from: vehicleState, key: pathMap[.locationLon])
         )
+
+        // Prefer the park endpoint when it has coordinates and is at least
+        // as recent as the (often stale) status location. Fall back to
+        // whichever source actually carries coordinates so a missing park
+        // event no longer drops the location entirely.
+        let parkIsNewer = (parkDate != nil && locationDate != nil)
+            ? locationDate!.compare(parkDate!).rawValue <= 0
+            : parkLocation.hasCoordinates
+        if parkIsNewer, parkLocation.hasCoordinates {
+            return parkLocation
+        }
+        if statusLocation.hasCoordinates {
+            return statusLocation
+        }
+        return parkLocation.hasCoordinates ? parkLocation : statusLocation
     }
 
     private func parseTirePressure(from vehicleState: [String: Any], pathMap: HyEuResponseKeyPathMap)
@@ -314,7 +330,7 @@ extension HyundaiEuropeAPIClient {
         switch getAnyFromJson(from: data, key: keyString!) {
         case let value as Double: return value
         case let value as Int: return Double(value)
-        case let value as String: return Double(value)!
+        case let value as String: return Double(value) ?? 0
         default: return 0
         }
     }
