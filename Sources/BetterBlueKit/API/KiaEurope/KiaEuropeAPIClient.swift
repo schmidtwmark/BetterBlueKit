@@ -193,12 +193,17 @@ public final class KiaEuropeAPIClient: APIClientBase, APIClientProtocol {
     // MARK: - Commands
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
-        let (path, body) = commandPathAndBody(for: command)
         let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
+        let (path, body) = commandPathAndBody(for: command, ccs2: ccs2)
         let url = "\(baseURL)/api/\(ccs2 ? "v2" : "v1")"
             + "/spa/vehicles/\(vehicle.regId)/\(path)"
-        try await setCommandToken(authToken: authToken)
-        let headers = commandHeaders(authToken: authToken, ccs2: ccs2)
+        let headers: [String: String]
+        if ccs2 {
+            try await setCommandToken(authToken: authToken)
+            headers = commandHeaders(authToken: authToken, ccs2: ccs2)
+        } else {
+            headers = authorizedHeaders(authToken: authToken, ccs2: ccs2)
+        }
 
         _ = try await performJSONRequest(
             url: url,
