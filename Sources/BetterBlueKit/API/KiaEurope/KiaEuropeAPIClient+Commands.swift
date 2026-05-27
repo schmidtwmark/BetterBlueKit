@@ -17,11 +17,11 @@ extension KiaEuropeAPIClient {
         case .lock:
             return ccs2
                 ? ("ccs2/control/door", ["command": "close"])
-                : ("/control/door", ["action": "close", "deviceId": deviceId])
+                : ("control/door", ["action": "close", "deviceId": deviceId])
         case .unlock:
             return ccs2
                 ? ("ccs2/control/door", ["command": "open"])
-                : ("/control/door", ["action": "open", "deviceId": deviceId])
+                : ("control/door", ["action": "open", "deviceId": deviceId])
         case .startClimate(let options):
             return ("ccs2/control/temperature", startClimateBody(options: options))
         case .stopClimate:
