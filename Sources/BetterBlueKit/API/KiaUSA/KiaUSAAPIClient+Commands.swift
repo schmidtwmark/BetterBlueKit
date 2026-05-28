@@ -28,7 +28,10 @@ extension KiaUSAAPIClient {
         case .stopClimate: "rems/stop"
         case .startCharge: "evc/charge"
         case .stopCharge: "evc/cancel"
-        case .setTargetSOC: "evc/charge/targetsoc/set"
+        // Kia US uses "evc/sts" for charge limits — NOT the Hyundai
+        // "evc/charge/targetsoc/set" path we had copied. Matches
+        // KiaUvoApiUSA.set_charge_limits.
+        case .setTargetSOC: "evc/sts"
         }
         return "\(apiURL)\(path)"
     }
@@ -66,13 +69,17 @@ extension KiaUSAAPIClient {
             // car level and rejects the whole command if the body
             // includes heatVentSeat on a vehicle that can't do it.
             // (See the explicit note in KiaUvoApiUSA.start_climate.)
-            let seats: [String: Int] = [
-                "driverSeat": convertSeatSetting(options.frontLeftSeat, options.frontLeftVentilationEnabled),
-                "passengerSeat": convertSeatSetting(options.frontRightSeat, options.frontRightVentilationEnabled),
-                "rearLeftSeat": convertSeatSetting(options.rearLeftSeat, options.rearLeftVentilationEnabled),
-                "rearRightSeat": convertSeatSetting(options.rearRightSeat, options.rearRightVentilationEnabled)
+            //
+            // Each seat is a nested {heatVentType, heatVentLevel,
+            // heatVentStep} object — NOT a flat int. Matches
+            // KiaUvoApiUSA._seat_settings.
+            let seats: [String: [String: Int]] = [
+                "driverSeat": seatClimateSetting(options.frontLeftSeat, options.frontLeftVentilationEnabled),
+                "passengerSeat": seatClimateSetting(options.frontRightSeat, options.frontRightVentilationEnabled),
+                "rearLeftSeat": seatClimateSetting(options.rearLeftSeat, options.rearLeftVentilationEnabled),
+                "rearRightSeat": seatClimateSetting(options.rearRightSeat, options.rearRightVentilationEnabled)
             ]
-            if seats.values.contains(where: { $0 != 0 }) {
+            if seats.values.contains(where: { ($0["heatVentType"] ?? 0) != 0 }) {
                 remoteClimate["heatVentSeat"] = seats
             }
             return ["remoteClimate": remoteClimate]
@@ -111,13 +118,20 @@ extension KiaUSAAPIClient {
 
     // MARK: - Seat Setting Conversion
 
-    private func convertSeatSetting(_ heatLevel: Int, _ ventilationEnabled: Bool) -> Int {
-        if ventilationEnabled {
-            // Ventilation: 4 = low, 5 = medium, 6 = high
-            return min(max(heatLevel, 0), 3) + 3
-        } else {
-            // Heating: 0 = off, 1 = low, 2 = medium, 3 = high
-            return min(max(heatLevel, 0), 3)
+    /// Maps our model (heat level 0–3 + ventilation flag) to Kia's
+    /// nested seat object. Mirrors KiaUvoApiUSA._seat_settings:
+    ///   heatVentType: 0 = off, 1 = heat, 2 = cool (ventilation)
+    ///   heatVentLevel: off=1, low=2, medium=3, high=4
+    ///   heatVentStep:  off=0, low=3, medium=2, high=1
+    private func seatClimateSetting(_ heatLevel: Int, _ ventilationEnabled: Bool) -> [String: Int] {
+        let level = min(max(heatLevel, 0), 3)
+        guard level > 0 else {
+            return ["heatVentType": 0, "heatVentLevel": 1, "heatVentStep": 0]
         }
+        return [
+            "heatVentType": ventilationEnabled ? 2 : 1,
+            "heatVentLevel": level + 1,   // 1→2, 2→3, 3→4
+            "heatVentStep": 4 - level     // 1→3, 2→2, 3→1
+        ]
     }
 }

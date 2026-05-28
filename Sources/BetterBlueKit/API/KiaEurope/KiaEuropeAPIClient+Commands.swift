@@ -43,10 +43,13 @@ extension KiaEuropeAPIClient {
                 ? ("ccs2/control/charge", ["command": "stop"])
                 : ("control/charge", ["action": "stop", "deviceId": deviceId])
         case .setTargetSOC(let acLevel, let dcLevel):
+            // plugType 0 = DC fast charge, 1 = AC — per ApiImplType1
+            // set_charge_limits. The mapping was inverted, so users
+            // set the AC and DC limits onto the opposite plug type.
             return ("charge/target", [
                 "targetSOClist": [
-                    ["targetSOClevel": acLevel, "plugType": 0],
-                    ["targetSOClevel": dcLevel, "plugType": 1]
+                    ["targetSOClevel": dcLevel, "plugType": 0],
+                    ["targetSOClevel": acLevel, "plugType": 1]
                 ]
             ])
         }

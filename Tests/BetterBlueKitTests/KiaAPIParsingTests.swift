@@ -244,12 +244,15 @@ struct KiaAPIClientTests {
     @MainActor func testKiaUSClimateIncludesSeatsWhenSet() {
         let client = makeKiaUSClient()
         var options = ClimateOptions()
-        options.frontLeftSeat = 2 // driver seat heat level 2
+        options.frontLeftSeat = 2 // driver seat heat level 2 (medium heat)
         let body = client.commandBody(for: .startClimate(options), vehicle: makeVehicle())
         let remoteClimate = body["remoteClimate"] as? [String: Any]
-        let seats = remoteClimate?["heatVentSeat"] as? [String: Int]
+        let seats = remoteClimate?["heatVentSeat"] as? [String: [String: Int]]
         #expect(seats != nil)
-        #expect(seats?["driverSeat"] == 2)
+        // Medium heat → type 1 (heat), level 3, step 2.
+        #expect(seats?["driverSeat"]?["heatVentType"] == 1)
+        #expect(seats?["driverSeat"]?["heatVentLevel"] == 3)
+        #expect(seats?["driverSeat"]?["heatVentStep"] == 2)
     }
 }
 

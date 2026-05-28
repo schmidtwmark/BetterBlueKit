@@ -277,8 +277,11 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
     // MARK: - Commands
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
-        let (path, body) = commandPathAndBody(for: command)
         let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
+        // Pass the vehicle's actual protocol into the body builder.
+        // Previously this used the default (ccs2: true), so a legacy
+        // Hyundai EU vehicle got a v1 URL with CCS2-shaped bodies.
+        let (path, body) = commandPathAndBody(for: command, ccs2: ccs2)
         let url =
             "\(baseURL)/api/\(ccs2 ? "v2" : "v1")"
             + "/spa/vehicles/\(vehicle.regId)/\(path)"

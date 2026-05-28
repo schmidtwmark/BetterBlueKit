@@ -27,13 +27,19 @@ extension HyundaiUSAAPIClient {
     func commandBody(for command: VehicleCommand, vehicle: Vehicle) -> [String: Any] {
         switch command {
         case .startClimate(let options):
+            // Hyundai US always expects Fahrenheit (unit 1) — matches
+            // HyundaiBlueLinkApiUSA.start_climate. We were sending the
+            // preset's own unit, so a Celsius preset produced unit 0 +
+            // a Celsius value (same bug class as the Kia US fix).
+            let fahrenheit = Int(
+                options.temperature.units
+                    .convert(options.temperature.value, to: .fahrenheit)
+                    .rounded()
+            )
             if vehicle.fuelType.hasElectricCapability {
                 var body: [String: Any] = [
                     "airCtrl": options.climate ? 1 : 0,
-                    "airTemp": [
-                        "value": String(Int(options.temperature.value)),
-                        "unit": options.temperature.units.integer()
-                    ],
+                    "airTemp": ["value": String(fahrenheit), "unit": 1],
                     "defrost": options.defrost,
                     "heating1": options.heatValue
                 ]
@@ -46,7 +52,7 @@ extension HyundaiUSAAPIClient {
                 return [
                     "Ims": 0,
                     "airCtrl": options.climate ? 1 : 0,
-                    "airTemp": ["unit": options.temperature.units.integer(), "value": Int(options.temperature.value)],
+                    "airTemp": ["unit": 1, "value": fahrenheit],
                     "defrost": options.defrost,
                     "heating1": options.heatValue,
                     "igniOnDuration": options.duration,
@@ -56,7 +62,9 @@ extension HyundaiUSAAPIClient {
                 ]
             }
         case .startCharge:
-            return ["chargeRatio": 100]
+            // Hyundai US start charge takes no body (just headers).
+            // `chargeRatio` is the Kia US shape — wrong here.
+            return [:]
         case .setTargetSOC(let acLevel, let dcLevel):
             return ["targetSOClist": [
                 ["targetSOClevel": acLevel, "plugType": 1],
