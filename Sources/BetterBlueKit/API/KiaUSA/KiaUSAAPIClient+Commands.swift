@@ -46,10 +46,14 @@ extension KiaUSAAPIClient {
             var remoteClimate: [String: Any] = [
                 "airCtrl": options.climate,
                 "defrost": options.defrost,
-                "airTemp": [
-                    "value": String(Int(options.temperature.value)),
-                    "unit": options.temperature.units.integer()
-                ],
+                // Kia US always expects Fahrenheit (unit 1). The
+                // value is the F temperature as a string, clamped to
+                // "LOW"/"HIGH" outside the 62–82°F range. Matches
+                // KiaUvoApiUSA.start_climate. Previously we sent the
+                // raw preset value + its own unit, so a Celsius
+                // preset produced {"value":"22","unit":0} — which the
+                // car reads as 22°F (freezing) or rejects outright.
+                "airTemp": kiaUSAirTemp(for: options.temperature),
                 "ignitionOnDuration": [
                     "unit": 4,
                     "value": options.duration
@@ -57,14 +61,20 @@ extension KiaUSAAPIClient {
                 "heatingAccessory": heatingAccessory
             ]
 
+            // Only include heatVentSeat when the user actually set a
+            // seat — Kia now validates seat-climate capability at the
+            // car level and rejects the whole command if the body
+            // includes heatVentSeat on a vehicle that can't do it.
+            // (See the explicit note in KiaUvoApiUSA.start_climate.)
             let seats: [String: Int] = [
                 "driverSeat": convertSeatSetting(options.frontLeftSeat, options.frontLeftVentilationEnabled),
                 "passengerSeat": convertSeatSetting(options.frontRightSeat, options.frontRightVentilationEnabled),
                 "rearLeftSeat": convertSeatSetting(options.rearLeftSeat, options.rearLeftVentilationEnabled),
                 "rearRightSeat": convertSeatSetting(options.rearRightSeat, options.rearRightVentilationEnabled)
             ]
-
-            remoteClimate["heatVentSeat"] = seats
+            if seats.values.contains(where: { $0 != 0 }) {
+                remoteClimate["heatVentSeat"] = seats
+            }
             return ["remoteClimate": remoteClimate]
         case .startCharge:
             return ["chargeRatio": 100]
@@ -80,6 +90,23 @@ extension KiaUSAAPIClient {
         default:
             return [:]
         }
+    }
+
+    /// Builds the `airTemp` payload for Kia US: always Fahrenheit
+    /// (unit 1), value clamped to the 62–82°F controllable range
+    /// with "LOW"/"HIGH" sentinels outside it. Converts from
+    /// whatever unit the preset was stored in.
+    private func kiaUSAirTemp(for temperature: Temperature) -> [String: Any] {
+        let fahrenheit = temperature.units.convert(temperature.value, to: .fahrenheit)
+        let value: String
+        if fahrenheit < 62 {
+            value = "LOW"
+        } else if fahrenheit > 82 {
+            value = "HIGH"
+        } else {
+            value = String(Int(fahrenheit.rounded()))
+        }
+        return ["value": value, "unit": 1]
     }
 
     // MARK: - Seat Setting Conversion
