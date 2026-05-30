@@ -16,7 +16,7 @@ public enum SensitiveDataRedactor {
         let tokenKeys = [
             "access_token", "refresh_token", "accessToken", "refreshToken",
             "serializedAuthToken", "rememberMeToken", "Accesstoken", "Pauth",
-            "TransactionId", "Cookie", "__cf_bm", "otpKey"
+            "TransactionId", "Cookie", "__cf_bm", "otpKey", "otpValidationKey"
         ].joined(separator: "|")
 
         let emailKeys = [
@@ -36,8 +36,9 @@ public enum SensitiveDataRedactor {
         ].joined(separator: "|")
 
         return [
-            // Passwords and PINs
-            (#""(password|pin|PIN)"\s*:\s*"[^"]*""#,
+            // Passwords, PINs, and one-time codes (otpNo is the code the
+            // user types into the MFA prompt — never include it in a report)
+            (#""(password|pin|PIN|otpNo)"\s*:\s*"[^"]*""#,
              "\"$1\":\"[REDACTED]\""),
             // Bearer tokens
             (#"Bearer\s+[A-Za-z0-9._-]+"#,

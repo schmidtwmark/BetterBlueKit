@@ -16,7 +16,18 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
 
     let clientId = "HATAHSPACA0232141ED9722C67715A0B"
     let clientSecret = "CLISCR01AHSPA"
-    let userAgent = "MyHyundai/2.0.25 (iPhone; iOS 18.3; Scale/3.00)"
+    // Hyundai Canada gated logins behind MFA in mid-2026 and moved the
+    // OTP challenge (mfa/selverifmeth → sendotp → validateotp →
+    // genmfatkn) onto its web-portal ("CWP") flow. The native-app
+    // identity (`from: SPA` + a MyHyundai iOS User-Agent) reaches the
+    // auth backend — it still returns the 7110 OTP-required code — but
+    // the follow-up MFA endpoints sit behind Cloudflare and only respond
+    // to the web-portal client. So we now present as the portal does in
+    // the hyundai_kia_connect_api reference: `from: CWP` plus a browser
+    // User-Agent. (See KiaUvoApiCA.py, Hyundai branch.)
+    let userAgent =
+        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
+        + "(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
 
     /// Stable per-account device ID. Hyundai Canada's anti-fraud
     /// challenge fires every time a "new device" logs in — using a
