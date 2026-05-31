@@ -17,10 +17,7 @@ extension HyundaiCanadaAPIClient {
             "client_secret": clientSecret,
             "Host": apiHost,
             "deviceid": deviceId,
-            // "CWP" (Connected Web Portal), not "SPA" (native app): the
-            // CA MFA endpoints only honor the web-portal client. See the
-            // userAgent note in HyundaiCanadaAPIClient.
-            "from": "CWP",
+            "from": "SPA",
             "language": "0",
             "offset": timezoneOffsetHeader,
             "User-Agent": userAgent,
