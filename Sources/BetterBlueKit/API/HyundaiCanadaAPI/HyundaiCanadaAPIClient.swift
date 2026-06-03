@@ -16,7 +16,20 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
 
     let clientId = "HATAHSPACA0232141ED9722C67715A0B"
     let clientSecret = "CLISCR01AHSPA"
-    let userAgent = "MyHyundai/2.0.25 (iPhone; iOS 18.3; Scale/3.00)"
+    // DO NOT revert to a native-app User-Agent. Hyundai Canada sits
+    // behind Cloudflare: the `/login` GET we use to mint the `__cf_bm`
+    // cookie (see `fetchCloudFlareCookie`) only returns that cookie for
+    // a browser-like client. With the old `MyHyundai/… iOS` UA + `from:
+    // SPA`, Cloudflare instead serves a JS-challenge HTML page, no
+    // `__cf_bm` is set, and EVERY request fails with "CloudFlare cookie
+    // missing from login response" (GitHub #67). The browser UA + `from:
+    // CWP` (the web-portal identity, matching the hyundai_kia_connect_api
+    // reference, KiaUvoApiCA.py) gets the cookie and also reaches the
+    // web-portal MFA endpoints. 2026.5.14 shipped this and worked;
+    // 2026.5.15 reverted it and broke CA again — hence this is restored.
+    let userAgent =
+        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
+        + "(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
 
     /// Stable per-account device ID. Hyundai Canada's anti-fraud
     /// challenge fires every time a "new device" logs in — using a
