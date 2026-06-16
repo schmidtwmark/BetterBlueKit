@@ -149,7 +149,7 @@ func printUsage() {
       -h, --help                Show this help message
 
     Parse Mode:
-      bbcli parse -b <brand> -r <region> -t <type> [--vin <vin>] [--electric] <json>
+      bbcli parse -b <brand> -r <region> -t <type> [--vin <vin>] [--electric] [--ccs2|--legacy] <json>
 
       Parses a raw API response JSON and outputs the parsed BetterBlueKit struct.
 
@@ -157,6 +157,8 @@ func printUsage() {
       --vin <vin>               VIN for vehicleStatus parsing (default: TESTVIN0000000000)
       --electric                Mark vehicle as electric for parsing (auto-detected from
                                 evStatus field in vehicles response if not specified)
+      --ccs2                    Parse Hyundai/Kia Europe vehicleStatus as CCS2/CCNC
+      --legacy                  Parse Hyundai/Kia Europe vehicleStatus as Gen5W/non-CCS2
       <json>                    JSON string or path to a JSON file (last argument)
 
       If the JSON contains a top-level "responseBody" key, it will be automatically
@@ -553,6 +555,7 @@ struct ParseOptions {
     var parseType: ParseType?
     var vin: String = "TESTVIN0000000000"
     var fuelType: FuelType?  // nil = auto-detect
+    var ccs2Override: Bool?
     var jsonInput: String?
 }
 
@@ -606,6 +609,10 @@ func parseParseArguments() -> ParseOptions {
             }
         case "--electric":
             options.fuelType = .electric
+        case "--ccs2":
+            options.ccs2Override = true
+        case "--legacy":
+            options.ccs2Override = false
         case "-h", "--help":
             printUsage()
             exit(0)
@@ -655,6 +662,35 @@ func unwrapResponseBody(_ data: Data) -> Data {
         return unwrapped
     }
     return data
+}
+
+func inferEuropeCCS2Status(from data: Data, brand: Brand, region: Region) -> Bool {
+    guard region == .europe,
+          brand == .hyundai || brand == .kia,
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let resMsg = json["resMsg"] as? [String: Any] else {
+        return false
+    }
+
+    if resMsg["state"] != nil {
+        return true
+    }
+    return false
+}
+
+func parseModeMarketOptions(brand: Brand, region: Region, ccs2: Bool) -> VehicleMarketOptions {
+    guard region == .europe else {
+        return .generic
+    }
+
+    switch brand {
+    case .hyundai:
+        return .hyundaiEurope(ccs2Supported: ccs2)
+    case .kia:
+        return .kiaEurope(ccs2Supported: ccs2)
+    case .fake:
+        return .generic
+    }
 }
 
 func encodePrettyJSON<T: Encodable>(_ value: T) -> String {
@@ -708,6 +744,11 @@ func runParseMode() async -> Int32 {
 
         case .vehicleStatus:
             let fuelType = options.fuelType ?? .gas
+            let ccs2 = options.ccs2Override ?? inferEuropeCCS2Status(
+                from: data,
+                brand: options.brand,
+                region: options.region
+            )
             let vehicle = Vehicle(
                 vin: options.vin,
                 regId: "parse-mode",
@@ -715,7 +756,12 @@ func runParseMode() async -> Int32 {
                 accountId: UUID(),
                 fuelType: fuelType,
                 generation: 2,
-                odometer: Distance(length: 0, units: .miles)
+                odometer: Distance(length: 0, units: .miles),
+                marketOptions: parseModeMarketOptions(
+                    brand: options.brand,
+                    region: options.region,
+                    ccs2: ccs2
+                )
             )
             let status = try parseVehicleStatus(client: client, data: data, vehicle: vehicle)
             printSuccess("Parsed vehicle status")

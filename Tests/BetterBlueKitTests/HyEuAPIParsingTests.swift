@@ -1039,3 +1039,301 @@ struct HyJSONFormatTests {
         #expect(vehicleStatus.engineOn == true)
     }
 }
+
+private struct HyEuRecordedRequest {
+    let url: URL
+    let method: String
+    let headers: [String: String]
+    let body: Data?
+}
+
+private final class HyEuMockURLProtocol: URLProtocol, @unchecked Sendable {
+    typealias Handler = (URLRequest) throws -> (HTTPURLResponse, Data)
+
+    nonisolated(unsafe) private static var requestHandler: Handler?
+    nonisolated(unsafe) private static var recordedRequests: [HyEuRecordedRequest] = []
+
+    static func reset(handler: @escaping Handler) {
+        recordedRequests = []
+        requestHandler = handler
+    }
+
+    static var requests: [HyEuRecordedRequest] {
+        recordedRequests
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        do {
+            guard let url = request.url else {
+                throw NSError(domain: "HyEuMockURLProtocol", code: 1)
+            }
+            Self.recordedRequests.append(HyEuRecordedRequest(
+                url: url,
+                method: request.httpMethod ?? "GET",
+                headers: request.allHTTPHeaderFields ?? [:],
+                body: Self.bodyData(from: request)
+            ))
+            guard let requestHandler = Self.requestHandler else {
+                throw NSError(domain: "HyEuMockURLProtocol", code: 2)
+            }
+            let (response, data) = try requestHandler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+
+    private static func bodyData(from request: URLRequest) -> Data? {
+        if let body = request.httpBody {
+            return body
+        }
+        guard let stream = request.httpBodyStream else {
+            return nil
+        }
+        stream.open()
+        defer { stream.close() }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while stream.hasBytesAvailable {
+            let read = stream.read(&buffer, maxLength: buffer.count)
+            if read > 0 {
+                data.append(buffer, count: read)
+            } else {
+                break
+            }
+        }
+        return data.isEmpty ? nil : data
+    }
+}
+
+@MainActor
+private func makeHyEuClient(
+    deviceId: String = "device-123",
+    refreshToken: String? = nil,
+    handler: @escaping HyEuMockURLProtocol.Handler
+) -> HyundaiEuropeAPIClient {
+    HyEuMockURLProtocol.reset(handler: handler)
+    let sessionConfig = URLSessionConfiguration.ephemeral
+    sessionConfig.protocolClasses = [HyEuMockURLProtocol.self]
+    let session = URLSession(configuration: sessionConfig)
+    let config = APIClientConfiguration(
+        region: .europe,
+        brand: .hyundai,
+        username: "test@example.com",
+        password: "password123",
+        refreshToken: refreshToken,
+        pin: "0000",
+        accountId: UUID(),
+        deviceId: deviceId
+    )
+    return HyundaiEuropeAPIClient(configuration: config, urlSession: session)
+}
+
+private func hyEuResponse(for url: URL, status: Int = 200) -> HTTPURLResponse {
+    HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil)!
+}
+
+private func header(_ name: String, in request: HyEuRecordedRequest) -> String? {
+    request.headers.first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value
+}
+
+private func jsonBody(from request: HyEuRecordedRequest) throws -> [String: Any] {
+    let data = try #require(request.body)
+    let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+    return try #require(json)
+}
+
+@Suite("Hyundai Europe Request Routing", .serialized)
+struct HyEuRequestRoutingTests {
+
+    private let successData = Data(#"{"retCode":"S","resCode":"0000","resMsg":{}}"#.utf8)
+    private let authToken = AuthToken(
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+        expiresAt: Date().addingTimeInterval(3600)
+    )
+
+    @Test("Legacy commands use v1 control path with normal auth headers")
+    @MainActor func legacyCommandUsesV1NormalAuth() async throws {
+        let client = makeHyEuClient { request in
+            (hyEuResponse(for: request.url!), successData)
+        }
+        let vehicle = hyEuVehicle(regId: "legacy-id", ccs2: false)
+
+        try await client.sendCommand(for: vehicle, command: .lock, authToken: authToken)
+
+        let request = try #require(HyEuMockURLProtocol.requests.first)
+        #expect(HyEuMockURLProtocol.requests.count == 1)
+        #expect(request.method == "POST")
+        #expect(request.url.path == "/api/v1/spa/vehicles/legacy-id/control/door")
+        #expect(header("Authorization", in: request) == "Bearer access-token")
+        #expect(header("AuthorizationCCSP", in: request) == nil)
+        #expect(header("Ccuccs2protocolsupport", in: request) == "0")
+
+        let body = try jsonBody(from: request)
+        #expect(body["action"] as? String == "close")
+        #expect(body["deviceId"] as? String == "device-123")
+    }
+
+    @Test("CCS2 commands use v2 ccs2 path with control token headers")
+    @MainActor func ccs2CommandUsesV2ControlTokenAuth() async throws {
+        let controlData = Data(#"{"controlToken":"control-token","expiresTime":600}"#.utf8)
+        let client = makeHyEuClient { request in
+            if request.url?.path == "/api/v1/user/pin" {
+                return (hyEuResponse(for: request.url!), controlData)
+            }
+            return (hyEuResponse(for: request.url!), successData)
+        }
+        let vehicle = hyEuVehicle(regId: "ccs2-id", ccs2: true)
+
+        try await client.sendCommand(for: vehicle, command: .unlock, authToken: authToken)
+
+        let requests = HyEuMockURLProtocol.requests
+        #expect(requests.count == 2)
+        let commandRequest = try #require(requests.last)
+        #expect(commandRequest.url.path == "/api/v2/spa/vehicles/ccs2-id/ccs2/control/door")
+        #expect(header("Authorization", in: commandRequest) == "Bearer control-token")
+        #expect(header("AuthorizationCCSP", in: commandRequest) == "Bearer control-token")
+        #expect(header("Ccuccs2protocolsupport", in: commandRequest) == "1")
+
+        let body = try jsonBody(from: commandRequest)
+        #expect(body["command"] as? String == "open")
+    }
+
+    @Test("Charge limits use v1 normal auth and DC before AC plug types")
+    @MainActor func chargeLimitsUseV1NormalAuth() async throws {
+        try await assertChargeLimitRequest(ccs2: false, expectedHeader: "0")
+        try await assertChargeLimitRequest(ccs2: true, expectedHeader: "1")
+    }
+
+    @Test("Device registration sends random pushRegId and Stamp only as header")
+    @MainActor func deviceRegistrationUsesRandomPushRegId() async throws {
+        let client = makeHyEuClient { request in
+            let response = Data(#"{"resMsg":{"deviceId":"registered-device"}}"#.utf8)
+            return (hyEuResponse(for: request.url!), response)
+        }
+
+        let deviceId = try await client.registerDevice()
+
+        #expect(deviceId == "registered-device")
+        let request = try #require(HyEuMockURLProtocol.requests.first)
+        #expect(request.url.path == "/api/v1/spa/notifications/register")
+        let body = try jsonBody(from: request)
+        let pushRegId = try #require(body["pushRegId"] as? String)
+        let stamp = try #require(header("Stamp", in: request))
+        #expect(pushRegId.range(of: #"^[0-9a-f]{64}$"#, options: .regularExpression) != nil)
+        #expect(pushRegId != stamp)
+        #expect(body["pushType"] as? String == "GCM")
+    }
+
+    @Test("EU body errors map to actionable APIError types")
+    @MainActor func bodyErrorsMapToAPIErrorTypes() throws {
+        let client = makeHyEuClient { request in
+            (hyEuResponse(for: request.url!), Data())
+        }
+        let cases: [(String, APIError.ErrorType)] = [
+            ("7501", .invalidCredentials),
+            ("4002", .invalidVehicleSession),
+            ("4004", .concurrentRequest),
+            ("4005", .general),
+            ("4081", .serverError),
+            ("9999", .serverError),
+            ("5031", .serverError),
+            ("5091", .serverError),
+            ("5921", .general)
+        ]
+
+        for (resCode, errorType) in cases {
+            let data = Data(#"{"retCode":"F","resCode":"\#(resCode)","resMsg":{"message":"server message"}}"#.utf8)
+            let error = try #require(client.hyundaiEuropeAPIError(from: data))
+            #expect(error.errorType == errorType)
+            #expect(error.code == Int(resCode))
+            #expect(error.message.contains("server message"))
+        }
+    }
+
+    @Test("Token exchange posts form data")
+    @MainActor func tokenExchangePostsFormData() async throws {
+        let tokenData = Data("""
+        {"access_token":"access-token","refresh_token":"new-refresh","expires_in":3600}
+        """.utf8)
+        let client = makeHyEuClient { request in
+            (hyEuResponse(for: request.url!), tokenData)
+        }
+
+        let token = try await client.exchangeForToken(code: "returned-code")
+
+        #expect(token.accessToken == "access-token")
+        #expect(token.refreshToken == "new-refresh")
+        let request = try #require(HyEuMockURLProtocol.requests.first)
+        let body = String(data: try #require(request.body), encoding: .utf8)
+        #expect(request.url.path == "/auth/api/v2/user/oauth2/token")
+        #expect(header("Content-Type", in: request) == "application/x-www-form-urlencoded")
+        #expect(body?.contains("grant_type=authorization_code") == true)
+        #expect(body?.contains("code=returned-code") == true)
+        #expect(body?.contains("redirect_uri=https%3A%2F%2Fprd.eu-ccapi.hyundai.com%3A8080%2Fapi%2Fv1%2Fuser%2Foauth2%2Fredirect") == true)
+    }
+
+    @Test("Login form helpers encode reserved characters")
+    @MainActor func loginFormHelpersEncodeReservedCharacters() throws {
+        let encoded = HyundaiEuropeAPIClient.formEncode([
+            ("redirect_uri", "https://example.com/callback?a=1&b=two words"),
+            ("password", "p+a&b=c")
+        ])
+        #expect(encoded == "redirect_uri=https%3A%2F%2Fexample.com%2Fcallback%3Fa%3D1%26b%3Dtwo%20words&password=p%2Ba%26b%3Dc")
+        #expect(HyundaiEuropeAPIClient.base64urlDecode("SGVsbG8td29ybGQ") == Data("Hello-world".utf8))
+    }
+
+    @MainActor private func assertChargeLimitRequest(ccs2: Bool, expectedHeader: String) async throws {
+        let client = makeHyEuClient { request in
+            (hyEuResponse(for: request.url!), successData)
+        }
+        let vehicle = hyEuVehicle(regId: ccs2 ? "ccs2-id" : "legacy-id", ccs2: ccs2)
+
+        try await client.sendCommand(
+            for: vehicle,
+            command: .setTargetSOC(acLevel: 80, dcLevel: 90),
+            authToken: authToken
+        )
+
+        #expect(HyEuMockURLProtocol.requests.count == 1)
+        let request = try #require(HyEuMockURLProtocol.requests.first)
+        #expect(request.url.path == "/api/v1/spa/vehicles/\(vehicle.regId)/charge/target")
+        #expect(header("Authorization", in: request) == "Bearer access-token")
+        #expect(header("AuthorizationCCSP", in: request) == nil)
+        #expect(header("Ccuccs2protocolsupport", in: request) == expectedHeader)
+
+        let body = try jsonBody(from: request)
+        let targets = try #require(body["targetSOClist"] as? [[String: Any]])
+        let dcTarget = try #require(targets.first { $0["plugType"] as? Int == 0 })
+        let acTarget = try #require(targets.first { $0["plugType"] as? Int == 1 })
+        #expect(dcTarget["targetSOClevel"] as? Int == 90)
+        #expect(acTarget["targetSOClevel"] as? Int == 80)
+    }
+
+    private func hyEuVehicle(regId: String, ccs2: Bool) -> Vehicle {
+        Vehicle(
+            vin: "TESTVIN\(regId)",
+            regId: regId,
+            model: "IONIQ",
+            accountId: UUID(),
+            fuelType: .electric,
+            generation: 2,
+            odometer: Distance(length: 0, units: .kilometers),
+            marketOptions: .hyundaiEurope(ccs2Supported: ccs2)
+        )
+    }
+}

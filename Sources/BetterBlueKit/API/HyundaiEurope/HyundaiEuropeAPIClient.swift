@@ -6,7 +6,6 @@
 //  Based on: https://github.com/andyfase/egmp-bluelink-scriptable
 //
 
-import CryptoKit
 import Foundation
 
 // MARK: - Hyundai Europe API Client
@@ -20,6 +19,11 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
     static let clientSecret = "KUy49XxPzLpLuoK0xhBC77W6VXhmtQR9iQhmIFjjoY4IpxsV"
     static let appId = "014d2225-8495-4735-812d-2616334fd15d"
     static let authCfb = "RFtoRq/vDXJmRndoZaZQyfOot7OrIqGVFj96iY2WL3yyH5Z/pUvlUhqmCxD2t+D65SQ="
+    static let mobileUserAgent =
+        "Mozilla/5.0 (Linux; Android 4.1.1; Galaxy Nexus Build/JRO03C) " +
+        "AppleWebKit/535.19 (KHTML, like Gecko) " +
+        "Chrome/18.0.1025.166 Mobile Safari/535.19_CCS_APP_AOS"
+
     var commandToken: String = ""
     var commandTokenExpiration: Date = Date()
 
@@ -28,6 +32,8 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
     }
     var authBaseURL: String { "https://idpconnect-eu.hyundai.com" }
     var apiHost =  Brand.hyundaiBaseUrl(region: Region.europe).replacing(/https:\/\//, with: "")
+
+    var oauthRedirectURI: String { "\(baseURL)/api/v1/user/oauth2/redirect" }
 
     public override var apiName: String { "HyundaiEurope" }
 
@@ -67,93 +73,11 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
         return token
     }
 
-    /// use code to exchange it for access token
-    private func exchangeForToken(code: String) async throws -> AuthToken {
-
-        let body = [
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": "\(baseURL)/api/v1/user/oauth2/token",
-            "client_id": Self.clientId,
-            "client_secret": Self.clientSecret
-        ]
-
-        let (data, _, _) = try await performJSONRequest(
-            url: "\(authBaseURL)/auth/api/v2/user/oauth2/token",
-            method: .POST,
-            headers: loginHeaders(),
-            body: body,
-            requestType: .login
-        )
-
-        return try parseAuthToken(from: data, isRefresh: true)
-    }
-
-    /// use username and password to get code for token exchange
-    private func signin() async throws -> String {
-        let state = UUID().uuidString
-        let body = ["client_id": Self.clientId,
-                    "encryptedPassword": "false",
-                    "username": username,
-                    "password": password,
-                    "redirect_uri": "\(baseURL)/api/v1/user/oauth2/token",
-                    "state": state,
-                    "remember_me": "false"
-        ]
-
-        let bodyData = try? JSONSerialization.data(
-            withJSONObject: body, options: []
-        )
-
-        var request = URLRequest(url: URL(string: "\(authBaseURL)/auth/account/signin")!)
-        request.httpMethod = "POST"
-        request.httpBody = bodyData
-        request.allHTTPHeaderFields = loginHeaders()
-        let (_, response) = try await urlSession.data(for: request)
-
-        guard let http = response as? HTTPURLResponse,
-              let finalURL = http.url,
-              let comps = URLComponents(url: finalURL, resolvingAgainstBaseURL: false) else {
-            return ""
-        }
-        // State validate ← no possible anymore CSRF
-        guard comps.queryItems?.first(where: { $0.name == "state" })?.value == state else {
-                return ""
-        }
-        guard let code = comps.queryItems?.first(where: { $0.name == "code" })?.value,
-                  !code.isEmpty else {
-                return ""
-        }
-
-        return code
-    }
-
-    /// use refresh token to get a fresh acces token
-    private func getAccessTokenFromRefreshToken() async throws -> AuthToken {
-
-        let body = [
-            "grant_type": "refresh_token",
-            "refresh_token": configuration.refreshToken,
-            "client_id": Self.clientId,
-            "client_secret": Self.clientSecret
-        ]
-
-        let bodyData = try? JSONSerialization.data(
-            withJSONObject: body, options: []
-        )
-
-        var request = URLRequest(url: URL(string: "\(authBaseURL)/auth/api/v2/user/oauth2/token")!)
-        request.httpMethod = "POST"
-        request.httpBody = bodyData
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let (data, _) = try await urlSession.data(for: request)
-        return try parseAuthToken(from: data, isRefresh: false)
-    }
-
     public override func registerDevice() async throws -> String? {
         let stamp = generateStamp()
+        let pushRegId = try randomHexString(byteCount: 32)
         let body = [
-            "pushRegId": stamp,
+            "pushRegId": pushRegId,
             "pushType": "GCM",
             "uuid": UUID().uuidString
         ]
@@ -278,15 +202,19 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
         let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
-        // Pass the vehicle's actual protocol into the body builder.
-        // Previously this used the default (ccs2: true), so a legacy
-        // Hyundai EU vehicle got a v1 URL with CCS2-shaped bodies.
-        let (path, body) = commandPathAndBody(for: command, ccs2: ccs2)
+        let usesControlToken = ccs2 && !command.isChargeLimitCommand
+        let (rawPath, body) = commandPathAndBody(for: command, ccs2: ccs2)
+        let path = String(rawPath.drop { $0 == "/" })
         let url =
-            "\(baseURL)/api/\(ccs2 ? "v2" : "v1")"
+            "\(baseURL)/api/\(usesControlToken ? "v2" : "v1")"
             + "/spa/vehicles/\(vehicle.regId)/\(path)"
-        try await setCommandToken(authToken: authToken)
-        let header = commandHeaders(authToken: authToken, ccs2: ccs2)
+        let header: [String: String]
+        if usesControlToken {
+            try await setCommandToken(authToken: authToken)
+            header = commandHeaders(authToken: authToken, ccs2: ccs2)
+        } else {
+            header = authorizedHeaders(authToken: authToken, ccs2: ccs2)
+        }
 
         _ = try await performJSONRequest(
             url: url,
@@ -296,5 +224,12 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
             requestType: .sendCommand,
             vin: vehicle.vin
         )
+    }
+
+    override func validateHTTPResponse(_ httpResponse: HTTPURLResponse, data: Data, responseBody: String?) throws {
+        if let error = hyundaiEuropeAPIError(from: data) {
+            throw error
+        }
+        try super.validateHTTPResponse(httpResponse, data: data, responseBody: responseBody)
     }
 }

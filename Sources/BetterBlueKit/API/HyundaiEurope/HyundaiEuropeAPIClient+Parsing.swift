@@ -118,6 +118,93 @@ extension HyundaiEuropeAPIClient {
             )
     }
 
+    package func hyundaiEuropeAPIError(from data: Data) -> APIError? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let resCode = (json["resCode"] as? String) ?? (json["resCode"] as? Int).map({ String($0) }),
+              let retCode = json["retCode"] as? String else {
+            return nil
+        }
+
+        guard retCode == "F" || resCode != "0000" else {
+            return nil
+        }
+
+        let serverMessage = hyundaiEuropeServerMessage(from: json["resMsg"])
+        let message = hyundaiEuropeErrorMessage(resCode: resCode, serverMessage: serverMessage)
+        let code = Int(resCode)
+        let userInfo = [
+            "retCode": retCode,
+            "resCode": resCode
+        ]
+
+        return APIError.logError(
+            message,
+            code: code,
+            apiName: apiName,
+            errorType: hyundaiEuropeErrorType(resCode: resCode),
+            userInfo: userInfo
+        )
+    }
+
+    private func hyundaiEuropeErrorType(resCode: String) -> APIError.ErrorType {
+        switch resCode {
+        case "7501":
+            return .invalidCredentials
+        case "4002":
+            return .invalidVehicleSession
+        case "4004":
+            return .concurrentRequest
+        case "4081", "9999", "5031", "5091":
+            return .serverError
+        default:
+            return .general
+        }
+    }
+
+    private func hyundaiEuropeErrorMessage(resCode: String, serverMessage: String?) -> String {
+        let baseMessage: String = switch resCode {
+        case "7501":
+            "Hyundai EU authentication expired or was rejected. Sign in again."
+        case "4002":
+            "Hyundai EU device registration is invalid or stale. Register the device again."
+        case "4004":
+            "Another Hyundai EU vehicle command is already in progress. Wait a moment and try again."
+        case "4005":
+            "Hyundai EU rejected this request as unsupported or invalid for the vehicle."
+        case "4081":
+            "Hyundai EU command timed out. Check the vehicle state and try again."
+        case "5031":
+            "Hyundai EU service is temporarily unavailable. Try again later."
+        case "5091":
+            "Hyundai EU rate limit reached. Wait before retrying."
+        case "5921":
+            "Hyundai EU returned no data for this vehicle."
+        case "9999":
+            "Hyundai EU returned a temporary server error. Try again later."
+        default:
+            "Hyundai EU request failed with response code \(resCode)."
+        }
+        guard let serverMessage, !serverMessage.isEmpty else {
+            return baseMessage
+        }
+        return "\(baseMessage) Server message: \(serverMessage)"
+    }
+
+    private func hyundaiEuropeServerMessage(from resMsg: Any?) -> String? {
+        if let message = resMsg as? String {
+            return message
+        }
+        guard let dict = resMsg as? [String: Any] else {
+            return nil
+        }
+        for key in ["message", "msg", "errorMessage", "description"] {
+            if let message = dict[key] as? String {
+                return message
+            }
+        }
+        return nil
+    }
+
     private func parseEVStatus(from vehicleState: [String: Any], pathMap: HyEuResponseKeyPathMap)
         -> VehicleStatus.EVStatus? {
 
