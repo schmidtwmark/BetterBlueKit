@@ -7,6 +7,41 @@
 
 import Foundation
 
+// MARK: - Hyundai Canada API Variant
+
+/// Which way the Hyundai Canada client presents itself to the backend.
+/// Hyundai Canada's Cloudflare + endpoint behavior varies per user/IP, so
+/// no single identity works for everyone — this lets a user pick the one
+/// that connects for them (surfaced in the app as "Connection").
+public enum HyundaiCanadaVariant: String, Codable, CaseIterable, Sendable {
+    /// Web-portal login (`from: CWP` + a browser User-Agent) — clears
+    /// Cloudflare for most users — paired with native-app headers on the
+    /// `evc/fme` location endpoint (the combination a CA owner verified
+    /// in BetterBlueKit#36).
+    case webPortal
+    /// Native-app identity everywhere (`from: SPA` + the MyHyundai iOS
+    /// User-Agent) with the legacy `fndmcr` location endpoint — for users
+    /// where Cloudflare blocks the web-portal identity but the app one
+    /// works.
+    case nativeApp
+
+    public static var `default`: HyundaiCanadaVariant { .webPortal }
+
+    public var displayName: String {
+        switch self {
+        case .webPortal: "Web Portal"
+        case .nativeApp: "Native App"
+        }
+    }
+
+    public var summary: String {
+        switch self {
+        case .webPortal: "Browser-style login (recommended). Best for clearing Cloudflare."
+        case .nativeApp: "MyHyundai app-style login. Try this if Web Portal won't connect."
+        }
+    }
+}
+
 // MARK: - API Client Configuration
 
 public struct APIClientConfiguration {
@@ -21,6 +56,8 @@ public struct APIClientConfiguration {
     public let rememberMeToken: String?
     public let redactPII: Bool
     public let deviceId: String?
+    /// Hyundai Canada connection variant (ignored by other brands/regions).
+    public let hyundaiCanadaVariant: HyundaiCanadaVariant
     /// Invoked when the API client observes that the server returned a
     /// rotated `rmToken` (or equivalent long-lived "remember-me" credential)
     /// in a login response. The caller is expected to persist the new
@@ -41,6 +78,7 @@ public struct APIClientConfiguration {
         rememberMeToken: String? = nil,
         redactPII: Bool = true,
         deviceId: String? = nil,
+        hyundaiCanadaVariant: HyundaiCanadaVariant = .default,
         onRememberMeTokenRotated: (@MainActor @Sendable (String) -> Void)? = nil
     ) {
         self.region = region
@@ -54,6 +92,7 @@ public struct APIClientConfiguration {
         self.rememberMeToken = rememberMeToken
         self.redactPII = redactPII
         self.deviceId = deviceId
+        self.hyundaiCanadaVariant = hyundaiCanadaVariant
         self.onRememberMeTokenRotated = onRememberMeTokenRotated
     }
 
@@ -69,7 +108,8 @@ public struct APIClientConfiguration {
             logSink: logSink,
             rememberMeToken: rememberMeToken,
             redactPII: redactPII,
-            deviceId: deviceId ?? self.deviceId
+            deviceId: deviceId ?? self.deviceId,
+            hyundaiCanadaVariant: hyundaiCanadaVariant
         )
     }
 }

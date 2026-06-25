@@ -16,20 +16,25 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
 
     let clientId = "HATAHSPACA0232141ED9722C67715A0B"
     let clientSecret = "CLISCR01AHSPA"
-    // DO NOT revert to a native-app User-Agent. Hyundai Canada sits
-    // behind Cloudflare: the `/login` GET we use to mint the `__cf_bm`
-    // cookie (see `fetchCloudFlareCookie`) only returns that cookie for
-    // a browser-like client. With the old `MyHyundai/… iOS` UA + `from:
-    // SPA`, Cloudflare instead serves a JS-challenge HTML page, no
-    // `__cf_bm` is set, and EVERY request fails with "CloudFlare cookie
-    // missing from login response" (GitHub #67). The browser UA + `from:
-    // CWP` (the web-portal identity, matching the hyundai_kia_connect_api
-    // reference, KiaUvoApiCA.py) gets the cookie and also reaches the
-    // web-portal MFA endpoints. 2026.5.14 shipped this and worked;
-    // 2026.5.15 reverted it and broke CA again — hence this is restored.
-    let userAgent =
+
+    // Hyundai Canada sits behind Cloudflare and its behavior varies by
+    // user/IP, so the header identity is user-selectable (see
+    // `HyundaiCanadaVariant`). The `/login` GET that mints the `__cf_bm`
+    // cookie only returns it to a client Cloudflare trusts; for most
+    // users that's a browser-like client (`webPortal`), but some users
+    // only connect as the native MyHyundai app (`nativeApp`). The picker
+    // lets each user choose. (GitHub #67, #79, #35.)
+    static let webUserAgent =
         "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
         + "(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
+    static let nativeUserAgent = "MyHyundai/2.0.25 (iPhone; iOS 18.3; Scale/3.00)"
+
+    /// The selected connection variant for this account.
+    var variant: HyundaiCanadaVariant { configuration.hyundaiCanadaVariant }
+    /// User-Agent for the selected variant.
+    var userAgent: String { variant == .nativeApp ? Self.nativeUserAgent : Self.webUserAgent }
+    /// `from` header value for the selected variant.
+    var fromHeader: String { variant == .nativeApp ? "SPA" : "CWP" }
 
     /// Stable per-account device ID. Hyundai Canada's anti-fraud
     /// challenge fires every time a "new device" logs in — using a
@@ -187,10 +192,17 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     private func injectLocationCoordinates(into data: Data, vehicle: Vehicle, authToken: AuthToken) async -> Data {
         do {
             let pAuth = try await fetchCommandAuthCode(authToken: authToken)
+            // Web-portal variant uses the newer `evc/fme` endpoint with
+            // native-app headers (BetterBlueKit#36); native variant keeps
+            // the legacy `fndmcr` with its normal headers. The parser
+            // accepts both `result.gpsDetail.coord` and `result.coord`.
+            let useNativeLocation = variant == .nativeApp
             let (locationData, _, _) = try await performJSONRequest(
-                url: "\(apiBaseURL)/fndmcr",
+                url: "\(apiBaseURL)/\(useNativeLocation ? "fndmcr" : "evc/fme")",
                 method: .POST,
-                headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: pAuth),
+                headers: useNativeLocation
+                    ? authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: pAuth)
+                    : locationHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: pAuth),
                 body: ["pin": pin],
                 requestType: .fetchVehicleStatus,
                 vin: vehicle.vin

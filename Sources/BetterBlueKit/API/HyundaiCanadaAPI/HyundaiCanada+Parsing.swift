@@ -146,8 +146,16 @@ extension HyundaiCanadaAPIClient {
 
     func parseCanadaLocationResponse(_ data: Data) throws -> VehicleStatus.Location {
         let json = try parseCanadaResponse(data, context: "location")
-        guard let result = json["result"] as? [String: Any],
-              let coord = result["coord"] as? [String: Any] else {
+        guard let result = json["result"] as? [String: Any] else {
+            throw APIError.logError("Invalid Canada location response", apiName: apiName)
+        }
+
+        // `evc/fme` returns coordinates under `result.gpsDetail.coord`;
+        // the legacy `fndmcr` endpoint put them at `result.coord`. Prefer
+        // the new shape, fall back to the old one. (BetterBlueKit#36.)
+        let gpsDetail = result["gpsDetail"] as? [String: Any]
+        guard let coord = (gpsDetail?["coord"] as? [String: Any])
+            ?? (result["coord"] as? [String: Any]) else {
             throw APIError.logError("Invalid Canada location response", apiName: apiName)
         }
 

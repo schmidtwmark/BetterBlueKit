@@ -12,15 +12,14 @@ extension HyundaiCanadaAPIClient {
     // MARK: - Headers
 
     func headers() -> [String: String] {
+        // `from` + User-Agent depend on the selected connection variant
+        // (web-portal vs native app) — see `HyundaiCanadaVariant`.
         [
             "client_id": clientId,
             "client_secret": clientSecret,
             "Host": apiHost,
             "deviceid": deviceId,
-            // "CWP" (Connected Web Portal), not "SPA" (native app): the
-            // CA MFA endpoints only honor the web-portal client. See the
-            // userAgent note in HyundaiCanadaAPIClient.
-            "from": "CWP",
+            "from": fromHeader,
             "language": "0",
             "offset": timezoneOffsetHeader,
             "User-Agent": userAgent,
@@ -29,6 +28,38 @@ extension HyundaiCanadaAPIClient {
             "origin": "https://\(apiHost)",
             "referer": "https://\(apiHost)/login"
         ]
+    }
+
+    /// Native-app-style headers for the `evc/fme` vehicle-location
+    /// endpoint used by the web-portal variant. That endpoint requires
+    /// the native-app identity (`from: SPA`, `brand: H`, MyHyundai iOS
+    /// User-Agent, lowercase header keys) even when login used the
+    /// web-portal client — a CA owner verified this in BetterBlueKit#36.
+    func locationHeaders(
+        authToken: AuthToken,
+        vehicleId: String,
+        pAuth: String
+    ) -> [String: String] {
+        var result: [String: String] = [
+            "client_id": clientId,
+            "client_secret": clientSecret,
+            "host": apiHost,
+            "deviceid": deviceId,
+            "from": "SPA",
+            "brand": "H",
+            "language": "0",
+            "offset": timezoneOffsetHeader,
+            "user-agent": Self.nativeUserAgent,
+            "content-type": "application/json",
+            "accept": "application/json",
+            "accesstoken": authToken.accessToken,
+            "vehicleid": vehicleId,
+            "pauth": pAuth
+        ]
+        if let cookie = cloudFlareCookie {
+            result["cookie"] = cookie
+        }
+        return result
     }
 
     func authorizedHeaders(
