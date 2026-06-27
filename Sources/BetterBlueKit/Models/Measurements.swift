@@ -86,9 +86,20 @@ public struct Temperature: Codable, Hashable, Sendable {
         public func format(_ temperature: Double, to targetUnits: Units) -> String {
             let convertedTemperature = self.convert(temperature, to: targetUnits)
 
+            // Celsius supports half-degree steps: snap to the 0.5°C grid and
+            // show up to one decimal ("22.5°C", "22°C"). Fahrenheit is
+            // whole-degree only.
             let formatter = NumberFormatter()
-            formatter.maximumFractionDigits = 0
-            let formattedNumber = formatter.string(from: NSNumber(value: convertedTemperature)) ?? "0"
+            let displayValue: Double
+            switch targetUnits {
+            case .celsius:
+                formatter.maximumFractionDigits = 1
+                displayValue = (convertedTemperature * 2).rounded() / 2
+            case .fahrenheit:
+                formatter.maximumFractionDigits = 0
+                displayValue = convertedTemperature
+            }
+            let formattedNumber = formatter.string(from: NSNumber(value: displayValue)) ?? "0"
 
             return "\(formattedNumber)\(targetUnits.symbol)"
         }
