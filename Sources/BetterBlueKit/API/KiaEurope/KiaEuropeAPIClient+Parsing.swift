@@ -139,8 +139,11 @@ extension KiaEuropeAPIClient {
             targetDC = getDoubleFromJson(from: vehicleState, key: pathMap[.targetDC])
             isCharging = remainChargeTime > 0
         } else {
-            let targetSocList = getChildFromJson(from: vehicleState,
-                                                 key: pathMap[.targetSocList]) as? [[String: Any]] ?? []
+            // targetSocList resolves to an ARRAY leaf; getChildFromJson only returns
+            // dictionaries, so the cast failed and AC/DC targets were always empty.
+            // Read via getAnyFromJson (matches the Hyundai EU sibling).
+            let targetSocList = getAnyFromJson(from: vehicleState,
+                                               key: pathMap[.targetSocList]) as? [[String: Any]] ?? []
             for target in targetSocList {
                 if let plugType = target["plugType"] as? Int,
                    let soc = target["targetSOClevel"] as? Double {
@@ -305,15 +308,29 @@ extension KiaEuropeAPIClient {
     }
 
     private func getAnyFromJson(from data: [String: Any], key keyString: String?) -> Any? {
-        if keyString == nil || keyString!.isEmpty { return nil }
-        var current = data
-        for key in keyString!.split(separator: ".") {
-            if let value = current[String(key)] as? [String: Any] {
-                current = value
+        guard let keyString, !keyString.isEmpty else { return nil }
+
+        var current: Any = data
+
+        for key in keyString.split(separator: ".") {
+            let keyStr = String(key)
+
+            if let dict = current as? [String: Any] {
+                // default dictionary access
+                guard let next = dict[keyStr] else { return nil }
+                current = next
+            } else if let array = current as? [Any] {
+                // array access with index ("drvDistance.0.rangeByFuel") — the legacy
+                // (non-CCS2) Kia EU paths traverse array elements; without this branch
+                // EV range/unit resolved to the whole array and read back as 0.
+                guard let index = Int(keyStr), array.indices.contains(index) else { return nil }
+                current = array[index]
             } else {
-                return current[String(key)]
+                // no dict or array → no further child found
+                return nil
             }
         }
-        return nil
+
+        return current
     }
 }
