@@ -148,12 +148,15 @@ extension HyundaiCanadaAPIClient {
             return Temperature.Units(unitField)
         }()
 
-        // "HI" / "LOW" string constants flow through unchanged.
+        // HI / LOW map to the HVAC range bounds, which Temperature.maximum/minimum
+        // define in Fahrenheit (62...82). init(value:units:) does NOT convert, so
+        // convert here to the resolved unit — otherwise a Celsius-resolved vehicle
+        // stores an impossible 82°C / 62°C that downstream plausibility checks drop.
         if let raw = rawValue, raw == "HI" {
-            return Temperature(value: Temperature.maximum, units: units)
+            return Temperature(value: Temperature.Units.fahrenheit.convert(Temperature.maximum, to: units), units: units)
         }
         if let raw = rawValue, raw == "LOW" {
-            return Temperature(value: Temperature.minimum, units: units)
+            return Temperature(value: Temperature.Units.fahrenheit.convert(Temperature.minimum, to: units), units: units)
         }
 
         // Hex-code path: "00H", "0EH", etc.
