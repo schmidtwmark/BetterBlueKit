@@ -35,6 +35,10 @@ public struct Distance: Codable, Hashable, Sendable {
             let convertedLength = convert(length, to: targetUnits)
 
             let formatter = NumberFormatter()
+            // .decimal applies the current locale's grouping separator (e.g. "19,500"
+            // in en-US, "19.500" in de-DE, "19 500" in fr-FR). The default .none style
+            // applies no grouping, so a 19,500 mi odometer rendered as "19500".
+            formatter.numberStyle = .decimal
             formatter.maximumFractionDigits = 0
             let formattedNumber = formatter.string(from: NSNumber(value: convertedLength)) ?? "0"
 
@@ -90,6 +94,10 @@ public struct Temperature: Codable, Hashable, Sendable {
             // show up to one decimal ("22.5°C", "22°C"). Fahrenheit is
             // whole-degree only.
             let formatter = NumberFormatter()
+            // .decimal makes the decimal separator locale-correct (half-degree Celsius
+            // shows "22,5°C" in de-DE, not "22.5°C"); the per-unit maximumFractionDigits
+            // set below still applies.
+            formatter.numberStyle = .decimal
             let displayValue: Double
             switch targetUnits {
             case .celsius:
