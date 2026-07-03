@@ -109,7 +109,8 @@ public struct APIClientConfiguration {
             rememberMeToken: rememberMeToken,
             redactPII: redactPII,
             deviceId: deviceId ?? self.deviceId,
-            hyundaiCanadaVariant: hyundaiCanadaVariant
+            hyundaiCanadaVariant: hyundaiCanadaVariant,
+            onRememberMeTokenRotated: onRememberMeTokenRotated
         )
     }
 }

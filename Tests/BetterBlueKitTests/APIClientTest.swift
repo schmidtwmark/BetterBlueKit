@@ -69,6 +69,24 @@ struct APIClientConfigurationTests {
 
         #expect(config.rememberMeToken == "rmtoken123")
     }
+
+    @Test("with() preserves the onRememberMeTokenRotated callback")
+    @MainActor func testWithPreservesRememberMeTokenCallback() {
+        let config = APIClientConfiguration(
+            region: .usa,
+            brand: .kia,
+            username: "user@test.com",
+            password: "secret",
+            pin: "0000",
+            accountId: UUID(),
+            onRememberMeTokenRotated: { _ in }
+        )
+
+        // .with() rebuilds the config; the rotation callback must survive so
+        // Kia USA rmToken-rotation persistence keeps working after a refresh.
+        let derived = config.with(deviceId: "device-abc")
+        #expect(derived.onRememberMeTokenRotated != nil)
+    }
 }
 
 // MARK: - HTTPMethod Tests
