@@ -477,10 +477,9 @@ struct KiaEuropeLegacyStatusParsingTests {
         #expect(status.lockStatus == .locked)
         let ev = try #require(status.evStatus)
         #expect(ev.evRange.percentage == 43)
-        // NOTE: ev.evRange.range.length is NOT asserted here — the legacy
-        // range path traverses an array index ("drvDistance.0.…"), which
-        // getAnyFromJson can't walk yet. PR #41 fixes that and should add
-        // the assertion when it lands.
+        // Legacy range traverses an array index ("drvDistance.0.…") —
+        // works since PR #41 made getAnyFromJson array-aware.
+        #expect(ev.evRange.range.length == 189)
     }
 
     @Test("CCS2 status still parses epoch-millis syncDate")
