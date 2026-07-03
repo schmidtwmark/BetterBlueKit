@@ -314,7 +314,7 @@ extension HyundaiEuropeAPIClient {
         switch getAnyFromJson(from: data, key: keyString!) {
         case let value as Double: return value
         case let value as Int: return Double(value)
-        case let value as String: return Double(value)!
+        case let value as String: return Double(value) ?? 0
         default: return 0
         }
     }
