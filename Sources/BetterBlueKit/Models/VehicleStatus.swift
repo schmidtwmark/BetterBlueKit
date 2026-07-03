@@ -98,6 +98,11 @@ public struct VehicleStatus: Codable, Hashable, Sendable {
         }
 
         public var debug: String { "\(latitude)°, \(longitude)°" }
+
+        /// True when the location carries real coordinates. The APIs use
+        /// (0, 0) — null island — as their "no fix" sentinel, so treat that
+        /// as absent.
+        public var hasCoordinates: Bool { latitude != 0 || longitude != 0 }
     }
 
     public var location: Location
