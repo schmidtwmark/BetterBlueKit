@@ -91,6 +91,17 @@ struct MeasurementsTests {
         #expect(formatted == "100 mi")
     }
 
+    @Test("Distance Units format groups thousands (locale-aware)")
+    func testDistanceUnitsFormatGroupsThousands() {
+        // A 19,500 mi odometer must not render as the ungrouped "19500".
+        // numberStyle = .decimal applies the current locale's grouping separator
+        // ("19,500" en-US, "19.500" de-DE, "19 500" fr-FR), so assert that grouping
+        // happened rather than a specific separator (keeps the test locale-independent).
+        let formatted = Distance.Units.miles.format(19500.0, to: .miles)
+        #expect(!formatted.contains("19500"))
+        #expect(formatted.hasSuffix(" mi"))
+    }
+
     @Test("Distance Codable")
     func testDistanceCodable() throws {
         let original = Distance(length: 150.5, units: .kilometers)
