@@ -278,6 +278,7 @@ extension KiaUSAAPIClient {
               let utcString = syncDateData["utc"] as? String else { return nil }
 
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMddHHmmss"
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         return formatter.date(from: utcString)

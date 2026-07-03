@@ -69,6 +69,7 @@ public final class HyundaiUSAAPIClient: APIClientBase, APIClientProtocol {
         }
 
         let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "yyyyMMddHHmmss"
         result["payloadGenerated"] = dateFormatter.string(from: Date())
         result["includeNonConnectedVehicles"] = "Y"

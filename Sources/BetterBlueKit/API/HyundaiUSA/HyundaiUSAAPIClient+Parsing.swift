@@ -121,6 +121,7 @@ extension HyundaiUSAAPIClient {
         }
 
         let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.S"
 
         return tripDetails.compactMap { trip -> EVTripDetail? in
