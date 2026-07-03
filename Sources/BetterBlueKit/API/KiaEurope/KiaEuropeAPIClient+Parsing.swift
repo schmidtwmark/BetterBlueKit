@@ -229,6 +229,7 @@ extension KiaEuropeAPIClient {
             from: park, key: pathMap[.parkDate]) as? String ?? "20000101020000"
 
         let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.timeZone = TimeZone.current
         dateFormatter.dateFormat = "yyyyMMddHHmmss"
         let parkDate = dateFormatter.date(from: parkDateString) ?? Date(timeIntervalSince1970: 0)
