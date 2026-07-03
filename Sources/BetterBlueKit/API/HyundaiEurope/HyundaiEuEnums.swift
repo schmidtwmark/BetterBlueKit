@@ -97,7 +97,13 @@ public enum HyEuResponseKeyPath {
         .trunk: "vehicleStatus.trunkOpen",
         .hood: "vehicleStatus.hoodOpen",
         .locationDate: "vehicleLocation.time",
-        .parkDate: "time",
+        // Legacy /location/park nests everything under gpsDetail (observed
+        // on a 2021 e-Niro), unlike CCS2 where coord/time sit at the root.
+        // These were previously missing entirely, so the park branch of
+        // parseLocation always produced (0, 0).
+        .parkDate: "gpsDetail.time",
+        .parkLat: "gpsDetail.coord.lat",
+        .parkLon: "gpsDetail.coord.lon",
         .locationLat: "vehicleLocation.coord.lat",
         .locationLon: "vehicleLocation.coord.lon",
         .airControlOn: "vehicleStatus.airCtrlOn",

@@ -131,6 +131,102 @@ enum KiaEuropeSampleJSON {
       "retCode": "S"
     }
     """
+
+    /// `GET /api/v1/spa/vehicles` response with a single legacy
+    /// (non-CCS2) EV — booleans for the protocol flags, as observed
+    /// on a 2021 e-Niro (July 2026).
+    static let vehiclesListLegacy = """
+    {
+      "msgId": "00000000-0000-0000-0000-000000000004",
+      "resCode": "0000",
+      "resMsg": {
+        "vehicles": [
+          {
+            "carShare": false,
+            "ccuCCS2ProtocolSupport": false,
+            "detailInfo": { "bodyType": "2", "saleCarmdlEnNm": "E-NIRO" },
+            "master": true,
+            "nickname": "E-NIRO",
+            "protocolType": false,
+            "type": "EV",
+            "vehicleId": "00000000-0000-0000-0000-000000000005",
+            "vehicleName": "E-NIRO",
+            "vin": "TESTVIN0000000002",
+            "year": "2021"
+          }
+        ]
+      },
+      "retCode": "S"
+    }
+    """
+
+    /// Legacy `GET /api/v1/spa/vehicles/<id>/status/latest` response,
+    /// trimmed to the fields the legacy path map reads. Note
+    /// `vehicleStatus.time` is a datetime STRING (not epoch millis) and
+    /// `drvDistance` is an ARRAY.
+    static let vehicleStatusLegacy = """
+    {
+      "msgId": "00000000-0000-0000-0000-000000000006",
+      "resCode": "0000",
+      "resMsg": {
+        "vehicleStatusInfo": {
+          "vehicleStatus": {
+            "time": "20260702124125",
+            "doorLock": true,
+            "trunkOpen": false,
+            "hoodOpen": false,
+            "battery": { "batSoc": 87 },
+            "evStatus": {
+              "batteryStatus": 43,
+              "batteryCharge": false,
+              "batteryPlugin": 0,
+              "remainTime2": { "atc": { "value": 0 } },
+              "drvDistance": [
+                {
+                  "rangeByFuel": { "evModeRange": { "value": 189, "unit": 1 } },
+                  "type": 2
+                }
+              ]
+            },
+            "doorOpen": { "frontLeft": 0, "frontRight": 0, "backLeft": 0, "backRight": 0 },
+            "airCtrlOn": false,
+            "airTemp": { "value": "10H", "unit": 0 }
+          },
+          "vehicleLocation": {
+            "coord": { "lat": 51.50123, "lon": -0.14012, "alt": 30, "type": 0 },
+            "time": "20260701220000"
+          },
+          "odometer": { "value": 307676.7, "unit": 1 }
+        }
+      },
+      "retCode": "S"
+    }
+    """
+
+    /// Legacy `/location/park` response — everything nests under
+    /// `gpsDetail` (unlike CCS2, where coord/time sit at the root), with
+    /// string coordinates and boolean junk fields, as observed on a
+    /// 2021 e-Niro (July 2026).
+    static let parkLocationLegacy = """
+    {
+      "msgId": "00000000-0000-0000-0000-000000000007",
+      "resCode": "0000",
+      "resMsg": {
+        "drvDistance": {
+          "rangeByFuel": { "evModeRange": { "unit": 3, "value": 118.05825 } },
+          "type": 2
+        },
+        "gpsDetail": {
+          "accuracy": { "hdop": false, "pdop": true },
+          "coord": { "alt": false, "lat": "51.50442", "lon": "-0.13910", "type": false },
+          "head": 258,
+          "speed": { "unit": true, "value": false },
+          "time": "20260701231623"
+        }
+      },
+      "retCode": "S"
+    }
+    """
 }
 
 // MARK: - Helpers
@@ -301,6 +397,106 @@ struct KiaEuropeStatusParsingTests {
         #expect(throws: APIError.self) {
             _ = try client.parseVehicleStatusResponse(bad, park, for: vehicle)
         }
+    }
+}
+
+@Suite("Kia Europe Parsing — Legacy (non-CCS2) Vehicle Status")
+struct KiaEuropeLegacyStatusParsingTests {
+
+    @MainActor private func eNiroVehicle(client: KiaEuropeAPIClient) throws -> Vehicle {
+        let data = Data(KiaEuropeSampleJSON.vehiclesListLegacy.utf8)
+        let vehicles = try client.parseVehiclesResponse(data)
+        return try #require(vehicles.first)
+    }
+
+    @Test("Legacy vehicles response parses as non-CCS2")
+    @MainActor func testParseLegacyVehiclesList() throws {
+        let client = makeClient()
+        let vehicle = try eNiroVehicle(client: client)
+        #expect(vehicle.vin == "TESTVIN0000000002")
+        #expect(vehicle.marketOptions?.ccs2Supported == false)
+    }
+
+    @Test("Legacy park location parses from gpsDetail (regression: was 0,0)")
+    @MainActor func testParseLegacyLocationFromPark() throws {
+        let client = makeClient()
+        let vehicle = try eNiroVehicle(client: client)
+
+        let statusData = Data(KiaEuropeSampleJSON.vehicleStatusLegacy.utf8)
+        let parkData = Data(KiaEuropeSampleJSON.parkLocationLegacy.utf8)
+
+        let status = try client.parseVehicleStatusResponse(statusData, parkData, for: vehicle)
+
+        // Park time (23:16) is newer than the status location (22:00), so
+        // the park's gpsDetail coords (string-typed) win. Previously the
+        // legacy table had no park paths at all, yielding null island.
+        #expect(status.location.latitude == 51.50442)
+        #expect(status.location.longitude == -0.13910)
+    }
+
+    @Test("Legacy status location wins when park is absent")
+    @MainActor func testParseLegacyLocationFallsBackToStatus() throws {
+        let client = makeClient()
+        let vehicle = try eNiroVehicle(client: client)
+
+        let statusData = Data(KiaEuropeSampleJSON.vehicleStatusLegacy.utf8)
+        let emptyPark = Data("{ \"resMsg\": {}, \"retCode\": \"S\" }".utf8)
+
+        let status = try client.parseVehicleStatusResponse(statusData, emptyPark, for: vehicle)
+
+        #expect(status.location.latitude == 51.50123)
+        #expect(status.location.longitude == -0.14012)
+    }
+
+    @Test("Legacy syncDate parses the datetime string (regression: was year 2612)")
+    @MainActor func testParseLegacySyncDate() throws {
+        let client = makeClient()
+        let vehicle = try eNiroVehicle(client: client)
+
+        let statusData = Data(KiaEuropeSampleJSON.vehicleStatusLegacy.utf8)
+        let parkData = Data(KiaEuropeSampleJSON.parkLocationLegacy.utf8)
+
+        let status = try client.parseVehicleStatusResponse(statusData, parkData, for: vehicle)
+
+        let syncDate = try #require(status.syncDate)
+        let year = Calendar(identifier: .gregorian).component(.year, from: syncDate)
+        #expect(year == 2026)
+    }
+
+    @Test("Legacy status parses SOC and 12V battery")
+    @MainActor func testParseLegacyBasics() throws {
+        let client = makeClient()
+        let vehicle = try eNiroVehicle(client: client)
+
+        let statusData = Data(KiaEuropeSampleJSON.vehicleStatusLegacy.utf8)
+        let parkData = Data(KiaEuropeSampleJSON.parkLocationLegacy.utf8)
+
+        let status = try client.parseVehicleStatusResponse(statusData, parkData, for: vehicle)
+
+        #expect(status.battery12V == 87)
+        #expect(status.lockStatus == .locked)
+        let ev = try #require(status.evStatus)
+        #expect(ev.evRange.percentage == 43)
+        // NOTE: ev.evRange.range.length is NOT asserted here — the legacy
+        // range path traverses an array index ("drvDistance.0.…"), which
+        // getAnyFromJson can't walk yet. PR #41 fixes that and should add
+        // the assertion when it lands.
+    }
+
+    @Test("CCS2 status still parses epoch-millis syncDate")
+    @MainActor func testParseCCS2SyncDateUnchanged() throws {
+        let client = makeClient()
+        let data = Data(KiaEuropeSampleJSON.vehiclesList.utf8)
+        let vehicle = try #require(try client.parseVehiclesResponse(data).first)
+
+        let statusData = Data(KiaEuropeSampleJSON.vehicleStatusCCS2.utf8)
+        let parkData = Data(KiaEuropeSampleJSON.parkLocation.utf8)
+
+        let status = try client.parseVehicleStatusResponse(statusData, parkData, for: vehicle)
+
+        // lastUpdateTime = 1747800000000 ms → 2025-05-21T04:00:00Z.
+        let syncDate = try #require(status.syncDate)
+        #expect(abs(syncDate.timeIntervalSince1970 - 1_747_800_000) < 1)
     }
 }
 
