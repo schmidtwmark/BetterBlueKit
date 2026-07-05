@@ -279,47 +279,8 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
         return try parseVehicleStatusResponse(data, for: vehicle)
     }
 
-    /// Cooldown between successful `rems/rvs` modem polls (see the callsite
-    /// comment in `fetchVehicleStatus`).
-    private static let realTimeRefreshCooldown: TimeInterval = 60
     /// When the last SUCCESSFUL `rems/rvs` modem poll completed.
     private var lastRealTimeRefresh: Date?
-
-    /// Asks Kia's backend to poll the vehicle's telematics modem for fresh
-    /// data. The response comes back once the modem replies — usually within
-    /// ~30 seconds. Returns whether the poll succeeded; errors are logged but
-    /// swallowed so the caller still gets a (possibly stale) snapshot from
-    /// the follow-up `cmm/gvi` call.
-    @discardableResult
-    private func triggerRealTimeStatusRefresh(
-        for vehicle: Vehicle,
-        authToken: AuthToken
-    ) async throws -> Bool {
-        BBLogger.info(.api, "KiaUSA: Requesting real-time status refresh for VIN \(vehicle.vin)")
-
-        do {
-            let (data, _, _) = try await performJSONRequest(
-                url: "\(apiURL)rems/rvs",
-                method: .POST,
-                headers: authorizedHeaders(authToken: authToken, vehicleKey: vehicle.vehicleKey),
-                body: ["requestType": 0],
-                requestType: .fetchVehicleStatus,
-                vin: vehicle.vin
-            )
-            try checkForKiaErrors(data: data)
-            return true
-        } catch let error as APIError where error.errorType == .invalidCredentials {
-            // Bubble auth failures up — the caller (BBAccount) knows how to
-            // re-authenticate. Swallowing would mask a session that really
-            // needs refreshing.
-            throw error
-        } catch {
-            // Swallow everything else: the user-visible UX is "refresh took
-            // a while and maybe the data is 30 s stale", not a failure.
-            BBLogger.warning(.api, "KiaUSA: rems/rvs real-time refresh failed, falling back to cached: \(error)")
-            return false
-        }
-    }
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
         let url = commandURL(for: command)
@@ -367,5 +328,49 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
             hash[8], hash[9], hash[10], hash[11],
             hash[12], hash[13], hash[14], hash[15]
         ))
+    }
+}
+
+// MARK: - Real-time status refresh
+
+extension KiaUSAAPIClient {
+    /// Cooldown between successful `rems/rvs` modem polls (see the callsite
+    /// comment in `fetchVehicleStatus`).
+    static let realTimeRefreshCooldown: TimeInterval = 60
+
+    /// Asks Kia's backend to poll the vehicle's telematics modem for fresh
+    /// data. The response comes back once the modem replies — usually within
+    /// ~30 seconds. Returns whether the poll succeeded; errors are logged but
+    /// swallowed so the caller still gets a (possibly stale) snapshot from
+    /// the follow-up `cmm/gvi` call.
+    @discardableResult
+    func triggerRealTimeStatusRefresh(
+        for vehicle: Vehicle,
+        authToken: AuthToken
+    ) async throws -> Bool {
+        BBLogger.info(.api, "KiaUSA: Requesting real-time status refresh for VIN \(vehicle.vin)")
+
+        do {
+            let (data, _, _) = try await performJSONRequest(
+                url: "\(apiURL)rems/rvs",
+                method: .POST,
+                headers: authorizedHeaders(authToken: authToken, vehicleKey: vehicle.vehicleKey),
+                body: ["requestType": 0],
+                requestType: .fetchVehicleStatus,
+                vin: vehicle.vin
+            )
+            try checkForKiaErrors(data: data)
+            return true
+        } catch let error as APIError where error.errorType == .invalidCredentials {
+            // Bubble auth failures up — the caller (BBAccount) knows how to
+            // re-authenticate. Swallowing would mask a session that really
+            // needs refreshing.
+            throw error
+        } catch {
+            // Swallow everything else: the user-visible UX is "refresh took
+            // a while and maybe the data is 30 s stale", not a failure.
+            BBLogger.warning(.api, "KiaUSA: rems/rvs real-time refresh failed, falling back to cached: \(error)")
+            return false
+        }
     }
 }
