@@ -18,6 +18,12 @@ public struct APIError: LocalizedError, Codable {
         case general, invalidVehicleSession, invalidCredentials
         case serverError, invalidPin, concurrentRequest, failedRetryLogin
         case requiresMFA, kiaInvalidRequest, regionNotSupported
+        /// The command was accepted, but post-command status polling didn't
+        /// observe the expected change in time. NOT a command failure — the
+        /// backends (especially Kia US) can take minutes to reflect a state
+        /// change, so UIs should render this as a soft "awaiting
+        /// confirmation" state rather than a failure (BetterBlue#83).
+        case statusVerificationTimeout
 
         /// Human-readable label for UI. Prefer this over the raw enum
         /// name when rendering the error type to users.
@@ -33,6 +39,7 @@ public struct APIError: LocalizedError, Codable {
             case .requiresMFA: "Verification Required"
             case .kiaInvalidRequest: "Request Rejected"
             case .regionNotSupported: "Region Not Supported"
+            case .statusVerificationTimeout: "Awaiting Confirmation"
             }
         }
     }

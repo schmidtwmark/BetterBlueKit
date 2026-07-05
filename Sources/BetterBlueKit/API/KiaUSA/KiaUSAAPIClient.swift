@@ -224,8 +224,25 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
         // it returns we fall through to `cmm/gvi`, which now returns the
         // freshly-refreshed cached snapshot. If the real-time call fails
         // we log and continue — a stale snapshot beats surfacing an error.
+        //
+        // Cooldown: post-command status polling calls this every ~10–15 s,
+        // and back-to-back rvs requests get throttled by Kia (returning
+        // errors we'd swallow, i.e. stale snapshots anyway) while each call
+        // can block for up to a minute. One successful modem poll per
+        // window is enough — within it, `cmm/gvi` already returns the
+        // freshly-refreshed snapshot.
         if !cached {
-            try await triggerRealTimeStatusRefresh(for: vehicle, authToken: authToken)
+            let now = Date()
+            if let last = lastRealTimeRefresh, now.timeIntervalSince(last) < Self.realTimeRefreshCooldown {
+                BBLogger.debug(
+                    .api,
+                    "KiaUSA: skipping rems/rvs (last real-time refresh \(Int(now.timeIntervalSince(last)))s ago)"
+                )
+            } else if try await triggerRealTimeStatusRefresh(for: vehicle, authToken: authToken) {
+                // Stamp only successful modem polls — a failed/throttled one
+                // should be retried on the next poll, not cooled down.
+                lastRealTimeRefresh = Date()
+            }
         }
 
         // `cmm/gvi` only accepts `vehicleStatus: "1"`. Sending anything else
@@ -262,14 +279,22 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
         return try parseVehicleStatusResponse(data, for: vehicle)
     }
 
+    /// Cooldown between successful `rems/rvs` modem polls (see the callsite
+    /// comment in `fetchVehicleStatus`).
+    private static let realTimeRefreshCooldown: TimeInterval = 60
+    /// When the last SUCCESSFUL `rems/rvs` modem poll completed.
+    private var lastRealTimeRefresh: Date?
+
     /// Asks Kia's backend to poll the vehicle's telematics modem for fresh
     /// data. The response comes back once the modem replies — usually within
-    /// ~30 seconds. Errors are logged but swallowed so the caller still gets
-    /// a (possibly stale) snapshot from the follow-up `cmm/gvi` call.
+    /// ~30 seconds. Returns whether the poll succeeded; errors are logged but
+    /// swallowed so the caller still gets a (possibly stale) snapshot from
+    /// the follow-up `cmm/gvi` call.
+    @discardableResult
     private func triggerRealTimeStatusRefresh(
         for vehicle: Vehicle,
         authToken: AuthToken
-    ) async throws {
+    ) async throws -> Bool {
         BBLogger.info(.api, "KiaUSA: Requesting real-time status refresh for VIN \(vehicle.vin)")
 
         do {
@@ -282,6 +307,7 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
                 vin: vehicle.vin
             )
             try checkForKiaErrors(data: data)
+            return true
         } catch let error as APIError where error.errorType == .invalidCredentials {
             // Bubble auth failures up — the caller (BBAccount) knows how to
             // re-authenticate. Swallowing would mask a session that really
@@ -291,6 +317,7 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
             // Swallow everything else: the user-visible UX is "refresh took
             // a while and maybe the data is 30 s stale", not a failure.
             BBLogger.warning(.api, "KiaUSA: rems/rvs real-time refresh failed, falling back to cached: \(error)")
+            return false
         }
     }
 
