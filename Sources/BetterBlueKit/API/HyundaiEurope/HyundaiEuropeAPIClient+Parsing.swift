@@ -360,7 +360,9 @@ extension HyundaiEuropeAPIClient {
                 current = next
 
             } else if let array = current as? [Any] {
-                // array access with index ("drvDistance.0.rangeByFuel")
+                // array access with index ("drvDistance.0.rangeByFuel") — the legacy
+                // (non-CCS2) EU paths traverse array elements; without this branch
+                // EV range/unit resolved to the whole array and read back as 0.
                 guard let index = Int(keyStr), array.indices.contains(index) else { return nil }
                 current = array[index]
 
@@ -371,5 +373,52 @@ extension HyundaiEuropeAPIClient {
         }
 
         return current
+    }
+
+    package func parseEVTripDetailsResponse(_ data: Data, vehicle: Vehicle) throws -> [EVTripDetail] {
+        guard
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let resMsg = json["resMsg"] as? [String: Any],
+            let drivingInfoDetail = resMsg["drivingInfoDetail"] as? [[String: Any]]
+        else {
+            throw APIError(message: "Failed to parse EU trip details", apiName: apiName)
+        }
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "yyyyMMdd"
+
+        return drivingInfoDetail.compactMap { tripData -> EVTripDetail? in
+            guard let dateString = tripData["drivingDate"] as? String,
+                  let startDate = dateFormatter.date(from: dateString) else {
+                return nil
+            }
+
+            let totalPwrCsp = tripData["totalPwrCsp"] as? Int ?? 0
+            let motorPwrCsp = tripData["motorPwrCsp"] as? Int ?? 0
+            let climatePwrCsp = tripData["climatePwrCsp"] as? Int ?? 0
+            let eDPwrCsp = tripData["eDPwrCsp"] as? Int ?? 0
+            let batteryMgPwrCsp = tripData["batteryMgPwrCsp"] as? Int ?? 0
+            let regenPwr = tripData["regenPwr"] as? Int ?? 0
+            
+            // EU calculativeOdo is returned in km, EVTripDetail expects miles
+            let calcOdoKm = tripData["calculativeOdo"] as? Double ?? 0.0
+            let distanceMiles = calcOdoKm / 1.609344
+
+            return EVTripDetail(
+                distance: distanceMiles,
+                odometer: 0, // Not provided by EU /drvhistory
+                accessoriesEnergy: eDPwrCsp,
+                totalEnergyUsed: totalPwrCsp,
+                regenEnergy: regenPwr,
+                climateEnergy: climatePwrCsp,
+                drivetrainEnergy: motorPwrCsp,
+                batteryCareEnergy: batteryMgPwrCsp,
+                startDate: startDate,
+                durationSeconds: 0, // Not provided
+                avgSpeed: 0, // Not provided
+                maxSpeed: 0  // Not provided
+            )
+        }
     }
 }

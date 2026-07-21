@@ -89,43 +89,107 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
         return try parseAuthToken(from: data, isRefresh: true)
     }
 
-    /// use username and password to get code for token exchange
+    var oauthRedirectURI: String { "\(baseURL)/api/v1/user/oauth2/token" }
+    static let mobileUserAgent = "Mozilla/5.0 (Linux; Android 4.1.1; Galaxy Nexus Build/JRO03C) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.166 Mobile Safari/535.19_CCS_APP_AOS"
+
+    /// IDPConnect headless signin: authorize → certs → encrypted-signin → 302 with ?code=
     private func signin() async throws -> String {
-        let state = UUID().uuidString
-        let body = ["client_id": Self.clientId,
-                    "encryptedPassword": "false",
-                    "username": username,
-                    "password": password,
-                    "redirect_uri": "\(baseURL)/api/v1/user/oauth2/token",
-                    "state": state,
-                    "remember_me": "false"
+        try await fetchAuthorizeCookies()
+        let jwk = try await fetchSigninJWK()
+        let encryptedHex = try rsaEncryptPKCS1(password: password, jwkN: jwk.modulus, jwkE: jwk.exponent)
+        let signinResp = try await submitSignin(encryptedHex: encryptedHex, kid: jwk.kid)
+        return try parseSigninCode(from: signinResp)
+    }
+
+    /// Step 1: GET authorize — sets session cookies on idpconnect-eu.hyundai.com.
+    private func fetchAuthorizeCookies() async throws {
+        let encodedRedirect = oauthRedirectURI.addingPercentEncoding(
+            withAllowedCharacters: .urlQueryAllowed
+        ) ?? oauthRedirectURI
+        let authorizeURL =
+            "\(authBaseURL)/auth/api/v2/user/oauth2/authorize"
+            + "?response_type=code&client_id=\(Self.clientId)"
+            + "&redirect_uri=\(encodedRedirect)&lang=en&state=ccsp&country=de"
+        var authorizeReq = URLRequest(url: URL(string: authorizeURL)!)
+        authorizeReq.setValue(Self.mobileUserAgent, forHTTPHeaderField: "User-Agent")
+        _ = try await urlSession.data(for: authorizeReq)
+    }
+
+    private struct HyundaiEuropeJWK {
+        let modulus: String
+        let exponent: String
+        let kid: String
+    }
+
+    /// Step 2: GET certs — pull JWK (modulus, exponent, kid) for password encryption.
+    private func fetchSigninJWK() async throws -> HyundaiEuropeJWK {
+        var certsReq = URLRequest(url: URL(string: "\(authBaseURL)/auth/api/v1/accounts/certs")!)
+        certsReq.setValue(Self.mobileUserAgent, forHTTPHeaderField: "User-Agent")
+        let (certsData, _) = try await urlSession.data(for: certsReq)
+        guard let certsJson = try JSONSerialization.jsonObject(with: certsData) as? [String: Any],
+              let retValue = certsJson["retValue"] as? [String: Any],
+              let modulus = retValue["n"] as? String,
+              let exponent = retValue["e"] as? String,
+              let kid = retValue["kid"] as? String else {
+            throw APIError(message: "Failed to parse JWK from /accounts/certs", apiName: apiName)
+        }
+        return HyundaiEuropeJWK(modulus: modulus, exponent: exponent, kid: kid)
+    }
+
+    /// Step 4: POST signin (form-encoded). URLSession follows the 302 to the
+    /// redirect_uri — the final URL carries `?code=…` (or an error) in its query.
+    private func submitSignin(encryptedHex: String, kid: String) async throws -> URLResponse {
+        let signinFields: [(String, String)] = [
+            ("client_id", Self.clientId),
+            ("encryptedPassword", "true"),
+            ("password", encryptedHex),
+            ("redirect_uri", oauthRedirectURI),
+            ("scope", ""),
+            ("nonce", ""),
+            ("state", "ccsp"),
+            ("username", username),
+            ("connector_session_key", ""),
+            ("kid", kid),
+            ("_csrf", "")
         ]
+        var signinReq = URLRequest(url: URL(string: "\(authBaseURL)/auth/account/signin")!)
+        signinReq.httpMethod = "POST"
+        signinReq.setValue(Self.mobileUserAgent, forHTTPHeaderField: "User-Agent")
+        signinReq.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        signinReq.httpBody = Self.formEncode(signinFields).data(using: .utf8)
+        let (_, signinResp) = try await urlSession.data(for: signinReq)
+        return signinResp
+    }
 
-        let bodyData = try? JSONSerialization.data(
-            withJSONObject: body, options: []
-        )
-
-        var request = URLRequest(url: URL(string: "\(authBaseURL)/auth/account/signin")!)
-        request.httpMethod = "POST"
-        request.httpBody = bodyData
-        request.allHTTPHeaderFields = loginHeaders()
-        let (_, response) = try await urlSession.data(for: request)
-
+    /// Parse the final URL's query for `code` (success) or translate an error.
+    private func parseSigninCode(from response: URLResponse) throws -> String {
         guard let http = response as? HTTPURLResponse,
               let finalURL = http.url,
               let comps = URLComponents(url: finalURL, resolvingAgainstBaseURL: false) else {
-            return ""
+            throw APIError.invalidCredentials("Signin returned no redirect", apiName: apiName)
         }
-        // State validate ← no possible anymore CSRF
-        guard comps.queryItems?.first(where: { $0.name == "state" })?.value == state else {
-                return ""
+        if let code = comps.queryItems?.first(where: { $0.name == "code" })?.value,
+           !code.isEmpty {
+            return code
         }
-        guard let code = comps.queryItems?.first(where: { $0.name == "code" })?.value,
-                  !code.isEmpty else {
-                return ""
+        if let errorDesc = comps.queryItems?.first(where: { $0.name == "error_description" })?.value {
+            throw APIError.invalidCredentials(
+                "Authentication rejected: \(errorDesc)", apiName: apiName
+            )
         }
-
-        return code
+        if comps.path.contains("/web/v1/user/authorization") {
+            throw APIError(
+                message: "Hyundai account consent required — log in via a browser once to accept the terms",
+                apiName: apiName
+            )
+        }
+        if comps.path.contains("authorize") {
+            throw APIError.invalidCredentials(
+                "Authentication failed — returned to login page. Check username and password.",
+                apiName: apiName
+            )
+        }
+        throw APIError(message: "Unexpected redirect after signin: \(finalURL.absoluteString)", apiName: apiName)
     }
 
     /// use refresh token to get a fresh acces token
@@ -307,5 +371,21 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
             requestType: .sendCommand,
             vin: vehicle.vin
         )
+    }
+
+    public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
+        let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
+        let url = "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)/drvhistory"
+
+        let (data, rawJson, _) = try await performJSONRequest(
+            url: url,
+            method: .POST,
+            headers: authorizedHeaders(authToken: authToken, ccs2: ccs2),
+            body: ["periodTarget": 0],
+            requestType: .fetchEVTripDetails,
+            vin: vehicle.vin
+        )
+
+        return try parseEVTripDetailsResponse(data, vehicle: vehicle)
     }
 }
