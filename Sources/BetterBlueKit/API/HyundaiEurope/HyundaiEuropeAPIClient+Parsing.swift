@@ -360,9 +360,7 @@ extension HyundaiEuropeAPIClient {
                 current = next
 
             } else if let array = current as? [Any] {
-                // array access with index ("drvDistance.0.rangeByFuel") — the legacy
-                // (non-CCS2) EU paths traverse array elements; without this branch
-                // EV range/unit resolved to the whole array and read back as 0.
+                // array access with index ("drvDistance.0.rangeByFuel")
                 guard let index = Int(keyStr), array.indices.contains(index) else { return nil }
                 current = array[index]
 
@@ -375,7 +373,9 @@ extension HyundaiEuropeAPIClient {
         return current
     }
 
-    package func parseEVTripDetailsResponse(_ data: Data, vehicle: Vehicle) throws -> [EVTripDetail] {
+
+    package func parseEVTripDetailsResponse(_ data: Data, vehicle: Vehicle) throws -> [EVTripDetail]
+    {
         guard
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
             let resMsg = json["resMsg"] as? [String: Any],
@@ -390,7 +390,8 @@ extension HyundaiEuropeAPIClient {
 
         return drivingInfoDetail.compactMap { tripData -> EVTripDetail? in
             guard let dateString = tripData["drivingDate"] as? String,
-                  let startDate = dateFormatter.date(from: dateString) else {
+                let startDate = dateFormatter.date(from: dateString)
+            else {
                 return nil
             }
 
@@ -400,14 +401,14 @@ extension HyundaiEuropeAPIClient {
             let eDPwrCsp = tripData["eDPwrCsp"] as? Int ?? 0
             let batteryMgPwrCsp = tripData["batteryMgPwrCsp"] as? Int ?? 0
             let regenPwr = tripData["regenPwr"] as? Int ?? 0
-            
+
             // EU calculativeOdo is returned in km, EVTripDetail expects miles
             let calcOdoKm = tripData["calculativeOdo"] as? Double ?? 0.0
             let distanceMiles = calcOdoKm / 1.609344
 
             return EVTripDetail(
                 distance: distanceMiles,
-                odometer: 0, // Not provided by EU /drvhistory
+                odometer: 0,  // Not provided by EU /drvhistory
                 accessoriesEnergy: eDPwrCsp,
                 totalEnergyUsed: totalPwrCsp,
                 regenEnergy: regenPwr,
@@ -415,8 +416,8 @@ extension HyundaiEuropeAPIClient {
                 drivetrainEnergy: motorPwrCsp,
                 batteryCareEnergy: batteryMgPwrCsp,
                 startDate: startDate,
-                durationSeconds: 0, // Not provided
-                avgSpeed: 0, // Not provided
+                durationSeconds: 0,  // Not provided
+                avgSpeed: 0,  // Not provided
                 maxSpeed: 0  // Not provided
             )
         }
