@@ -373,9 +373,7 @@ extension HyundaiEuropeAPIClient {
         return current
     }
 
-
-    package func parseEVTripDetailsResponse(_ data: Data, vehicle: Vehicle) throws -> [EVTripDetail]
-    {
+    package func parseEVTripDetailsResponse(_ data: Data, vehicle: Vehicle) throws -> [EVTripDetail] {
         guard
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
             let resMsg = json["resMsg"] as? [String: Any],

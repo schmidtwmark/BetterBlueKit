@@ -313,9 +313,7 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
         true
     }
 
-    public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws
-        -> [EVTripDetail]?
-    {
+    public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
         let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
         let url = "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)/drvhistory"
 
