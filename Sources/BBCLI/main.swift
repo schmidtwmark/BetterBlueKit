@@ -450,7 +450,7 @@ func fetchEVTripDetails(state: CLIState) async throws {
 
     for (index, trip) in trips.prefix(5).enumerated() {
         print("\n[\(index + 1)] Trip on \(trip.startDate)")
-        print("    Distance: \(trip.distance) mi")
+        print("    Distance: \(trip.distance.length) \(trip.distance.units.abbreviation)")
         print("    Duration: \(trip.formattedDuration)")
         print("    Energy Used: \(Double(trip.totalEnergyUsed) / 1000.0) kWh")
     }

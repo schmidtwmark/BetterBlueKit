@@ -145,9 +145,13 @@ extension HyundaiUSAAPIClient {
                 return nil
             }
 
+            // The {value, unit} dicts carry the account's unit system (1 = km,
+            // otherwise miles); the bare `distance` field shares it.
+            let units = Distance.Units(odometerDict["unit"] as? Int ?? 3)
+
             return EVTripDetail(
-                distance: Double(distance),
-                odometer: odometerValue,
+                distance: Distance(length: Double(distance), units: units),
+                odometer: Distance(length: odometerValue, units: units),
                 accessoriesEnergy: accessories,
                 totalEnergyUsed: totalUsed,
                 regenEnergy: regen,

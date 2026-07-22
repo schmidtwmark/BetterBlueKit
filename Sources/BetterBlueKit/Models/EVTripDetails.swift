@@ -11,13 +11,13 @@ import Foundation
 
 /// Represents details of an EV trip including energy consumption breakdown
 public struct EVTripDetail: Codable, Hashable, Sendable, Identifiable {
-    public var id: String { "\(startDate.timeIntervalSince1970)-\(odometer)" }
+    public var id: String { "\(startDate.timeIntervalSince1970)-\(odometer.length)" }
 
-    /// Trip distance in miles
-    public let distance: Double
+    /// Trip distance, in whatever units the API reported
+    public let distance: Distance
 
-    /// Odometer reading at trip end (in miles)
-    public let odometer: Double
+    /// Odometer reading at trip end, in whatever units the API reported
+    public let odometer: Distance
 
     /// Energy used by accessories (Wh)
     public let accessoriesEnergy: Int
@@ -49,10 +49,10 @@ public struct EVTripDetail: Codable, Hashable, Sendable, Identifiable {
     /// Maximum speed (mph)
     public let maxSpeed: Double
 
-    /// Calculated efficiency in miles per kWh
-    public var efficiency: Double {
+    /// Calculated efficiency in distance-per-kWh, expressed in `units`
+    public func efficiency(in units: Distance.Units) -> Double {
         guard totalEnergyUsed > 0 else { return 0 }
-        return distance / (Double(totalEnergyUsed) / 1000.0)
+        return distance.units.convert(distance.length, to: units) / (Double(totalEnergyUsed) / 1000.0)
     }
 
     /// Trip duration as Duration
@@ -66,8 +66,8 @@ public struct EVTripDetail: Codable, Hashable, Sendable, Identifiable {
     }
 
     public init(
-        distance: Double,
-        odometer: Double,
+        distance: Distance,
+        odometer: Distance,
         accessoriesEnergy: Int,
         totalEnergyUsed: Int,
         regenEnergy: Int,
