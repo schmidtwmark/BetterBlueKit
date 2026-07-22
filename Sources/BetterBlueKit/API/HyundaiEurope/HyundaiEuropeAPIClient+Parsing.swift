@@ -402,9 +402,21 @@ extension HyundaiEuropeAPIClient {
             let batteryMgPwrCsp = tripData["batteryMgPwrCsp"] as? Int ?? 0
             let regenPwr = tripData["regenPwr"] as? Int ?? 0
 
-            // EU calculativeOdo is returned in km, EVTripDetail expects miles
-            let calcOdoKm = tripData["calculativeOdo"] as? Double ?? 0.0
-            let distanceMiles = calcOdoKm / 1.609344
+            // calculativeOdo arrives as a plain number on current backends,
+            // but sibling CCS payloads wrap distances as {value, unit} dicts —
+            // handle both, honoring the response's unit code when present and
+            // defaulting to kilometers (the EU fleet's native unit). Convert to
+            // miles, EVTripDetail's canonical distance unit.
+            let odoValue: Double
+            let odoUnits: Distance.Units
+            if let odoDict = tripData["calculativeOdo"] as? [String: Any] {
+                odoValue = getDoubleFromJson(from: odoDict, key: "value")
+                odoUnits = Distance.Units(odoDict["unit"] as? Int ?? 1)
+            } else {
+                odoValue = getDoubleFromJson(from: tripData, key: "calculativeOdo")
+                odoUnits = Distance.Units(1)
+            }
+            let distanceMiles = odoUnits.convert(odoValue, to: .miles)
 
             return EVTripDetail(
                 distance: distanceMiles,

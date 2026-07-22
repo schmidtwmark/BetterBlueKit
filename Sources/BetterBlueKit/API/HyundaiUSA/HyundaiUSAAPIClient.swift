@@ -138,6 +138,10 @@ public final class HyundaiUSAAPIClient: APIClientBase, APIClientProtocol {
         try parseCommandResponse(data)
     }
 
+    public func supportsEVTripDetails() -> Bool {
+        true
+    }
+
     public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
         var tripHeaders = authorizedHeaders(authToken: authToken, vehicle: vehicle)
         tripHeaders["userId"] = username
