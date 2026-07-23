@@ -424,10 +424,27 @@ extension HyundaiEuropeAPIClient {
                 drivetrainEnergy: motorPwrCsp,
                 batteryCareEnergy: batteryMgPwrCsp,
                 startDate: startDate,
-                durationSeconds: 0,  // Not provided
-                avgSpeed: 0,  // Not provided
-                maxSpeed: 0  // Not provided
+                durationSeconds: 0,  // Populated later from /tripinfo
+                avgSpeed: 0,  // Populated later from /tripinfo
+                maxSpeed: 0  // Populated later from /tripinfo
             )
         }
+    }
+
+    package func parseIndividualTripsResponse(_ data: Data) throws -> (driveTimeMinutes: Int, avgSpeed: Double, maxSpeed: Double) {
+        guard
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let resMsg = json["resMsg"] as? [String: Any],
+            let dayTripList = resMsg["dayTripList"] as? [[String: Any]],
+            let firstDay = dayTripList.first
+        else {
+            throw APIError(message: "Failed to parse EU individual trips", apiName: apiName)
+        }
+
+        let totalDriveTime = firstDay["tripDrvTime"] as? Int ?? 0
+        let avgSpeed = getDoubleFromJson(from: firstDay, key: "tripAvgSpeed")
+        let maxSpeed = getDoubleFromJson(from: firstDay, key: "tripMaxSpeed")
+
+        return (driveTimeMinutes: totalDriveTime, avgSpeed: avgSpeed, maxSpeed: maxSpeed)
     }
 }
