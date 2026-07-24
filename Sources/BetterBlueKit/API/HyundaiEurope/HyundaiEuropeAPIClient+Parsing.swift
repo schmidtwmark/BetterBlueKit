@@ -440,24 +440,35 @@ extension HyundaiEuropeAPIClient {
             throw APIError(message: "Failed to parse EU individual trips", apiName: apiName)
         }
 
-        return dayTripList.map { tripData in
-            let date = tripData["tripDate"] as? String ?? tripData["date"] as? String ?? ""
-            let hhmmss = tripData["tripTime"] as? String ?? tripData["hhmmss"] as? String ?? ""
-            let driveTime = tripData["tripDrvTime"] as? Int ?? tripData["drive_time"] as? Int ?? 0
-            let idleTime = tripData["tripIdleTime"] as? Int ?? tripData["idle_time"] as? Int ?? 0
-            let distance = getDoubleFromJson(from: tripData, key: "tripDistance")
-            let avgSpeed = getDoubleFromJson(from: tripData, key: "tripAvgSpeed")
-            let maxSpeed = getDoubleFromJson(from: tripData, key: "tripMaxSpeed")
+        var allTrips: [EVTripInfo] = []
 
-            return EVTripInfo(
-                date: date,
-                hhmmss: hhmmss,
-                driveTimeMinutes: driveTime,
-                idleTimeMinutes: idleTime,
-                distance: distance,
-                avgSpeed: avgSpeed,
-                maxSpeed: maxSpeed
-            )
+        for dayTrip in dayTripList {
+            let date = dayTrip["tripDay"] as? String ?? dayTrip["date"] as? String ?? ""
+            
+            guard let tripList = dayTrip["tripList"] as? [[String: Any]] else {
+                continue
+            }
+            
+            for tripData in tripList {
+                let hhmmss = tripData["tripTime"] as? String ?? tripData["hhmmss"] as? String ?? ""
+                let driveTime = tripData["tripDrvTime"] as? Int ?? tripData["drive_time"] as? Int ?? 0
+                let idleTime = tripData["tripIdleTime"] as? Int ?? tripData["idle_time"] as? Int ?? 0
+                let distance = getDoubleFromJson(from: tripData, key: "tripDist")
+                let avgSpeed = getDoubleFromJson(from: tripData, key: "tripAvgSpeed")
+                let maxSpeed = getDoubleFromJson(from: tripData, key: "tripMaxSpeed")
+
+                allTrips.append(EVTripInfo(
+                    date: date,
+                    hhmmss: hhmmss,
+                    driveTimeMinutes: driveTime,
+                    idleTimeMinutes: idleTime,
+                    distance: distance,
+                    avgSpeed: avgSpeed,
+                    maxSpeed: maxSpeed
+                ))
+            }
         }
+
+        return allTrips
     }
 }
