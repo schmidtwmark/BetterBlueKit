@@ -326,72 +326,10 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
             vin: vehicle.vin
         )
 
-        var parsedTrips = try parseEVTripDetailsResponse(data, vehicle: vehicle)
-        
-        // Fetch tripinfo summaries to populate duration and speed metrics for each trip
-        let dateFormatter = DateFormatter()
-        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
-        dateFormatter.dateFormat = "yyyyMMdd"
-        let todayString = dateFormatter.string(from: Date())
-        
-        for i in 0..<parsedTrips.count {
-            let dateString = dateFormatter.string(from: parsedTrips[i].startDate)
-            let energy = parsedTrips[i].totalEnergyUsed
-            
-            if let summary = await fetchAndCacheTripInfo(for: vehicle, authToken: authToken, dateString: dateString, totalEnergyUsed: energy, isToday: dateString == todayString) {
-                parsedTrips[i] = EVTripDetail(
-                    distance: parsedTrips[i].distance,
-                    odometer: parsedTrips[i].odometer,
-                    accessoriesEnergy: parsedTrips[i].accessoriesEnergy,
-                    totalEnergyUsed: parsedTrips[i].totalEnergyUsed,
-                    regenEnergy: parsedTrips[i].regenEnergy,
-                    climateEnergy: parsedTrips[i].climateEnergy,
-                    drivetrainEnergy: parsedTrips[i].drivetrainEnergy,
-                    batteryCareEnergy: parsedTrips[i].batteryCareEnergy,
-                    startDate: parsedTrips[i].startDate,
-                    durationSeconds: summary.driveTimeMinutes * 60,
-                    avgSpeed: parsedTrips[i].distance.units.convert(summary.avgSpeed, to: .miles),
-                    maxSpeed: parsedTrips[i].distance.units.convert(summary.maxSpeed, to: .miles)
-                )
-            }
-        }
-
-        return parsedTrips
+        return try parseEVTripDetailsResponse(data, vehicle: vehicle)
     }
 
-    private func fetchAndCacheTripInfo(for vehicle: Vehicle, authToken: AuthToken, dateString: String, totalEnergyUsed: Int, isToday: Bool) async -> (driveTimeMinutes: Int, avgSpeed: Double, maxSpeed: Double)? {
-        let cacheKey = "BBTripCache_\(vehicle.vin)_\(dateString)"
-        
-        // 1. Check cache first. Skip cache if it's today, OR if the total energy from /drvhistory has changed!
-        if !isToday, let cached = UserDefaults.standard.dictionary(forKey: cacheKey),
-           let cachedEnergy = cached["totalEnergyUsed"] as? Int, cachedEnergy == totalEnergyUsed {
-            return (
-                driveTimeMinutes: cached["driveTimeMinutes"] as? Int ?? 0,
-                avgSpeed: cached["avgSpeed"] as? Double ?? 0,
-                maxSpeed: cached["maxSpeed"] as? Double ?? 0
-            )
-        }
-        
-        // 2. Fetch from API
-        do {
-            if let result = try await fetchIndividualTrips(for: vehicle, authToken: authToken, dateString: dateString) {
-                // 3. Save to cache with the current energy total
-                let cacheData: [String: Any] = [
-                    "driveTimeMinutes": result.driveTimeMinutes,
-                    "avgSpeed": result.avgSpeed,
-                    "maxSpeed": result.maxSpeed,
-                    "totalEnergyUsed": totalEnergyUsed
-                ]
-                UserDefaults.standard.set(cacheData, forKey: cacheKey)
-                return result
-            }
-        } catch {
-            BBLogger.error(.api, "Failed to fetch individual trips for \(dateString): \(error)")
-        }
-        return nil
-    }
-
-    private func fetchIndividualTrips(for vehicle: Vehicle, authToken: AuthToken, dateString: String) async throws -> (driveTimeMinutes: Int, avgSpeed: Double, maxSpeed: Double)? {
+    public func fetchEVTripInfo(for vehicle: Vehicle, authToken: AuthToken, dateString: String) async throws -> [EVTripInfo]? {
         let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
         let url = "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)/tripinfo"
 

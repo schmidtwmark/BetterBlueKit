@@ -103,3 +103,26 @@ public struct EVTripDetailsResponse: Codable, Sendable {
         self.trips = trips
     }
 }
+
+// MARK: - EV Trip Info
+
+/// Represents summary of a specific trip from the tripinfo endpoint
+public struct EVTripInfo: Codable, Hashable, Sendable {
+    public let date: String
+    public let hhmmss: String
+    public let driveTimeMinutes: Int
+    public let idleTimeMinutes: Int
+    public let distance: Double
+    public let avgSpeed: Double
+    public let maxSpeed: Double
+    
+    public init(date: String, hhmmss: String, driveTimeMinutes: Int, idleTimeMinutes: Int, distance: Double, avgSpeed: Double, maxSpeed: Double) {
+        self.date = date
+        self.hhmmss = hhmmss
+        self.driveTimeMinutes = driveTimeMinutes
+        self.idleTimeMinutes = idleTimeMinutes
+        self.distance = distance
+        self.avgSpeed = avgSpeed
+        self.maxSpeed = maxSpeed
+    }
+}

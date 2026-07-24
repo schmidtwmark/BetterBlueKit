@@ -431,20 +431,33 @@ extension HyundaiEuropeAPIClient {
         }
     }
 
-    package func parseIndividualTripsResponse(_ data: Data) throws -> (driveTimeMinutes: Int, avgSpeed: Double, maxSpeed: Double) {
+    package func parseIndividualTripsResponse(_ data: Data) throws -> [EVTripInfo] {
         guard
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
             let resMsg = json["resMsg"] as? [String: Any],
-            let dayTripList = resMsg["dayTripList"] as? [[String: Any]],
-            let firstDay = dayTripList.first
+            let dayTripList = resMsg["dayTripList"] as? [[String: Any]]
         else {
             throw APIError(message: "Failed to parse EU individual trips", apiName: apiName)
         }
 
-        let totalDriveTime = firstDay["tripDrvTime"] as? Int ?? 0
-        let avgSpeed = getDoubleFromJson(from: firstDay, key: "tripAvgSpeed")
-        let maxSpeed = getDoubleFromJson(from: firstDay, key: "tripMaxSpeed")
+        return dayTripList.map { tripData in
+            let date = tripData["tripDate"] as? String ?? tripData["date"] as? String ?? ""
+            let hhmmss = tripData["tripTime"] as? String ?? tripData["hhmmss"] as? String ?? ""
+            let driveTime = tripData["tripDrvTime"] as? Int ?? tripData["drive_time"] as? Int ?? 0
+            let idleTime = tripData["tripIdleTime"] as? Int ?? tripData["idle_time"] as? Int ?? 0
+            let distance = getDoubleFromJson(from: tripData, key: "tripDistance")
+            let avgSpeed = getDoubleFromJson(from: tripData, key: "tripAvgSpeed")
+            let maxSpeed = getDoubleFromJson(from: tripData, key: "tripMaxSpeed")
 
-        return (driveTimeMinutes: totalDriveTime, avgSpeed: avgSpeed, maxSpeed: maxSpeed)
+            return EVTripInfo(
+                date: date,
+                hhmmss: hhmmss,
+                driveTimeMinutes: driveTime,
+                idleTimeMinutes: idleTime,
+                distance: distance,
+                avgSpeed: avgSpeed,
+                maxSpeed: maxSpeed
+            )
+        }
     }
 }
