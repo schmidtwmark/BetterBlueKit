@@ -328,4 +328,23 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
 
         return try parseEVTripDetailsResponse(data, vehicle: vehicle)
     }
+
+    public func fetchEVTripInfo(for vehicle: Vehicle, authToken: AuthToken, dateString: String) async throws -> [EVTripInfo]? {
+        let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
+        let url = "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)/tripinfo"
+
+        let (data, _, _) = try await performJSONRequest(
+            url: url,
+            method: .POST,
+            headers: authorizedHeaders(authToken: authToken, ccs2: ccs2),
+            body: [
+                "tripPeriodType": 1,
+                "setTripDay": dateString
+            ],
+            requestType: .fetchEVTripDetails,
+            vin: vehicle.vin
+        )
+
+        return try parseIndividualTripsResponse(data)
+    }
 }

@@ -456,6 +456,36 @@ func fetchEVTripDetails(state: CLIState) async throws {
     }
 }
 
+@MainActor
+func fetchEVTripInfo(state: CLIState) async throws {
+    guard let vehicle = selectVehicle(state: state) else { return }
+    guard let token = state.authToken else {
+        throw APIError(message: "Not logged in")
+    }
+
+    guard let client = state.client else {
+        throw APIError(message: "No API client initialized")
+    }
+    
+    let dateString = prompt("Enter date (yyyyMMdd): ")
+    guard !dateString.isEmpty else { return }
+
+    printSubheader("Fetching EV Trip Info for \(vehicle.model) on \(dateString)")
+
+    let trips = try await client.fetchEVTripInfo(for: vehicle, authToken: token, dateString: dateString) ?? []
+
+    printSuccess("Found \(trips.count) individual trip(s) for the day")
+
+    for (index, info) in trips.enumerated() {
+        print("\n[\(index + 1)] Time: \(info.hhmmss)")
+        print("    Distance: \(info.distance)")
+        print("    Drive Time: \(info.driveTimeMinutes) min")
+        print("    Idle Time: \(info.idleTimeMinutes) min")
+        print("    Avg Speed: \(info.avgSpeed)")
+        print("    Max Speed: \(info.maxSpeed)")
+    }
+}
+
 // MARK: - Interactive Menu
 
 func showMenu() {
@@ -474,6 +504,7 @@ func showMenu() {
       8. Stop Charge
       9. Set Charge Limits
      10. Fetch EV Trip Details
+     11. Fetch EV Trip Info
       0. Exit
 
     """)
@@ -520,6 +551,8 @@ func runInteractiveLoop(state: CLIState) async {
                 )
             case "10":
                 try await fetchEVTripDetails(state: state)
+            case "11":
+                try await fetchEVTripInfo(state: state)
             case "0", "q", "quit", "exit":
                 print("\nGoodbye!")
                 return

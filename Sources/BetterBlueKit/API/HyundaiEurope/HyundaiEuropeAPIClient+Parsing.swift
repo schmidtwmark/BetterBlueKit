@@ -424,10 +424,51 @@ extension HyundaiEuropeAPIClient {
                 drivetrainEnergy: motorPwrCsp,
                 batteryCareEnergy: batteryMgPwrCsp,
                 startDate: startDate,
-                durationSeconds: 0,  // Not provided
-                avgSpeed: 0,  // Not provided
-                maxSpeed: 0  // Not provided
+                durationSeconds: 0,  // Populated later from /tripinfo
+                avgSpeed: 0,  // Populated later from /tripinfo
+                maxSpeed: 0  // Populated later from /tripinfo
             )
         }
+    }
+
+    package func parseIndividualTripsResponse(_ data: Data) throws -> [EVTripInfo] {
+        guard
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let resMsg = json["resMsg"] as? [String: Any],
+            let dayTripList = resMsg["dayTripList"] as? [[String: Any]]
+        else {
+            throw APIError(message: "Failed to parse EU individual trips", apiName: apiName)
+        }
+
+        var allTrips: [EVTripInfo] = []
+
+        for dayTrip in dayTripList {
+            let date = dayTrip["tripDay"] as? String ?? dayTrip["date"] as? String ?? ""
+            
+            guard let tripList = dayTrip["tripList"] as? [[String: Any]] else {
+                continue
+            }
+            
+            for tripData in tripList {
+                let hhmmss = tripData["tripTime"] as? String ?? tripData["hhmmss"] as? String ?? ""
+                let driveTime = tripData["tripDrvTime"] as? Int ?? tripData["drive_time"] as? Int ?? 0
+                let idleTime = tripData["tripIdleTime"] as? Int ?? tripData["idle_time"] as? Int ?? 0
+                let distance = getDoubleFromJson(from: tripData, key: "tripDist")
+                let avgSpeed = getDoubleFromJson(from: tripData, key: "tripAvgSpeed")
+                let maxSpeed = getDoubleFromJson(from: tripData, key: "tripMaxSpeed")
+
+                allTrips.append(EVTripInfo(
+                    date: date,
+                    hhmmss: hhmmss,
+                    driveTimeMinutes: driveTime,
+                    idleTimeMinutes: idleTime,
+                    distance: distance,
+                    avgSpeed: avgSpeed,
+                    maxSpeed: maxSpeed
+                ))
+            }
+        }
+
+        return allTrips
     }
 }

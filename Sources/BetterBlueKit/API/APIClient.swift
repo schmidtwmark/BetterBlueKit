@@ -135,6 +135,9 @@ public protocol APIClientProtocol {
     /// Optional: Fetch EV trip details for a vehicle (not all brands/APIs support this)
     func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]?
 
+    /// Optional: Fetch specific EV trip info summary for a given date (not all brands/APIs support this)
+    func fetchEVTripInfo(for vehicle: Vehicle, authToken: AuthToken, dateString: String) async throws -> [EVTripInfo]?
+
     /// Returns true if this API client implements `fetchEVTripDetails`
     func supportsEVTripDetails() -> Bool
 
@@ -167,6 +170,10 @@ public enum MFAMethod: String, Sendable {
 
 extension APIClientProtocol {
     public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
+        nil
+    }
+
+    public func fetchEVTripInfo(for vehicle: Vehicle, authToken: AuthToken, dateString: String) async throws -> [EVTripInfo]? {
         nil
     }
 
