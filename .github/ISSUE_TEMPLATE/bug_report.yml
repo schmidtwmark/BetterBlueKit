@@ -1,0 +1,62 @@
+name: Bug report
+description: An API client is misbehaving — login, status, commands, or parsing
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! BetterBlueKit bugs are almost always diagnosed from the actual
+        HTTP traffic, so evidence up front saves everyone a round-trip. The best sources:
+
+        - **BetterBlue app users:** Settings → Debug Settings → turn on **Debug Mode**, reproduce
+          the problem, then **Export Debug Data** and attach the file. The relevant HTTP log
+          (Settings → Account → HTTP Logs) for the failing request is also great.
+        - **Developers:** `swift run bbcli` output for the failing action, or a sanitized
+          request/response capture.
+
+        ⚠️ **Sanitize before posting.** Strip access tokens, session cookies, PINs, precise
+        coordinates, and your full VIN. Redaction has had gaps in the past — assume anything
+        in a raw response body is unredacted until you've checked it.
+  - type: dropdown
+    id: brand-region
+    attributes:
+      label: Brand and region
+      options:
+        - Hyundai — USA
+        - Hyundai — Canada
+        - Hyundai — Europe
+        - Kia — USA
+        - Kia — Europe
+        - Other / multiple
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Which operation failed (login, fetch status, lock, climate, ...), what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: input
+    id: vehicle
+    attributes:
+      label: Vehicle model and year
+      description: Parsing differences are often model- or generation-specific (e.g. legacy vs CCS2 in Europe).
+      placeholder: 2023 Kia e-Niro
+    validations:
+      required: false
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Debug data / HTTP evidence
+      description: >
+        Attach the BetterBlue debug export, the failing HTTP log entry, or sanitized bbcli output.
+        If you're intentionally skipping this, say why so we know it wasn't missed.
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Checklist
+      options:
+        - label: I checked the attached data for tokens, VIN, coordinates, and other sensitive values.

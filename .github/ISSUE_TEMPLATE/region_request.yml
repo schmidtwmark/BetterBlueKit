@@ -1,0 +1,42 @@
+name: New brand/region request
+description: Ask for a Hyundai/Kia region that BetterBlueKit doesn't support yet
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        New regions are built from evidence of how the official app talks to the backend.
+        A request with a reference implementation or captured traffic can actually be built;
+        a request without one usually has to wait until someone can provide it.
+  - type: input
+    id: brand-region
+    attributes:
+      label: Brand and region
+      placeholder: Kia — Canada
+    validations:
+      required: true
+  - type: input
+    id: official-app
+    attributes:
+      label: Official app you use today
+      placeholder: Kia Connect (Canada)
+    validations:
+      required: true
+  - type: textarea
+    id: reference
+    attributes:
+      label: Reference material
+      description: >
+        Anything that documents the API: an open-source project that supports this region
+        (e.g. a Home Assistant integration), or a sanitized proxy capture of the official app
+        (Proxyman/Charles). Strip tokens, passwords, VIN, and coordinates before attaching.
+    validations:
+      required: false
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Can you help test?
+      description: Region work needs someone with a real account and vehicle in that region.
+      options:
+        - label: I have an account + vehicle in this region and can test builds.
+        - label: I can capture proxy logs from the official app if given instructions.

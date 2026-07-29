@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: BetterBlue app issues
+    url: https://github.com/schmidtwmark/BetterBlue/issues/new/choose
+    about: For problems with the iOS/watchOS app itself — UI, widgets, notifications, Siri.
