@@ -40,8 +40,8 @@ public struct EVTripSummary: Codable, Hashable, Sendable, Identifiable {
     /// Trip start date
     public let startDate: Date
 
-    /// Trip duration in seconds
-    public let durationSeconds: Int
+    /// Trip duration
+    public let duration: Duration
 
     /// Average speed (mph)
     public let avgSpeed: Double
@@ -55,10 +55,7 @@ public struct EVTripSummary: Codable, Hashable, Sendable, Identifiable {
         return distance.units.convert(distance.length, to: units) / (Double(totalEnergyUsed) / 1000.0)
     }
 
-    /// Trip duration as Duration
-    public var duration: Duration {
-        .seconds(durationSeconds)
-    }
+
 
     /// Formatted duration string
     public var formattedDuration: String {
@@ -75,7 +72,7 @@ public struct EVTripSummary: Codable, Hashable, Sendable, Identifiable {
         drivetrainEnergy: Int,
         batteryCareEnergy: Int,
         startDate: Date,
-        durationSeconds: Int,
+        duration: Duration,
         avgSpeed: Double,
         maxSpeed: Double
     ) {
@@ -88,7 +85,7 @@ public struct EVTripSummary: Codable, Hashable, Sendable, Identifiable {
         self.drivetrainEnergy = drivetrainEnergy
         self.batteryCareEnergy = batteryCareEnergy
         self.startDate = startDate
-        self.durationSeconds = durationSeconds
+        self.duration = duration
         self.avgSpeed = avgSpeed
         self.maxSpeed = maxSpeed
     }
