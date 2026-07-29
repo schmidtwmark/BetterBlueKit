@@ -7,10 +7,10 @@
 
 import Foundation
 
-// MARK: - EV Trip Details
+// MARK: - EV Trip Summary
 
 /// Represents details of an EV trip including energy consumption breakdown
-public struct EVTripDetail: Codable, Hashable, Sendable, Identifiable {
+public struct EVTripSummary: Codable, Hashable, Sendable, Identifiable {
     public var id: String { "\(startDate.timeIntervalSince1970)-\(odometer.length)" }
 
     /// Trip distance, in whatever units the API reported
@@ -96,10 +96,10 @@ public struct EVTripDetail: Codable, Hashable, Sendable, Identifiable {
 
 // MARK: - Response Container
 
-public struct EVTripDetailsResponse: Codable, Sendable {
-    public let trips: [EVTripDetail]
+public struct EVTripSummaryResponse: Codable, Sendable {
+    public let trips: [EVTripSummary]
 
-    public init(trips: [EVTripDetail]) {
+    public init(trips: [EVTripSummary]) {
         self.trips = trips
     }
 }
@@ -108,19 +108,17 @@ public struct EVTripDetailsResponse: Codable, Sendable {
 
 /// Represents summary of a specific trip from the tripinfo endpoint
 public struct EVTripInfo: Codable, Hashable, Sendable {
-    public let date: String
-    public let hhmmss: String
-    public let driveTimeMinutes: Int
-    public let idleTimeMinutes: Int
-    public let distance: Double
+    public let date: Date
+    public let driveTime: Duration
+    public let idleTime: Duration
+    public let distance: Distance
     public let avgSpeed: Double
     public let maxSpeed: Double
     
-    public init(date: String, hhmmss: String, driveTimeMinutes: Int, idleTimeMinutes: Int, distance: Double, avgSpeed: Double, maxSpeed: Double) {
+    public init(date: Date, driveTime: Duration, idleTime: Duration, distance: Distance, avgSpeed: Double, maxSpeed: Double) {
         self.date = date
-        self.hhmmss = hhmmss
-        self.driveTimeMinutes = driveTimeMinutes
-        self.idleTimeMinutes = idleTimeMinutes
+        self.driveTime = driveTime
+        self.idleTime = idleTime
         self.distance = distance
         self.avgSpeed = avgSpeed
         self.maxSpeed = maxSpeed

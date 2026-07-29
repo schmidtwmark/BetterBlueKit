@@ -244,7 +244,7 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
         )
     }
 
-    public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
+    public func fetchEVTripSummary(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripSummary]? {
         nil
     }
 

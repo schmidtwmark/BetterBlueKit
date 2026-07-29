@@ -373,7 +373,7 @@ extension HyundaiEuropeAPIClient {
         return current
     }
 
-    package func parseEVTripDetailsResponse(_ data: Data, vehicle: Vehicle) throws -> [EVTripDetail] {
+    package func parseEVTripSummaryResponse(_ data: Data, vehicle: Vehicle) throws -> [EVTripSummary] {
         guard
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
             let resMsg = json["resMsg"] as? [String: Any],
@@ -386,7 +386,7 @@ extension HyundaiEuropeAPIClient {
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "yyyyMMdd"
 
-        return drivingInfoDetail.compactMap { tripData -> EVTripDetail? in
+        return drivingInfoDetail.compactMap { tripData -> EVTripSummary? in
             guard let dateString = tripData["drivingDate"] as? String,
                 let startDate = dateFormatter.date(from: dateString)
             else {
@@ -414,7 +414,7 @@ extension HyundaiEuropeAPIClient {
                 odoUnits = Distance.Units(1)
             }
 
-            return EVTripDetail(
+            return EVTripSummary(
                 distance: Distance(length: odoValue, units: odoUnits),
                 odometer: Distance(length: 0, units: odoUnits),  // Not provided by EU /drvhistory
                 accessoriesEnergy: eDPwrCsp,
@@ -424,7 +424,7 @@ extension HyundaiEuropeAPIClient {
                 drivetrainEnergy: motorPwrCsp,
                 batteryCareEnergy: batteryMgPwrCsp,
                 startDate: startDate,
-                durationSeconds: 0,  // Populated later from /tripinfo
+                duration: .seconds(0),  // Populated later from /tripinfo
                 avgSpeed: 0,  // Populated later from /tripinfo
                 maxSpeed: 0  // Populated later from /tripinfo
             )
@@ -441,9 +441,12 @@ extension HyundaiEuropeAPIClient {
         }
 
         var allTrips: [EVTripInfo] = []
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "yyyyMMddHHmmss"
 
         for dayTrip in dayTripList {
-            let date = dayTrip["tripDay"] as? String ?? dayTrip["date"] as? String ?? ""
+            let dateStr = dayTrip["tripDay"] as? String ?? dayTrip["date"] as? String ?? ""
             
             guard let tripList = dayTrip["tripList"] as? [[String: Any]] else {
                 continue
@@ -457,12 +460,14 @@ extension HyundaiEuropeAPIClient {
                 let avgSpeed = getDoubleFromJson(from: tripData, key: "tripAvgSpeed")
                 let maxSpeed = getDoubleFromJson(from: tripData, key: "tripMaxSpeed")
 
+                let fullDateString = dateStr + hhmmss
+                let tripDate = dateFormatter.date(from: fullDateString) ?? Date()
+
                 allTrips.append(EVTripInfo(
-                    date: date,
-                    hhmmss: hhmmss,
-                    driveTimeMinutes: driveTime,
-                    idleTimeMinutes: idleTime,
-                    distance: distance,
+                    date: tripDate,
+                    driveTime: .seconds(driveTime * 60),
+                    idleTime: .seconds(idleTime * 60),
+                    distance: Distance(length: distance, units: .kilometers), // Hyundai EU defaults to kilometers
                     avgSpeed: avgSpeed,
                     maxSpeed: maxSpeed
                 ))

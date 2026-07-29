@@ -138,11 +138,11 @@ public final class HyundaiUSAAPIClient: APIClientBase, APIClientProtocol {
         try parseCommandResponse(data)
     }
 
-    public func supportsEVTripDetails() -> Bool {
-        true
+    public func supportedEVTripTypes() -> [EVTripType] {
+        return [.summary]
     }
 
-    public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
+    public func fetchEVTripSummary(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripSummary]? {
         var tripHeaders = authorizedHeaders(authToken: authToken, vehicle: vehicle)
         tripHeaders["userId"] = username
         tripHeaders["access_token"] = authToken.accessToken
@@ -151,10 +151,10 @@ public final class HyundaiUSAAPIClient: APIClientBase, APIClientProtocol {
             url: "\(baseURL)/ac/v2/ts/alerts/maintenance/evTripDetails",
             method: .GET,
             headers: tripHeaders,
-            requestType: .fetchEVTripDetails,
+            requestType: .fetchEVTripSummary,
             vin: vehicle.vin
         )
 
-        return try parseEVTripDetailsResponse(data)
+        return try parseEVTripSummaryResponse(data)
     }
 }
