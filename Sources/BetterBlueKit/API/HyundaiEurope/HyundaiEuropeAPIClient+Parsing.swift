@@ -382,17 +382,24 @@ extension HyundaiEuropeAPIClient {
             throw APIError(message: "Failed to parse EU trip details", apiName: apiName)
         }
 
-        let dateFormatter = DateFormatter()
-        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
-        dateFormatter.dateFormat = "yyyyMMdd"
-        // Backend day boundaries are European regardless of device locale
-        // (same convention as BluelinkDateParser for EU sync dates).
-        dateFormatter.timeZone = TimeZone(identifier: "Europe/Berlin")
-
         return drivingInfoDetail.compactMap { tripData -> EVTripSummary? in
             guard let dateString = tripData["drivingDate"] as? String,
-                let startDate = dateFormatter.date(from: dateString)
-            else {
+                  dateString.count == 8 else {
+                return nil
+            }
+            
+            let year = Int(dateString.prefix(4)) ?? 0
+            let month = Int(dateString.dropFirst(4).prefix(2)) ?? 0
+            let day = Int(dateString.suffix(2)) ?? 0
+            
+            var components = DateComponents()
+            components.year = year
+            components.month = month
+            components.day = day
+            components.hour = 12 // Apple-recommended best practice for floating dates
+            components.timeZone = TimeZone(identifier: "UTC")
+            
+            guard let startDate = Calendar.current.date(from: components) else {
                 return nil
             }
 
