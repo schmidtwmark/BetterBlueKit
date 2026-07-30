@@ -38,6 +38,7 @@ extension HyundaiEuropeAPIClient {
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "yyyyMMdd"
+        dateFormatter.timeZone = TimeZone(identifier: "UTC")
         let dateString = dateFormatter.string(from: date)
 
         let (data, _, _) = try await performJSONRequest(
