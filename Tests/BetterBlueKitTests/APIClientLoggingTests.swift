@@ -138,7 +138,8 @@ struct APIClientLoggingTests {
             .fetchVehicles,
             .fetchVehicleStatus,
             .sendCommand,
-            .fetchEVTripDetails,
+            .fetchEVTripSummary,
+            .fetchEVTripInfo,
             .sendMFA,
             .verifyMFA
         ]

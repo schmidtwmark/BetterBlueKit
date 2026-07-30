@@ -493,6 +493,53 @@ struct APIClientBaseRedactionTests {
         #expect(result?.contains(#""vehicleId":"abc123""#) == true)
     }
 
+    // MARK: - Device identifier masking
+
+    @Test("Device ids are partially masked so rotation stays visible")
+    func testDeviceIdPartiallyMasked() {
+        let json = #"{"deviceid":"550E8400-E29B-41D4-A716-446655440000","from":"CWP"}"#
+        let result = SensitiveDataRedactor.redact(json)
+
+        // First 8 + last 4 survive so a reader can compare across requests.
+        #expect(result?.contains(#""deviceid":"550E8400…0000""#) == true)
+        // The middle is gone.
+        #expect(result?.contains("E29B-41D4-A716") == false)
+        // Unrelated fields untouched.
+        #expect(result?.contains(#""from":"CWP""#) == true)
+    }
+
+    @Test("Different device ids mask to visibly different values")
+    func testDeviceIdRotationIsDistinguishable() {
+        let first = SensitiveDataRedactor.redact(#"{"deviceid":"AAAA1111-BBBB-2222-CCCC-333344445555"}"#)
+        let second = SensitiveDataRedactor.redact(#"{"deviceid":"ZZZZ9999-YYYY-8888-XXXX-777766665555"}"#)
+
+        // The whole point of masking rather than blanking: a device id that
+        // rotates between logins must not look identical to a stable one.
+        #expect(first != second)
+    }
+
+    @Test("Device ids too short to mask are still fully redacted")
+    func testShortDeviceIdFullyRedacted() {
+        let result = SensitiveDataRedactor.redact(#"{"deviceid":"short"}"#)
+        #expect(result?.contains(#""deviceid":"[REDACTED]""#) == true)
+        #expect(result?.contains("short") == false)
+    }
+
+    @Test("Masking device ids doesn't loosen token or account redaction")
+    func testDeviceMaskingDoesNotLeakOtherIds() {
+        let json = """
+        {"deviceKey":"ABCD1234EFGH5678","accessToken":"550E8400-E29B-41D4-A716-446655440000",\
+        "accountId":"550E8400-E29B-41D4-A716-446655440000","password":"hunter2"}
+        """
+        let result = SensitiveDataRedactor.redact(json)
+
+        #expect(result?.contains(#""deviceKey":"ABCD1234…5678""#) == true)
+        #expect(result?.contains(#""accessToken":"[REDACTED]""#) == true)
+        #expect(result?.contains(#""accountId":"[REDACTED]""#) == true)
+        #expect(result?.contains(#""password":"[REDACTED]""#) == true)
+        #expect(result?.contains("hunter2") == false)
+    }
+
     @MainActor
     private func makeCanadaClient() -> HyundaiCanadaAPIClient {
         let config = APIClientConfiguration(

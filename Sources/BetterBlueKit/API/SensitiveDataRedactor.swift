@@ -31,8 +31,13 @@ public enum SensitiveDataRedactor {
         let idKeys = [
             "accountId", "account_id", "userId", "user_id",
             "memberId", "member_id", "idmId", "nadid",
-            "billingAccountNumber", "enrollmentId", "enrollmentCode",
-            "deviceKey", "deviceid", "clientuuid"
+            "billingAccountNumber", "enrollmentId", "enrollmentCode"
+        ].joined(separator: "|")
+
+        // Device identifiers get partial masking instead of the blanket
+        // redaction above — see the rule below for why.
+        let deviceKeys = [
+            "deviceid", "deviceId", "deviceKey", "clientuuid"
         ].joined(separator: "|")
 
         return [
@@ -64,8 +69,26 @@ public enum SensitiveDataRedactor {
             // Phone numbers
             (#""(\#(phoneKeys))"\s*:\s*"[^"]*""#,
              "\"$1\":\"[REDACTED]\""),
-            // Account/user/device IDs
+            // Account/user IDs
             (#""(\#(idKeys))"\s*:\s*"[^"]*""#,
+             "\"$1\":\"[REDACTED]\""),
+            // Device identifiers — partially masked rather than blanked, so a
+            // reader can tell whether the id CHANGED between requests. A
+            // rotating device id is the signature of the Hyundai Canada MFA
+            // loop (BetterBlue#95): that region has no refresh endpoint, so
+            // the `deviceid` header is the only thing letting the backend
+            // recognize an install and skip the OTP challenge. Fully redacting
+            // it made "stable" and "rotating every session" look identical in
+            // a bug report. Same trade-off as the VIN rule below: a device id
+            // is an opaque installation identifier, not a credential, and is
+            // useless without the password/tokens that stay redacted.
+            // Keeps the first 8 and last 4 characters.
+            (#""(\#(deviceKeys))"\s*:\s*"([A-Za-z0-9]{8})[A-Za-z0-9._-]*([A-Za-z0-9]{4})""#,
+             "\"$1\":\"$2…$3\""),
+            // Fallback: a device id too short to partially mask is still
+            // blanked. The `…` exclusion keeps this from re-redacting a value
+            // the rule above already masked.
+            (#""(\#(deviceKeys))"\s*:\s*"[^"…]*""#,
              "\"$1\":\"[REDACTED]\""),
             // Physical address fields
             (#""(street|postalCode)"\s*:\s*"[^"]*""#,

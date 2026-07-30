@@ -17,14 +17,15 @@ struct HTTPLoggingTests {
     @Test("HTTPRequestType all cases")
     func testHTTPRequestTypeAllCases() {
         let allCases = HTTPRequestType.allCases
-        #expect(allCases.count == 7)
+        #expect(allCases.count == 8)
         #expect(allCases.contains(.login))
         #expect(allCases.contains(.fetchVehicles))
         #expect(allCases.contains(.fetchVehicleStatus))
         #expect(allCases.contains(.sendCommand))
         #expect(allCases.contains(.sendMFA))
         #expect(allCases.contains(.verifyMFA))
-        #expect(allCases.contains(.fetchEVTripDetails))
+        #expect(allCases.contains(.fetchEVTripSummary))
+        #expect(allCases.contains(.fetchEVTripInfo))
     }
 
     @Test("HTTPRequestType display names")
