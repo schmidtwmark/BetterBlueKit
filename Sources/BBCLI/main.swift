@@ -466,10 +466,10 @@ func fetchEVTripInfo(state: CLIState) async throws {
     guard let client = state.client else {
         throw APIError(message: "No API client initialized")
     }
-    
+
     let dateString = prompt("Enter date (yyyyMMdd): ")
     guard !dateString.isEmpty else { return }
-    
+
     let dateFormatter = DateFormatter()
     dateFormatter.locale = Locale(identifier: "en_US_POSIX")
     dateFormatter.dateFormat = "yyyyMMdd"
@@ -487,7 +487,7 @@ func fetchEVTripInfo(state: CLIState) async throws {
     for (index, info) in trips.enumerated() {
         print("\n[\(index + 1)] Time: \(info.date)")
         print("    Distance: \(info.distance.length) \(info.distance.units.abbreviation)")
-        
+
         let driveTimeMinutes = info.driveTime.components.seconds / 60
         let idleTimeMinutes = info.idleTime.components.seconds / 60
         print("    Drive Time: \(driveTimeMinutes) min")
