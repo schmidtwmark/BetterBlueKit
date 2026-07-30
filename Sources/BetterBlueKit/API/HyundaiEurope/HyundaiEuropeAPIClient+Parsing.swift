@@ -383,23 +383,31 @@ extension HyundaiEuropeAPIClient {
         }
 
         return drivingInfoDetail.compactMap { tripData -> EVTripSummary? in
+            // `drivingDate` is a floating calendar day (yyyyMMdd) with no time
+            // or zone. Anchoring it at 12:00 UTC keeps it on the intended day
+            // in every timezone the app renders it in — pinning it to midnight
+            // in a fixed zone put it on the previous day for anyone west of
+            // that zone (BetterBlueKit#46).
             guard let dateString = tripData["drivingDate"] as? String,
-                  dateString.count == 8 else {
+                  dateString.count == 8,
+                  let year = Int(dateString.prefix(4)),
+                  let month = Int(dateString.dropFirst(4).prefix(2)),
+                  let day = Int(dateString.suffix(2))
+            else {
                 return nil
             }
-            
-            let year = Int(dateString.prefix(4)) ?? 0
-            let month = Int(dateString.dropFirst(4).prefix(2)) ?? 0
-            let day = Int(dateString.suffix(2)) ?? 0
-            
+
             var components = DateComponents()
             components.year = year
             components.month = month
             components.day = day
-            components.hour = 12 // Apple-recommended best practice for floating dates
+            components.hour = 12
             components.timeZone = TimeZone(identifier: "UTC")
-            
-            guard let startDate = Calendar.current.date(from: components) else {
+
+            // Gregorian explicitly, not Calendar.current: on a device set to a
+            // non-Gregorian regional calendar these components would be read
+            // as that calendar's era (Buddhist 2026 is 1483 CE).
+            guard let startDate = Calendar(identifier: .gregorian).date(from: components) else {
                 return nil
             }
 
@@ -454,9 +462,14 @@ extension HyundaiEuropeAPIClient {
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "yyyyMMddHHmmss"
-        // Backend timestamps are European regardless of device locale
-        // (same convention as BluelinkDateParser for EU sync dates).
-        dateFormatter.timeZone = TimeZone(identifier: "Europe/Berlin")
+        // No explicit zone: `tripDay`+`tripTime` is a wall-clock reading of
+        // when the driver was in the car, and the UI renders it in the
+        // device's zone — so interpreting it locally shows the clock time the
+        // backend reported. Pinning it to a fixed European zone shifted every
+        // trip time by the offset between that zone and the user's
+        // (BetterBlueKit#46 fixed the same mistake on the day-level dates).
+        // If a live account ever shows these an hour off, the backend is
+        // reporting CET rather than vehicle-local and this needs revisiting.
 
         for dayTrip in dayTripList {
             guard let dateStr = dayTrip["tripDay"] as? String,

@@ -927,6 +927,105 @@ struct HyEuAPIClientTests {
         #expect(client.apiName == "HyundaiEurope")
     }
 
+    // MARK: - Trip summary date handling (BetterBlueKit#46)
+
+    /// `drivingDate` is a floating calendar day. It has to land on that same
+    /// day when rendered in ANY device timezone — pinning it to midnight in a
+    /// fixed zone silently moved every trip to the previous day for users west
+    /// of that zone, which is what #46 fixed.
+    @Test("Trip summary day survives rendering in timezones east and west of UTC")
+    @MainActor func testTripSummaryDateIsTimezoneStable() throws {
+        let json = """
+        {
+          "resMsg": {
+            "drivingInfoDetail": [
+              {
+                "drivingDate": "20260728",
+                "totalPwrCsp": 5311,
+                "motorPwrCsp": 6027,
+                "climatePwrCsp": 216,
+                "eDPwrCsp": 528,
+                "batteryMgPwrCsp": 0,
+                "regenPwr": 3785,
+                "calculativeOdo": 53
+              }
+            ]
+          }
+        }
+        """
+
+        let config = APIClientConfiguration(
+            region: .europe,
+            brand: .hyundai,
+            username: "test@example.com",
+            password: "password123",
+            pin: "0000",
+            accountId: UUID(),
+            deviceId: UUID().uuidString
+        )
+        let client = HyundaiEuropeAPIClient(configuration: config)
+        let vehicle = Vehicle(
+            vin: "TESTVIN0000000000",
+            regId: "reg",
+            model: "IONIQ 5",
+            accountId: config.accountId,
+            fuelType: .electric,
+            generation: 2,
+            odometer: Distance(length: 0, units: .kilometers)
+        )
+
+        let trips = try client.parseEVTripSummaryResponse(Data(json.utf8), vehicle: vehicle)
+        let startDate = try #require(trips.first?.startDate)
+
+        // Check the rendered calendar day across a spread of real offsets,
+        // rather than asserting one absolute instant.
+        for offsetHours in [-10, -7, -4, 0, 1, 2, 3] {
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = try #require(TimeZone(secondsFromGMT: offsetHours * 3600))
+            let parts = calendar.dateComponents([.year, .month, .day], from: startDate)
+            #expect(parts.year == 2026, "wrong year at UTC\(offsetHours)")
+            #expect(parts.month == 7, "wrong month at UTC\(offsetHours)")
+            #expect(parts.day == 28, "drifted off Jul 28 at UTC\(offsetHours)")
+        }
+    }
+
+    @Test("Malformed drivingDate is skipped rather than fabricated")
+    @MainActor func testTripSummaryRejectsMalformedDate() throws {
+        let json = """
+        {
+          "resMsg": {
+            "drivingInfoDetail": [
+              {"drivingDate": "notadate", "totalPwrCsp": 100, "calculativeOdo": 5},
+              {"drivingDate": "2026072", "totalPwrCsp": 100, "calculativeOdo": 5}
+            ]
+          }
+        }
+        """
+
+        let config = APIClientConfiguration(
+            region: .europe,
+            brand: .hyundai,
+            username: "test@example.com",
+            password: "password123",
+            pin: "0000",
+            accountId: UUID(),
+            deviceId: UUID().uuidString
+        )
+        let client = HyundaiEuropeAPIClient(configuration: config)
+        let vehicle = Vehicle(
+            vin: "TESTVIN0000000000",
+            regId: "reg",
+            model: "IONIQ 5",
+            accountId: config.accountId,
+            fuelType: .electric,
+            generation: 2,
+            odometer: Distance(length: 0, units: .kilometers)
+        )
+
+        let trips = try client.parseEVTripSummaryResponse(Data(json.utf8), vehicle: vehicle)
+        #expect(trips.isEmpty)
+    }
+
 }
 
 // MARK: - JSON Format Documentation Tests
