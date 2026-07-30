@@ -432,7 +432,7 @@ func sendCommand(_ command: VehicleCommand, description: String, state: CLIState
 }
 
 @MainActor
-func fetchEVTripDetails(state: CLIState) async throws {
+func fetchEVTripSummary(state: CLIState) async throws {
     guard let vehicle = selectVehicle(state: state) else { return }
     guard let token = state.authToken else {
         throw APIError(message: "Not logged in")
@@ -442,9 +442,9 @@ func fetchEVTripDetails(state: CLIState) async throws {
         throw APIError(message: "No API client initialized")
     }
 
-    printSubheader("Fetching EV Trip Details for \(vehicle.model)")
+    printSubheader("Fetching EV Trip Summary for \(vehicle.model)")
 
-    let trips = try await client.fetchEVTripDetails(for: vehicle, authToken: token) ?? []
+    let trips = try await client.fetchEVTripSummary(for: vehicle, authToken: token) ?? []
 
     printSuccess("Found \(trips.count) trip(s)")
 
@@ -453,6 +453,47 @@ func fetchEVTripDetails(state: CLIState) async throws {
         print("    Distance: \(trip.distance.length) \(trip.distance.units.abbreviation)")
         print("    Duration: \(trip.formattedDuration)")
         print("    Energy Used: \(Double(trip.totalEnergyUsed) / 1000.0) kWh")
+    }
+}
+
+@MainActor
+func fetchEVTripInfo(state: CLIState) async throws {
+    guard let vehicle = selectVehicle(state: state) else { return }
+    guard let token = state.authToken else {
+        throw APIError(message: "Not logged in")
+    }
+
+    guard let client = state.client else {
+        throw APIError(message: "No API client initialized")
+    }
+    
+    let dateString = prompt("Enter date (yyyyMMdd): ")
+    guard !dateString.isEmpty else { return }
+    
+    let dateFormatter = DateFormatter()
+    dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+    dateFormatter.dateFormat = "yyyyMMdd"
+    guard let date = dateFormatter.date(from: dateString) else {
+        printError("Invalid date format")
+        return
+    }
+
+    printSubheader("Fetching EV Trip Info for \(vehicle.model) on \(dateString)")
+
+    let trips = try await client.fetchEVTripInfo(for: vehicle, authToken: token, date: date) ?? []
+
+    printSuccess("Found \(trips.count) individual trip(s) for the day")
+
+    for (index, info) in trips.enumerated() {
+        print("\n[\(index + 1)] Time: \(info.date)") // or format it better if we want, but info.date is Date now
+        print("    Distance: \(info.distance.length) \(info.distance.units.abbreviation)")
+        
+        let driveTimeMinutes = info.driveTime.components.seconds / 60
+        let idleTimeMinutes = info.idleTime.components.seconds / 60
+        print("    Drive Time: \(driveTimeMinutes) min")
+        print("    Idle Time: \(idleTimeMinutes) min")
+        print("    Avg Speed: \(info.avgSpeed)")
+        print("    Max Speed: \(info.maxSpeed)")
     }
 }
 
@@ -473,7 +514,8 @@ func showMenu() {
       7. Start Charge
       8. Stop Charge
       9. Set Charge Limits
-     10. Fetch EV Trip Details
+     10. Fetch EV Trip Summary
+     11. Fetch EV Trip Info
       0. Exit
 
     """)
@@ -519,7 +561,9 @@ func runInteractiveLoop(state: CLIState) async {
                     state: state
                 )
             case "10":
-                try await fetchEVTripDetails(state: state)
+                try await fetchEVTripSummary(state: state)
+            case "11":
+                try await fetchEVTripInfo(state: state)
             case "0", "q", "quit", "exit":
                 print("\nGoodbye!")
                 return

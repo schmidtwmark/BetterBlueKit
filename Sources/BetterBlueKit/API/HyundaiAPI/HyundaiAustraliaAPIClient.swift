@@ -40,7 +40,7 @@ public final class HyundaiAustraliaAPIClient: APIClientBase, APIClientProtocol {
         throw APIError.regionNotSupported("Hyundai Australia is not yet implemented.", apiName: apiName)
     }
 
-    public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
+    public func fetchEVTripSummary(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripSummary]? {
         nil
     }
 }

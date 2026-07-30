@@ -309,11 +309,11 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
         )
     }
 
-    public func supportsEVTripDetails() -> Bool {
-        true
+    public func supportedEVTripTypes() -> [EVTripType] {
+        return [.summary, .info]
     }
 
-    public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
+    public func fetchEVTripSummary(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripSummary]? {
         let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
         let url = "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)/drvhistory"
 
@@ -322,10 +322,34 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
             method: .POST,
             headers: authorizedHeaders(authToken: authToken, ccs2: ccs2),
             body: ["periodTarget": 0],
-            requestType: .fetchEVTripDetails,
+            requestType: .fetchEVTripSummary,
             vin: vehicle.vin
         )
 
-        return try parseEVTripDetailsResponse(data, vehicle: vehicle)
+        return try parseEVTripSummaryResponse(data, vehicle: vehicle)
+    }
+
+    public func fetchEVTripInfo(for vehicle: Vehicle, authToken: AuthToken, date: Date) async throws -> [EVTripInfo]? {
+        let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
+        let url = "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)/tripinfo"
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.dateFormat = "yyyyMMdd"
+        let dateString = dateFormatter.string(from: date)
+
+        let (data, _, _) = try await performJSONRequest(
+            url: url,
+            method: .POST,
+            headers: authorizedHeaders(authToken: authToken, ccs2: ccs2),
+            body: [
+                "tripPeriodType": 1,
+                "setTripDay": dateString
+            ],
+            requestType: .fetchEVTripInfo,
+            vin: vehicle.vin
+        )
+
+        return try parseIndividualTripsResponse(data)
     }
 }

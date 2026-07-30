@@ -132,11 +132,14 @@ public protocol APIClientProtocol {
     func fetchVehicleStatus(for vehicle: Vehicle, authToken: AuthToken, cached: Bool) async throws -> VehicleStatus
     func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws
 
-    /// Optional: Fetch EV trip details for a vehicle (not all brands/APIs support this)
-    func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]?
+    /// Optional: Fetch EV trip summary for a vehicle (not all brands/APIs support this)
+    func fetchEVTripSummary(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripSummary]?
 
-    /// Returns true if this API client implements `fetchEVTripDetails`
-    func supportsEVTripDetails() -> Bool
+    /// Optional: Fetch specific EV trip info summary for a given date (not all brands/APIs support this)
+    func fetchEVTripInfo(for vehicle: Vehicle, authToken: AuthToken, date: Date) async throws -> [EVTripInfo]?
+
+    /// Returns the types of EV trip details this API client supports
+    func supportedEVTripTypes() -> [EVTripType]
 
     // MARK: - MFA Support (Optional)
 
@@ -163,15 +166,26 @@ public enum MFAMethod: String, Sendable {
     case sms
 }
 
+// MARK: - EV Trip Type
+
+public enum EVTripType: String, Codable, Sendable {
+    case summary
+    case info
+}
+
 // MARK: - Default Implementations
 
 extension APIClientProtocol {
-    public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
+    public func fetchEVTripSummary(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripSummary]? {
         nil
     }
 
-    public func supportsEVTripDetails() -> Bool {
-        false
+    public func fetchEVTripInfo(for vehicle: Vehicle, authToken: AuthToken, date: Date) async throws -> [EVTripInfo]? {
+        nil
+    }
+
+    public func supportedEVTripTypes() -> [EVTripType] {
+        []
     }
 
     public func supportsMFA() -> Bool {

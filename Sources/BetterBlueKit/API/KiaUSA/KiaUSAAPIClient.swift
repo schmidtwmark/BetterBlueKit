@@ -299,7 +299,7 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
         try checkForKiaErrors(data: data)
     }
 
-    public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
+    public func fetchEVTripSummary(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripSummary]? {
         // Kia USA doesn't support EV trip details
         nil
     }

@@ -12,7 +12,7 @@ import Foundation
 public enum HTTPRequestType: String, CaseIterable, Codable, Sendable {
     case login, fetchVehicles, fetchVehicleStatus, sendCommand
     case sendMFA, verifyMFA
-    case fetchEVTripDetails
+    case fetchEVTripSummary, fetchEVTripInfo
 
     public var displayName: String {
         switch self {
@@ -22,7 +22,8 @@ public enum HTTPRequestType: String, CaseIterable, Codable, Sendable {
         case .sendCommand: "Send Command"
         case .sendMFA: "Send MFA"
         case .verifyMFA: "Verify MFA"
-        case .fetchEVTripDetails: "Fetch Trip Details"
+        case .fetchEVTripSummary: "Fetch Trip Summary"
+        case .fetchEVTripInfo: "Fetch Trip Info"
         }
     }
 }

@@ -7,10 +7,10 @@
 
 import Foundation
 
-// MARK: - EV Trip Details
+// MARK: - EV Trip Summary
 
 /// Represents details of an EV trip including energy consumption breakdown
-public struct EVTripDetail: Codable, Hashable, Sendable, Identifiable {
+public struct EVTripSummary: Codable, Hashable, Sendable, Identifiable {
     public var id: String { "\(startDate.timeIntervalSince1970)-\(odometer.length)" }
 
     /// Trip distance, in whatever units the API reported
@@ -40,8 +40,8 @@ public struct EVTripDetail: Codable, Hashable, Sendable, Identifiable {
     /// Trip start date
     public let startDate: Date
 
-    /// Trip duration in seconds
-    public let durationSeconds: Int
+    /// Trip duration
+    public let duration: Duration
 
     /// Average speed (mph)
     public let avgSpeed: Double
@@ -55,10 +55,7 @@ public struct EVTripDetail: Codable, Hashable, Sendable, Identifiable {
         return distance.units.convert(distance.length, to: units) / (Double(totalEnergyUsed) / 1000.0)
     }
 
-    /// Trip duration as Duration
-    public var duration: Duration {
-        .seconds(durationSeconds)
-    }
+
 
     /// Formatted duration string
     public var formattedDuration: String {
@@ -75,7 +72,7 @@ public struct EVTripDetail: Codable, Hashable, Sendable, Identifiable {
         drivetrainEnergy: Int,
         batteryCareEnergy: Int,
         startDate: Date,
-        durationSeconds: Int,
+        duration: Duration,
         avgSpeed: Double,
         maxSpeed: Double
     ) {
@@ -88,7 +85,7 @@ public struct EVTripDetail: Codable, Hashable, Sendable, Identifiable {
         self.drivetrainEnergy = drivetrainEnergy
         self.batteryCareEnergy = batteryCareEnergy
         self.startDate = startDate
-        self.durationSeconds = durationSeconds
+        self.duration = duration
         self.avgSpeed = avgSpeed
         self.maxSpeed = maxSpeed
     }
@@ -96,10 +93,31 @@ public struct EVTripDetail: Codable, Hashable, Sendable, Identifiable {
 
 // MARK: - Response Container
 
-public struct EVTripDetailsResponse: Codable, Sendable {
-    public let trips: [EVTripDetail]
+public struct EVTripSummaryResponse: Codable, Sendable {
+    public let trips: [EVTripSummary]
 
-    public init(trips: [EVTripDetail]) {
+    public init(trips: [EVTripSummary]) {
         self.trips = trips
+    }
+}
+
+// MARK: - EV Trip Info
+
+/// Represents summary of a specific trip from the tripinfo endpoint
+public struct EVTripInfo: Codable, Hashable, Sendable {
+    public let date: Date
+    public let driveTime: Duration
+    public let idleTime: Duration
+    public let distance: Distance
+    public let avgSpeed: Double
+    public let maxSpeed: Double
+    
+    public init(date: Date, driveTime: Duration, idleTime: Duration, distance: Distance, avgSpeed: Double, maxSpeed: Double) {
+        self.date = date
+        self.driveTime = driveTime
+        self.idleTime = idleTime
+        self.distance = distance
+        self.avgSpeed = avgSpeed
+        self.maxSpeed = maxSpeed
     }
 }

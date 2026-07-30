@@ -40,7 +40,7 @@ public final class KiaCanadaAPIClient: APIClientBase, APIClientProtocol {
         throw APIError.regionNotSupported("Kia Canada is not yet implemented.", apiName: apiName)
     }
 
-    public func fetchEVTripDetails(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripDetail]? {
+    public func fetchEVTripSummary(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripSummary]? {
         nil
     }
 }

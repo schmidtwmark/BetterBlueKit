@@ -114,7 +114,7 @@ extension HyundaiUSAAPIClient {
         }
     }
 
-    func parseEVTripDetailsResponse(_ data: Data) throws -> [EVTripDetail] {
+    func parseEVTripSummaryResponse(_ data: Data) throws -> [EVTripSummary] {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tripDetails = json["tripdetails"] as? [[String: Any]] else {
             throw APIError(message: "Failed to parse trip details", apiName: apiName)
@@ -124,7 +124,7 @@ extension HyundaiUSAAPIClient {
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.S"
 
-        return tripDetails.compactMap { trip -> EVTripDetail? in
+        return tripDetails.compactMap { trip -> EVTripSummary? in
             guard let distance = trip["distance"] as? Int,
                   let odometerDict = trip["odometer"] as? [String: Any],
                   let odometerValue = odometerDict["value"] as? Double,
@@ -149,7 +149,7 @@ extension HyundaiUSAAPIClient {
             // otherwise miles); the bare `distance` field shares it.
             let units = Distance.Units(odometerDict["unit"] as? Int ?? 3)
 
-            return EVTripDetail(
+            return EVTripSummary(
                 distance: Distance(length: Double(distance), units: units),
                 odometer: Distance(length: odometerValue, units: units),
                 accessoriesEnergy: accessories,
@@ -159,7 +159,7 @@ extension HyundaiUSAAPIClient {
                 drivetrainEnergy: drivetrain,
                 batteryCareEnergy: batteryCare,
                 startDate: startDate,
-                durationSeconds: durationValue,
+                duration: .seconds(durationValue),
                 avgSpeed: avgSpeedValue,
                 maxSpeed: maxSpeedValue
             )
