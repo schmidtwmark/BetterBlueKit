@@ -28,8 +28,8 @@ import Foundation
 
 extension HyundaiCanadaAPIClient {
 
-    public func supportsMFA() -> Bool {
-        true
+    public func optionalFeaturesSupported() -> [OptionalAPIFeature] {
+        [.mfa]
     }
 
     // MARK: - Login-time challenge detection

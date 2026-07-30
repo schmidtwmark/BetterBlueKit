@@ -14,6 +14,24 @@ public enum HTTPRequestType: String, CaseIterable, Codable, Sendable {
     case sendMFA, verifyMFA
     case fetchEVTripSummary, fetchEVTripInfo
 
+    /// Logs are persisted with the raw value, so renaming a case orphans
+    /// existing rows: decoding "fetchEVTripDetails" (the pre-rename name of
+    /// `fetchEVTripSummary`) would otherwise throw and take down whatever
+    /// fetched the row — the HTTP log list or a debug export.
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        if let value = HTTPRequestType(rawValue: raw) {
+            self = value
+        } else if raw == "fetchEVTripDetails" {
+            self = .fetchEVTripSummary
+        } else {
+            throw DecodingError.dataCorrupted(.init(
+                codingPath: decoder.codingPath,
+                debugDescription: "Unknown HTTPRequestType: \(raw)"
+            ))
+        }
+    }
+
     public var displayName: String {
         switch self {
         case .login: "Login"

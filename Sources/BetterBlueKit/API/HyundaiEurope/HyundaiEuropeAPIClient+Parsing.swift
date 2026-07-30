@@ -385,6 +385,9 @@ extension HyundaiEuropeAPIClient {
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "yyyyMMdd"
+        // Backend day boundaries are European regardless of device locale
+        // (same convention as BluelinkDateParser for EU sync dates).
+        dateFormatter.timeZone = TimeZone(identifier: "Europe/Berlin")
 
         return drivingInfoDetail.compactMap { tripData -> EVTripSummary? in
             guard let dateString = tripData["drivingDate"] as? String,
@@ -424,9 +427,9 @@ extension HyundaiEuropeAPIClient {
                 drivetrainEnergy: motorPwrCsp,
                 batteryCareEnergy: batteryMgPwrCsp,
                 startDate: startDate,
-                duration: .seconds(0),  // Populated later from /tripinfo
-                avgSpeed: 0,  // Populated later from /tripinfo
-                maxSpeed: 0  // Populated later from /tripinfo
+                duration: .seconds(0),  // Not provided by EU /drvhistory day summaries
+                avgSpeed: 0,  // Not provided — fetchEVTripInfo(date:) has per-trip speeds
+                maxSpeed: 0  // Not provided — fetchEVTripInfo(date:) has per-trip speeds
             )
         }
     }
@@ -444,24 +447,28 @@ extension HyundaiEuropeAPIClient {
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "yyyyMMddHHmmss"
+        // Backend timestamps are European regardless of device locale
+        // (same convention as BluelinkDateParser for EU sync dates).
+        dateFormatter.timeZone = TimeZone(identifier: "Europe/Berlin")
 
         for dayTrip in dayTripList {
-            let dateStr = dayTrip["tripDay"] as? String ?? dayTrip["date"] as? String ?? ""
-            
-            guard let tripList = dayTrip["tripList"] as? [[String: Any]] else {
+            guard let dateStr = dayTrip["tripDay"] as? String,
+                  let tripList = dayTrip["tripList"] as? [[String: Any]] else {
                 continue
             }
-            
+
             for tripData in tripList {
-                let hhmmss = tripData["tripTime"] as? String ?? tripData["hhmmss"] as? String ?? ""
-                let driveTime = tripData["tripDrvTime"] as? Int ?? tripData["drive_time"] as? Int ?? 0
-                let idleTime = tripData["tripIdleTime"] as? Int ?? tripData["idle_time"] as? Int ?? 0
+                // A trip without a parseable start time is dropped rather than
+                // stamped with a fabricated date.
+                guard let hhmmss = tripData["tripTime"] as? String,
+                      let tripDate = dateFormatter.date(from: dateStr + hhmmss) else {
+                    continue
+                }
+                let driveTime = tripData["tripDrvTime"] as? Int ?? 0
+                let idleTime = tripData["tripIdleTime"] as? Int ?? 0
                 let distance = getDoubleFromJson(from: tripData, key: "tripDist")
                 let avgSpeed = getDoubleFromJson(from: tripData, key: "tripAvgSpeed")
                 let maxSpeed = getDoubleFromJson(from: tripData, key: "tripMaxSpeed")
-
-                let fullDateString = dateStr + hhmmss
-                let tripDate = dateFormatter.date(from: fullDateString) ?? Date()
 
                 allTrips.append(EVTripInfo(
                     date: tripDate,

@@ -485,7 +485,7 @@ func fetchEVTripInfo(state: CLIState) async throws {
     printSuccess("Found \(trips.count) individual trip(s) for the day")
 
     for (index, info) in trips.enumerated() {
-        print("\n[\(index + 1)] Time: \(info.date)") // or format it better if we want, but info.date is Date now
+        print("\n[\(index + 1)] Time: \(info.date)")
         print("    Distance: \(info.distance.length) \(info.distance.units.abbreviation)")
         
         let driveTimeMinutes = info.driveTime.components.seconds / 60

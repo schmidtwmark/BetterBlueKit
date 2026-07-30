@@ -55,8 +55,6 @@ public struct EVTripSummary: Codable, Hashable, Sendable, Identifiable {
         return distance.units.convert(distance.length, to: units) / (Double(totalEnergyUsed) / 1000.0)
     }
 
-
-
     /// Formatted duration string
     public var formattedDuration: String {
         duration.formatted(.units(allowed: [.hours, .minutes], width: .abbreviated))
@@ -109,9 +107,12 @@ public struct EVTripInfo: Codable, Hashable, Sendable {
     public let driveTime: Duration
     public let idleTime: Duration
     public let distance: Distance
+    /// Average speed in the API's native unit — matches `distance.units`
+    /// per hour (km/h for Europe, the only backend serving this today).
     public let avgSpeed: Double
+    /// Maximum speed, same unit convention as `avgSpeed`.
     public let maxSpeed: Double
-    
+
     public init(date: Date, driveTime: Duration, idleTime: Duration, distance: Distance, avgSpeed: Double, maxSpeed: Double) {
         self.date = date
         self.driveTime = driveTime

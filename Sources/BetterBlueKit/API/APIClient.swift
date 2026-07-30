@@ -138,13 +138,13 @@ public protocol APIClientProtocol {
     /// Optional: Fetch specific EV trip info summary for a given date (not all brands/APIs support this)
     func fetchEVTripInfo(for vehicle: Vehicle, authToken: AuthToken, date: Date) async throws -> [EVTripInfo]?
 
-    /// Returns the types of EV trip details this API client supports
-    func supportedEVTripTypes() -> [EVTripType]
+    /// The optional capabilities this client implements, beyond the required
+    /// protocol surface. Clients override this single method; callers use the
+    /// convenience helpers (`supportsMFA()`, `supportedEVTripTypes()`) instead
+    /// of inspecting the list directly.
+    func optionalFeaturesSupported() -> [OptionalAPIFeature]
 
     // MARK: - MFA Support (Optional)
-
-    /// Returns true if this API client supports MFA (Multi-Factor Authentication)
-    func supportsMFA() -> Bool
 
     /// Send MFA code via the specified method
     func sendMFACode(xid: String, otpKey: String, method: MFAMethod) async throws
@@ -173,6 +173,21 @@ public enum EVTripType: String, Codable, Sendable {
     case info
 }
 
+// MARK: - Optional Features
+
+/// The optional capabilities an API client can declare via
+/// `optionalFeaturesSupported()`. One list covers everything so adding a
+/// capability means adding a case here plus a helper below — client
+/// conformances and app code keep working unchanged.
+public enum OptionalAPIFeature: String, Codable, Sendable, CaseIterable {
+    /// Multi-factor authentication (send/verify/complete MFA login).
+    case mfa
+    /// Day- or trip-level driving history (`fetchEVTripSummary`).
+    case evTripSummary
+    /// Per-trip drill-down for a specific date (`fetchEVTripInfo`).
+    case evTripInfo
+}
+
 // MARK: - Default Implementations
 
 extension APIClientProtocol {
@@ -184,12 +199,22 @@ extension APIClientProtocol {
         nil
     }
 
-    public func supportedEVTripTypes() -> [EVTripType] {
+    public func optionalFeaturesSupported() -> [OptionalAPIFeature] {
         []
     }
 
+    /// Returns true if this API client supports MFA (Multi-Factor Authentication)
     public func supportsMFA() -> Bool {
-        false
+        optionalFeaturesSupported().contains(.mfa)
+    }
+
+    /// Returns the types of EV trip details this API client supports
+    public func supportedEVTripTypes() -> [EVTripType] {
+        var types: [EVTripType] = []
+        let features = optionalFeaturesSupported()
+        if features.contains(.evTripSummary) { types.append(.summary) }
+        if features.contains(.evTripInfo) { types.append(.info) }
+        return types
     }
 
     public func sendMFACode(xid: String, otpKey: String, method: MFAMethod) async throws {

@@ -98,8 +98,8 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
 
     // MARK: - APIClientProtocol Implementation
 
-    public func supportsMFA() -> Bool {
-        true
+    public func optionalFeaturesSupported() -> [OptionalAPIFeature] {
+        [.mfa]
     }
 
     public func login() async throws -> AuthToken {

@@ -138,8 +138,8 @@ public final class HyundaiUSAAPIClient: APIClientBase, APIClientProtocol {
         try parseCommandResponse(data)
     }
 
-    public func supportedEVTripTypes() -> [EVTripType] {
-        return [.summary]
+    public func optionalFeaturesSupported() -> [OptionalAPIFeature] {
+        [.evTripSummary]
     }
 
     public func fetchEVTripSummary(for vehicle: Vehicle, authToken: AuthToken) async throws -> [EVTripSummary]? {
