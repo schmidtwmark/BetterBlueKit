@@ -11,7 +11,7 @@ import Foundation
 
 extension HyundaiEuropeAPIClient {
 
-    func commandPathAndBody(for command: VehicleCommand, ccs2: Bool = true)
+    func commandPathAndBody(for command: VehicleCommand, ccs2: Bool = true, drvSeatLoc: String = "L")
     -> (String, [String: Any]) {
         let deviceId = configuration.deviceId ?? ""
         switch command {
@@ -35,7 +35,10 @@ extension HyundaiEuropeAPIClient {
                 table: .european
             )
             if ccs2 {
-                return ("ccs2/control/temperature", startClimateCCS2Body(options: options, tempCelsius: tempCelsius))
+                return (
+                    "ccs2/control/temperature",
+                    startClimateCCS2Body(options: options, tempCelsius: tempCelsius, drvSeatLoc: drvSeatLoc)
+                )
             }
             return ("control/temperature", [
                 "action": "start",
@@ -82,18 +85,30 @@ extension HyundaiEuropeAPIClient {
     /// CCS2 climate-start body. Identical shape to Kia EU's — both
     /// brands share ApiImplType1.start_climate (CCS2 branch).
     /// `tempCelsius` is already snapped to the 0.5°C EU grid.
-    private func startClimateCCS2Body(options: ClimateOptions, tempCelsius: Double) -> [String: Any] {
-        [
+    private func startClimateCCS2Body(
+        options: ClimateOptions,
+        tempCelsius: Double,
+        drvSeatLoc: String
+    ) -> [String: Any] {
+        // On a right-hand-drive car the driver sits on the right, so the
+        // front-left/right seat controls map to passenger/driver. Matches
+        // hyundai_kia_connect_api's `start_climate` seat handling.
+        let (drvSeat, psgSeat) = drvSeatLoc == "R"
+            ? (options.frontRightSeat, options.frontLeftSeat)
+            : (options.frontLeftSeat, options.frontRightSeat)
+        return [
             "command": "start",
             "ignitionDuration": options.duration,
             "strgWhlHeating": options.steeringWheel,
             "hvacTempType": 1,
             "hvacTemp": tempCelsius,
-            "sideRearMirrorHeating": 1,
-            "drvSeatLoc": "R",
+            // Rear-window + side-mirror heaters ride along with the heating
+            // levels that engage them (1/2/4); off for 0 and steering-only (3).
+            "sideRearMirrorHeating": [1, 2, 4].contains(options.heatValue) ? 1 : 0,
+            "drvSeatLoc": drvSeatLoc,
             "seatClimateInfo": [
-                "drvSeatClimateState": options.frontLeftSeat,
-                "psgSeatClimateState": options.frontRightSeat,
+                "drvSeatClimateState": drvSeat,
+                "psgSeatClimateState": psgSeat,
                 "rrSeatClimateState": options.rearRightSeat,
                 "rlSeatClimateState": options.rearLeftSeat
             ],

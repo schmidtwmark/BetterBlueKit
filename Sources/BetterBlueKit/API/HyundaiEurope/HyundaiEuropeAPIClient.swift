@@ -6,7 +6,6 @@
 //  Based on: https://github.com/andyfase/egmp-bluelink-scriptable
 //
 
-import CryptoKit
 import Foundation
 
 // MARK: - Hyundai Europe API Client
@@ -20,6 +19,10 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
     static let clientSecret = "KUy49XxPzLpLuoK0xhBC77W6VXhmtQR9iQhmIFjjoY4IpxsV"
     static let appId = "014d2225-8495-4735-812d-2616334fd15d"
     static let authCfb = "RFtoRq/vDXJmRndoZaZQyfOot7OrIqGVFj96iY2WL3yyH5Z/pUvlUhqmCxD2t+D65SQ="
+    /// How long to wait after waking a CCS2 car before reading `/latest`, in
+    /// nanoseconds. ~20s matches the live-measured report latency in
+    /// hyundai_kia_connect_api.
+    static let ccs2ForceRefreshDelay: UInt64 = 20 * 1_000_000_000
     var commandToken: String = ""
     var commandTokenExpiration: Date = Date()
 
@@ -247,14 +250,22 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
     public func fetchVehicleStatus(
         for vehicle: Vehicle,
         authToken: AuthToken,
-        cached _: Bool
+        cached: Bool
     ) async throws -> VehicleStatus {
 
         // CCS2 or Gen5W endpoint?
         let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
+
+        // The `/latest` endpoint is a passive cache — it won't reflect a
+        // just-sent command (e.g. climate that just started) until the car
+        // next reports in on its own. A manual / post-command refresh
+        // (`cached == false`) therefore has to wake the car first. Mirrors
+        // hyundai_kia_connect_api's force_refresh_vehicle_state for CCS2.
+        if !cached, ccs2 {
+            try await forceRefreshCCS2(for: vehicle, authToken: authToken)
+        }
+
         let endpoint: String = ccs2 ? "/ccs2/carstatus/latest" : "/status/latest"
-        // Europe uses a single "latest" endpoint; no force-refresh knob is
-        // currently wired up here, so the cached flag is a no-op.
         let (statusData, _, _) = try await performJSONRequest(
             url: "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)\(endpoint)",
             method: .GET,
@@ -274,6 +285,24 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
         return try parseVehicleStatusResponse(statusData, parkData, for: vehicle)
     }
 
+    /// Wake a CCS2 vehicle so the subsequent `/latest` read returns current
+    /// state. `GET /ccs2/carstatus` (no `/latest`) triggers the wake and
+    /// returns an async ack envelope — its body is discarded, but errors
+    /// propagate so we never fall through to applying a stale snapshot.
+    /// Ports hyundai_kia_connect_api's `_force_refresh_vehicle_state_ccs2`.
+    func forceRefreshCCS2(for vehicle: Vehicle, authToken: AuthToken) async throws {
+        _ = try await performJSONRequest(
+            url: "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)/ccs2/carstatus",
+            method: .GET,
+            headers: authorizedHeaders(authToken: authToken, ccs2: true),
+            requestType: .fetchVehicleStatus,
+            vin: vehicle.vin
+        )
+        // The car reports back asynchronously; give it time before reading
+        // `/latest` (~20s live-measured on a reachable EU CCS2 car).
+        try await Task.sleep(nanoseconds: Self.ccs2ForceRefreshDelay)
+    }
+
     // MARK: - Commands
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
@@ -281,7 +310,11 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
         // Pass the vehicle's actual protocol into the body builder.
         // Previously this used the default (ccs2: true), so a legacy
         // Hyundai EU vehicle got a v1 URL with CCS2-shaped bodies.
-        let (path, body) = commandPathAndBody(for: command, ccs2: ccs2)
+        // "R" only for the mile-based RHD markets (UK/Ireland); everything
+        // else — including km-based continental EU (e.g. NL) — is "L".
+        // Mirrors hyundai_kia_connect_api's `_get_drv_seat_loc`.
+        let drvSeatLoc = vehicle.odometer.units == .miles ? "R" : "L"
+        let (path, body) = commandPathAndBody(for: command, ccs2: ccs2, drvSeatLoc: drvSeatLoc)
         let url =
             "\(baseURL)/api/\(ccs2 ? "v2" : "v1")"
             + "/spa/vehicles/\(vehicle.regId)/\(path)"

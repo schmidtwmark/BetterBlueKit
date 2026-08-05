@@ -10,7 +10,6 @@
 //  the main file.
 //
 
-import CryptoKit
 import Foundation
 
 extension HyundaiEuropeAPIClient {
@@ -28,8 +27,8 @@ extension HyundaiEuropeAPIClient {
             "Host": apiHost,
             "Connection": "Keep-Alive",
             "Accept-Encoding": "gzip",
-            // Fresh HMAC per request — Stamp is an `<appId>:<ISO8601>` signature
-            // and the server appears to validate the timestamp window.
+            // Fresh stamp per request — the server validates the embedded
+            // timestamp window (see `generateStamp()`).
             "Stamp": generateStamp()
         ]
     }
@@ -48,16 +47,29 @@ extension HyundaiEuropeAPIClient {
         return result
     }
 
-    /// HMAC-SHA256 of `<appId>:<ISO8601 timestamp>` keyed by the
-    /// first 32 bytes of the base64-decoded `authCfb` shared secret,
-    /// base64-encoded. Sent as the `Stamp` header on every request
-    /// and as the `pushRegId` field during device registration.
+    /// CCSP `Stamp`: base64 of `authCfb ⊕ "<appId>:<unixSeconds>"`, where the
+    /// XOR runs over the shorter of the two byte strings (the message here).
+    ///
+    /// This ports the scheme used by Home Assistant's
+    /// `hyundai_kia_connect_api` (`_get_stamp`) / bluelinky, which is the
+    /// canonical stamp the EU CCSP servers expect. The previous
+    /// HMAC-SHA256-over-ISO8601 form happened to be accepted on read
+    /// endpoints but was rejected with HTTP 403 on the control endpoints,
+    /// so remote actions failed across Europe (e.g. NL). Sent as the `Stamp`
+    /// header on every request and as `pushRegId` during device registration.
     func generateStamp() -> String {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        let message = "\(Self.appId):\(timestamp)"
-        guard let cfbData = Data(base64Encoded: Self.authCfb) else { return message }
-        let key = SymmetricKey(data: cfbData.prefix(32))
-        let signature = HMAC<SHA256>.authenticationCode(for: Data(message.utf8), using: key)
-        return Data(signature).base64EncodedString()
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let message = Array("\(Self.appId):\(timestamp)".utf8)
+        guard let cfbData = Data(base64Encoded: Self.authCfb) else {
+            return Data(message).base64EncodedString()
+        }
+        let cfb = Array(cfbData)
+        let count = min(cfb.count, message.count)
+        var xored = [UInt8]()
+        xored.reserveCapacity(count)
+        for index in 0 ..< count {
+            xored.append(cfb[index] ^ message[index])
+        }
+        return Data(xored).base64EncodedString()
     }
 }

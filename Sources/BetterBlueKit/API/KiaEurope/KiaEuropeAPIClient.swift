@@ -8,7 +8,6 @@
 //  by appending `_CCS_APP_AOS` to the User-Agent.
 //
 
-import CryptoKit
 import Foundation
 
 // MARK: - Kia Europe API Client
@@ -24,6 +23,10 @@ public final class KiaEuropeAPIClient: APIClientBase, APIClientProtocol {
     static let basicAuthorization = "Basic ZmRjODVjMDAtMGEyZi00YzY0LWJjYjQtMmNmYjE1MDA3MzBhOnNlY3JldA=="
     static let authCfb = "wLTVxwidmH8CfJYBWSnHD6E0huk0ozdiuygB4hLkM5XCgzAL1Dk5sE36d/bx5PFMbZs="
     static let pushType = "APNS"
+    /// How long to wait after waking a CCS2 car before reading `/latest`, in
+    /// nanoseconds. ~20s matches the live-measured report latency in
+    /// hyundai_kia_connect_api.
+    static let ccs2ForceRefreshDelay: UInt64 = 20 * 1_000_000_000
 
     /// The `_CCS_APP_AOS` suffix is what gets past Cloudflare on
     /// `idpconnect-eu.kia.com` — without it, the authorize endpoint
@@ -136,9 +139,18 @@ public final class KiaEuropeAPIClient: APIClientBase, APIClientProtocol {
     public func fetchVehicleStatus(
         for vehicle: Vehicle,
         authToken: AuthToken,
-        cached _: Bool
+        cached: Bool
     ) async throws -> VehicleStatus {
         let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
+
+        // A manual / post-command refresh (`cached == false`) must wake the
+        // car — the `/latest` snapshot is a passive cache and won't reflect a
+        // just-sent command until the vehicle reports in. Mirrors
+        // hyundai_kia_connect_api's force_refresh_vehicle_state for CCS2.
+        if !cached, ccs2 {
+            try await forceRefreshCCS2(for: vehicle, authToken: authToken)
+        }
+
         let endpoint: String = ccs2 ? "/ccs2/carstatus/latest" : "/status/latest"
 
         let (statusData, _, _) = try await performJSONRequest(
@@ -190,11 +202,33 @@ public final class KiaEuropeAPIClient: APIClientBase, APIClientProtocol {
         commandTokenExpiration = Date().addingTimeInterval(TimeInterval(expires))
     }
 
+    /// Wake a CCS2 vehicle so the subsequent `/latest` read returns current
+    /// state. `GET /ccs2/carstatus` (no `/latest`) triggers the wake and
+    /// returns an async ack envelope — its body is discarded, but errors
+    /// propagate so we never fall through to applying a stale snapshot.
+    /// Ports hyundai_kia_connect_api's `_force_refresh_vehicle_state_ccs2`.
+    func forceRefreshCCS2(for vehicle: Vehicle, authToken: AuthToken) async throws {
+        _ = try await performJSONRequest(
+            url: "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)/ccs2/carstatus",
+            method: .GET,
+            headers: authorizedHeaders(authToken: authToken, ccs2: true),
+            requestType: .fetchVehicleStatus,
+            vin: vehicle.vin
+        )
+        // The car reports back asynchronously; give it time before reading
+        // `/latest` (~20s live-measured on a reachable EU CCS2 car).
+        try await Task.sleep(nanoseconds: Self.ccs2ForceRefreshDelay)
+    }
+
     // MARK: - Commands
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
         let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
-        let (path, body) = commandPathAndBody(for: command, ccs2: ccs2)
+        // "R" only for the mile-based RHD markets (UK/Ireland); everything
+        // else — including km-based continental EU — is "L". Mirrors
+        // hyundai_kia_connect_api's `_get_drv_seat_loc`.
+        let drvSeatLoc = vehicle.odometer.units == .miles ? "R" : "L"
+        let (path, body) = commandPathAndBody(for: command, ccs2: ccs2, drvSeatLoc: drvSeatLoc)
         let url = "\(baseURL)/api/\(ccs2 ? "v2" : "v1")"
             + "/spa/vehicles/\(vehicle.regId)/\(path)"
         let headers: [String: String]
