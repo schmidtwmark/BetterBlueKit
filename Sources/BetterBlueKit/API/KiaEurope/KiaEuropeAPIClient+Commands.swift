@@ -10,7 +10,7 @@ import Foundation
 
 extension KiaEuropeAPIClient {
 
-    func commandPathAndBody(for command: VehicleCommand, ccs2: Bool = true)
+    func commandPathAndBody(for command: VehicleCommand, ccs2: Bool = true, drvSeatLoc: String = "L")
     -> (String, [String: Any]) {
         let deviceId = configuration.deviceId ?? ""
         switch command {
@@ -23,7 +23,7 @@ extension KiaEuropeAPIClient {
                 ? ("ccs2/control/door", ["command": "open"])
                 : ("control/door", ["action": "open", "deviceId": deviceId])
         case .startClimate(let options):
-            return ("ccs2/control/temperature", startClimateBody(options: options))
+            return ("ccs2/control/temperature", startClimateBody(options: options, drvSeatLoc: drvSeatLoc))
         case .stopClimate:
             return ccs2
                 ? ("ccs2/control/temperature", ["command": "stop"])
@@ -60,7 +60,7 @@ extension KiaEuropeAPIClient {
     /// and the payload shape is easier to find. Shape mirrors the
     /// Python reference in hyundai-kia-connect/hyundai_kia_connect_api
     /// (ApiImplType1.start_climate, CCS2 branch).
-    private func startClimateBody(options: ClimateOptions) -> [String: Any] {
+    private func startClimateBody(options: ClimateOptions, drvSeatLoc: String) -> [String: Any] {
         // Kia EU only accepts temperatures on the 0.5°C grid
         // (15.0–30.0). Sending 22.22 (linear F→C of 72°F)
         // silently no-ops on the car — `hvacConvert` snaps to the
@@ -71,17 +71,25 @@ extension KiaEuropeAPIClient {
             to: .celsius,
             table: .european
         )
+        // On a right-hand-drive car the driver sits on the right, so the
+        // front-left/right seat controls map to passenger/driver. Matches
+        // hyundai_kia_connect_api's `start_climate` seat handling.
+        let (drvSeat, psgSeat) = drvSeatLoc == "R"
+            ? (options.frontRightSeat, options.frontLeftSeat)
+            : (options.frontLeftSeat, options.frontRightSeat)
         return [
             "command": "start",
             "ignitionDuration": options.duration,
             "strgWhlHeating": options.steeringWheel,
             "hvacTempType": 1,
             "hvacTemp": tempCelsius,
-            "sideRearMirrorHeating": 1,
-            "drvSeatLoc": "R",
+            // Rear-window + side-mirror heaters ride along with the heating
+            // levels that engage them (1/2/4); off for 0 and steering-only (3).
+            "sideRearMirrorHeating": [1, 2, 4].contains(options.heatValue) ? 1 : 0,
+            "drvSeatLoc": drvSeatLoc,
             "seatClimateInfo": [
-                "drvSeatClimateState": options.frontLeftSeat,
-                "psgSeatClimateState": options.frontRightSeat,
+                "drvSeatClimateState": drvSeat,
+                "psgSeatClimateState": psgSeat,
                 "rrSeatClimateState": options.rearRightSeat,
                 "rlSeatClimateState": options.rearLeftSeat
             ],

@@ -382,7 +382,10 @@ func fetchVehicleStatus(state: CLIState) async throws {
 
     printSubheader("Fetching Status for \(vehicle.model)")
 
-    let status = try await client.fetchVehicleStatus(for: vehicle, authToken: token)
+    // cached: false → wake the car and read fresh state. On EU CCS2 vehicles
+    // this adds a ~20s wait but is the only way to see a just-sent command
+    // (e.g. climate) actually reflected, instead of a stale cached snapshot.
+    let status = try await client.fetchVehicleStatus(for: vehicle, authToken: token, cached: false)
 
     printSuccess("Status fetched successfully")
 
