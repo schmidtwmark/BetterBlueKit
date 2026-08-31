@@ -52,29 +52,37 @@ public final class KiaEuropeAPIClient: APIClientBase, APIClientProtocol {
     // MARK: - Login
 
     public func login() async throws -> AuthToken {
-        var token: AuthToken!
-
-        if let refreshToken = configuration.refreshToken, !refreshToken.isEmpty {
-            BBLogger.info(.auth, "KiaEurope: Starting login flow (refresh token)")
+        if let stored = configuration.refreshToken,
+           let set = CCITokenSet.decodeFromStorage(stored) {
+            BBLogger.info(.auth, "KiaEurope: Starting login flow (CCI token refresh)")
             do {
-                token = try await getAccessTokenFromRefreshToken()
+                return try await cciRefreshLogin(config: .kia, set: set)
             } catch {
-                if let apiError = error as? APIError,
-                    apiError.errorType == .invalidCredentials,
-                    !password.isEmpty {
-                    configuration = configuration.with(refreshToken: "")
-                    return try await self.login()
-                } else {
-                    throw error
-                }
+                guard !password.isEmpty else { throw error }
+                BBLogger.info(.auth, "KiaEurope: CCI refresh failed, falling back to password login")
+                configuration = configuration.with(refreshToken: "")
             }
-        } else {
-            BBLogger.info(.auth, "KiaEurope: refresh token is nil or empty, using username/password login")
-            let code = try await signin()
-            token = try await exchangeForToken(code: code)
-            configuration = configuration.with(refreshToken: token.refreshToken)
+        } else if let refreshToken = configuration.refreshToken, !refreshToken.isEmpty {
+            // Pre-CCI refresh token — the legacy oauth2/token refresh grant
+            // still works for these, so don't force a fresh password login.
+            BBLogger.info(.auth, "KiaEurope: Starting login flow (legacy refresh token)")
+            do {
+                let token = try await getAccessTokenFromRefreshToken()
+                BBLogger.info(.auth, "KiaEurope: Login completed successfully")
+                return token
+            } catch {
+                guard let apiError = error as? APIError,
+                      apiError.errorType == .invalidCredentials,
+                      !password.isEmpty else { throw error }
+                configuration = configuration.with(refreshToken: "")
+            }
         }
 
+        // Password login runs the OneApp/CCI flow — the legacy signin has
+        // been WAF-blocked ("abusing request") since 2026-08-11.
+        BBLogger.info(.auth, "KiaEurope: using username/password login (OneApp/CCI)")
+        let token = try await cciPasswordLogin(config: .kia)
+        configuration = configuration.with(refreshToken: token.refreshToken)
         BBLogger.info(.auth, "KiaEurope: Login completed successfully")
         return token
     }

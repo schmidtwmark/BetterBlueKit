@@ -38,97 +38,42 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
     // `HyundaiEuropeAPIClient+Headers.swift` so this file stays under
     // SwiftLint's 250-line type-body cap.
 
-    // MARK: - Login (password or refresh token Flow)
+    // MARK: - Login (CCI token set, legacy refresh token, or password)
 
     public func login() async throws -> AuthToken {
-
-        var token: AuthToken!
-
-        if let refreshToken = configuration.refreshToken, !refreshToken.isEmpty {
-            BBLogger.info(.auth, "HyundaiEurope: Starting login flow (refresh token)")
+        if let stored = configuration.refreshToken,
+           let set = CCITokenSet.decodeFromStorage(stored) {
+            BBLogger.info(.auth, "HyundaiEurope: Starting login flow (CCI token refresh)")
             do {
-                token = try await getAccessTokenFromRefreshToken()
+                return try await cciRefreshLogin(config: .hyundai, set: set)
             } catch {
-                if let error = error as? APIError,
-                    error.errorType == .invalidCredentials,
-                    !password.isEmpty {
-                    // remove refresh token and try login with credentials
-                    configuration = configuration.with(refreshToken: "")
-                    return try await self.login()
-                } else {
-                    throw error
-                }
+                guard !password.isEmpty else { throw error }
+                BBLogger.info(.auth, "HyundaiEurope: CCI refresh failed, falling back to password login")
+                configuration = configuration.with(refreshToken: "")
             }
-        } else {
-            BBLogger.info(.auth, "HyundaiEurope: refresh token is nil or empty, using username/password login")
-            let code = try await signin()
-            token = try await exchangeForToken(code: code)
-            configuration = configuration.with(refreshToken: token.refreshToken)
+        } else if let refreshToken = configuration.refreshToken, !refreshToken.isEmpty {
+            // Pre-CCI refresh token — the legacy oauth2/token refresh grant
+            // still works for these, so don't force a fresh password login.
+            BBLogger.info(.auth, "HyundaiEurope: Starting login flow (legacy refresh token)")
+            do {
+                let token = try await getAccessTokenFromRefreshToken()
+                BBLogger.info(.auth, "HyundaiEurope: Login completed successfully")
+                return token
+            } catch {
+                guard let apiError = error as? APIError,
+                      apiError.errorType == .invalidCredentials,
+                      !password.isEmpty else { throw error }
+                configuration = configuration.with(refreshToken: "")
+            }
         }
 
+        // Password login runs the OneApp/CCI flow — the legacy signin has
+        // been WAF-blocked ("abusing request") since 2026-08-11.
+        BBLogger.info(.auth, "HyundaiEurope: using username/password login (OneApp/CCI)")
+        let token = try await cciPasswordLogin(config: .hyundai)
+        configuration = configuration.with(refreshToken: token.refreshToken)
         BBLogger.info(.auth, "HyundaiEurope: Login completed successfully")
         return token
-    }
-
-    /// use code to exchange it for access token
-    private func exchangeForToken(code: String) async throws -> AuthToken {
-
-        let body = [
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": "\(baseURL)/api/v1/user/oauth2/token",
-            "client_id": Self.clientId,
-            "client_secret": Self.clientSecret
-        ]
-
-        let (data, _, _) = try await performJSONRequest(
-            url: "\(authBaseURL)/auth/api/v2/user/oauth2/token",
-            method: .POST,
-            headers: loginHeaders(),
-            body: body,
-            requestType: .login
-        )
-
-        return try parseAuthToken(from: data, isRefresh: true)
-    }
-
-    /// use username and password to get code for token exchange
-    private func signin() async throws -> String {
-        let state = UUID().uuidString
-        let body = ["client_id": Self.clientId,
-                    "encryptedPassword": "false",
-                    "username": username,
-                    "password": password,
-                    "redirect_uri": "\(baseURL)/api/v1/user/oauth2/token",
-                    "state": state,
-                    "remember_me": "false"
-        ]
-
-        let bodyData = try? JSONSerialization.data(
-            withJSONObject: body, options: []
-        )
-
-        var request = URLRequest(url: URL(string: "\(authBaseURL)/auth/account/signin")!)
-        request.httpMethod = "POST"
-        request.httpBody = bodyData
-        request.allHTTPHeaderFields = loginHeaders()
-        let (_, response) = try await urlSession.data(for: request)
-
-        guard let http = response as? HTTPURLResponse,
-              let finalURL = http.url,
-              let comps = URLComponents(url: finalURL, resolvingAgainstBaseURL: false) else {
-            return ""
-        }
-        // State validate ← no possible anymore CSRF
-        guard comps.queryItems?.first(where: { $0.name == "state" })?.value == state else {
-                return ""
-        }
-        guard let code = comps.queryItems?.first(where: { $0.name == "code" })?.value,
-                  !code.isEmpty else {
-                return ""
-        }
-
-        return code
     }
 
     /// use refresh token to get a fresh acces token

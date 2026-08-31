@@ -95,10 +95,14 @@ open class APIClientBase {
 
     // MARK: - Internal Request Handling
 
+    /// `session` overrides the client's URLSession for this one request —
+    /// the EU CCI signin uses a redirect-blocking session so the 302's
+    /// Location (which carries the auth code) can be read instead of chased.
     func performLoggedRequest(
         _ request: URLRequest,
         requestType: HTTPRequestType,
-        vin: String? = nil
+        vin: String? = nil,
+        session: URLSession? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         let startTime = Date()
         let requestHeaders = request.allHTTPHeaderFields ?? [:]
@@ -120,7 +124,7 @@ open class APIClientBase {
         )
 
         do {
-            let (data, response) = try await urlSession.data(for: request)
+            let (data, response) = try await (session ?? urlSession).data(for: request)
             return try handleSuccessfulRequest(data: data, response: response, context: context)
         } catch let error as APIError {
             throw error

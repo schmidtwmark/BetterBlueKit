@@ -33,13 +33,6 @@ extension HyundaiEuropeAPIClient {
         ]
     }
 
-    func loginHeaders() -> [String: String] {
-        ["Content-Type": "application/json",
-         "Accept-Encoding": "gzip",
-         "User-Agent": "okhttp/3.14.9"
-        ]
-    }
-
     func commandHeaders(authToken: AuthToken, ccs2: Bool = false) -> [String: String] {
         var result = authorizedHeaders(authToken: authToken, ccs2: ccs2)
         result["Authorization"] = "Bearer \(commandToken)"

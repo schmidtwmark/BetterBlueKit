@@ -16,7 +16,10 @@ public enum SensitiveDataRedactor {
         let tokenKeys = [
             "access_token", "refresh_token", "accessToken", "refreshToken",
             "serializedAuthToken", "rememberMeToken", "Accesstoken", "Pauth",
-            "TransactionId", "Cookie", "__cf_bm", "otpKey", "otpValidationKey"
+            "TransactionId", "Cookie", "__cf_bm", "otpKey", "otpValidationKey",
+            // EU OneApp/CCI token set (login + token-refresh bodies)
+            "exchangeableAccessToken", "exchangeableRefreshToken",
+            "nonCcsToken", "nonCcsRefreshToken", "idToken", "ccsAccessToken"
         ].joined(separator: "|")
 
         let emailKeys = [
@@ -48,6 +51,12 @@ public enum SensitiveDataRedactor {
             // Bearer tokens
             (#"Bearer\s+[A-Za-z0-9._-]+"#,
              "Bearer [REDACTED]"),
+            // Form-encoded credentials — the EU IDPConnect signin POSTs
+            // application/x-www-form-urlencoded, which the JSON rules
+            // never match. Case-sensitive, so `encryptedPassword=true`
+            // (a flag, not a secret) is left alone.
+            (#"(?:^|(?<=&))(password|username)=[^&]*"#,
+             "$1=[REDACTED]"),
             // Token/secret fields (handles escaped quotes)
             (#""(\#(tokenKeys))"\s*:\s*"(?:[^"\\]|\\.)*""#,
              "\"$1\":\"[REDACTED]\""),
