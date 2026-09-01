@@ -21,7 +21,6 @@ extension HyundaiCanadaAPIClient {
     // MARK: - APIClientProtocol
 
     public func requestSurroundViewCapture(for vehicle: Vehicle, authToken: AuthToken) async throws {
-        _ = try await ensureCloudFlareCookie()
         let authCode = try await fetchCommandAuthCode(authToken: authToken)
 
         _ = try await performSurroundViewRequest(
@@ -37,7 +36,6 @@ extension HyundaiCanadaAPIClient {
         for vehicle: Vehicle,
         authToken: AuthToken
     ) async throws -> [SurroundViewCapture] {
-        _ = try await ensureCloudFlareCookie()
         let authCode = try await fetchCommandAuthCode(authToken: authToken)
 
         let data = try await performSurroundViewRequest(
@@ -53,25 +51,11 @@ extension HyundaiCanadaAPIClient {
 
     // MARK: - Request
 
-    /// Sends one SVM call with the native-app identity, falling back
-    /// once to this client's own login headers.
-    ///
-    /// Same rule as `fndmcr`: everything in the "find my car" family
-    /// answers `from: SPA` (`locationHeaders`) and rejects `from: CWP`
-    /// with errorCode 6459, regardless of which identity the account
-    /// logged in with (BetterBlueKit#36). Verified on a live account —
-    /// a capture request that 6459'd on the web-portal headers succeeded
-    /// first try on these.
-    ///
-    /// SVM and `fndmcr` are the same remote-function family, so if the
-    /// location sweep has already learned this account answers only to
-    /// its own login identity, lead with that instead of re-paying the
-    /// rejection on every poll of a capture.
-    ///
-    /// The response is validated inside each attempt on purpose: this
-    /// API signals refusal as HTTP 200 with `responseCode: 1` in the
-    /// body, so a fallback keyed on transport errors alone would never
-    /// fire.
+    /// SVM shares `fndmcr`'s "remote function" family: it answers the
+    /// `from: SPA` identity and rejects the browser identity with
+    /// errorCode 6459, regardless of how the account logged in.
+    /// Verified on a live account — a capture request that 6459'd on
+    /// the web-portal headers succeeded first try on these.
     private func performSurroundViewRequest(
         path: String,
         vehicle: Vehicle,
@@ -79,46 +63,17 @@ extension HyundaiCanadaAPIClient {
         authCode: String,
         requestType: HTTPRequestType
     ) async throws -> Data {
-        let native = locationHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: authCode)
-        let account = authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: authCode)
-        let ordered = locationStrategy == .findMyCarAccount ? [account, native] : [native, account]
-
-        var firstError: Error?
-        for headers in ordered {
-            do {
-                return try await sendSurroundViewRequest(
-                    path: path,
-                    vehicle: vehicle,
-                    headers: headers,
-                    requestType: requestType
-                )
-            } catch {
-                firstError = firstError ?? error
-                BBLogger.debug(.api, "HyundaiCanada: \(path) failed, trying the other identity: \(error)")
-            }
-        }
-
-        // Surface the FIRST failure: the fallback is a guess, so its
-        // error is usually less informative than the one from the
-        // identity this account actually logs in with.
-        throw firstError ?? APIError.logError("Surround view request failed", apiName: apiName)
-    }
-
-    private func sendSurroundViewRequest(
-        path: String,
-        vehicle: Vehicle,
-        headers: [String: String],
-        requestType: HTTPRequestType
-    ) async throws -> Data {
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/\(path)",
             method: .POST,
-            headers: headers,
+            headers: remoteFunctionHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: authCode),
             body: ["pin": pin],
             requestType: requestType,
             vin: vehicle.vin
         )
 
+        // Validated here because this API signals refusal as HTTP 200
+        // with `responseCode: 1` in the body.
         _ = try parseCanadaResponse(data, context: "surround view")
         return data
     }

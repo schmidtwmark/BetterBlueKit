@@ -11,55 +11,33 @@ extension HyundaiCanadaAPIClient {
 
     // MARK: - Headers
 
+    /// The one header identity this client uses — the browser-shaped
+    /// set from hyundai_kia_connect_api's `KiaUvoApiCA.API_HEADERS`,
+    /// plus the stable per-account `deviceid` (the backend recognizes
+    /// the install by it and skips the OTP challenge — BetterBlue#95).
+    /// Cookies are NOT set manually: URLSession's shared cookie storage
+    /// carries whatever Cloudflare mints, like `requests.Session` does
+    /// for the Python reference.
     func headers() -> [String: String] {
-        // `from` + User-Agent depend on the selected connection variant
-        // (web-portal vs native app) — see `HyundaiCanadaVariant`.
         [
             "client_id": clientId,
             "client_secret": clientSecret,
-            "Host": apiHost,
             "deviceid": deviceId,
-            "from": fromHeader,
+            "from": "CWP",
             "language": "0",
             "offset": timezoneOffsetHeader,
-            "User-Agent": userAgent,
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "origin": "https://\(apiHost)",
-            "referer": "https://\(apiHost)/login"
+            "User-Agent": Self.userAgent,
+            "Content-Type": "application/json;charset=UTF-8",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-CA,en-US;q=0.8,en;q=0.5,fr;q=0.3",
+            "Origin": "https://\(apiHost)",
+            "Referer": "https://\(apiHost)/login",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "Pragma": "no-cache",
+            "Cache-Control": "no-cache"
         ]
-    }
-
-    /// Native-app-style headers for the `evc/fme` vehicle-location
-    /// endpoint used by the web-portal variant. That endpoint requires
-    /// the native-app identity (`from: SPA`, `brand: H`, MyHyundai iOS
-    /// User-Agent, lowercase header keys) even when login used the
-    /// web-portal client — a CA owner verified this in BetterBlueKit#36.
-    func locationHeaders(
-        authToken: AuthToken,
-        vehicleId: String,
-        pAuth: String
-    ) -> [String: String] {
-        var result: [String: String] = [
-            "client_id": clientId,
-            "client_secret": clientSecret,
-            "host": apiHost,
-            "deviceid": deviceId,
-            "from": "SPA",
-            "brand": "H",
-            "language": "0",
-            "offset": timezoneOffsetHeader,
-            "user-agent": Self.nativeUserAgent,
-            "content-type": "application/json",
-            "accept": "application/json",
-            "accesstoken": authToken.accessToken,
-            "vehicleid": vehicleId,
-            "pauth": pAuth
-        ]
-        if let cookie = cloudFlareCookie {
-            result["cookie"] = cookie
-        }
-        return result
     }
 
     func authorizedHeaders(
@@ -76,36 +54,24 @@ extension HyundaiCanadaAPIClient {
         if let pAuth {
             result["Pauth"] = pAuth
         }
-        if let cookie = cloudFlareCookie {
-            result["Cookie"] = cookie
-        }
 
         return result
     }
 
-    // MARK: - Cloudflare Cookie
-
-    func fetchCloudFlareCookie() async throws -> String {
-        let (data, response) = try await performRequest(
-            url: "https://\(apiHost)/login",
-            method: .GET,
-            headers: headers(),
-            requestType: .login
-        )
-
-        _ = data
-
-        let responseHeaders = extractResponseHeaders(from: response)
-        let cookies = HTTPCookie.cookies(
-            withResponseHeaderFields: responseHeaders,
-            for: URL(string: "https://\(apiHost)/login")!
-        )
-
-        guard let cookie = cookies.first(where: { $0.name.lowercased() == "__cf_bm" }) else {
-            throw APIError.logError("CloudFlare cookie missing from login response", apiName: apiName)
-        }
-
-        return "__cf_bm=\(cookie.value)"
+    /// Headers for the "remote function" family (`fndmcr`, the SVM
+    /// endpoints): the standard set with `from: SPA` and the `/remote/`
+    /// referer, exactly as the Python reference's `get_location` does.
+    /// These endpoints reject the browser identity with errorCode 6459
+    /// regardless of how the account logged in.
+    func remoteFunctionHeaders(
+        authToken: AuthToken,
+        vehicleId: String,
+        pAuth: String
+    ) -> [String: String] {
+        var result = authorizedHeaders(authToken: authToken, vehicleId: vehicleId, pAuth: pAuth)
+        result["from"] = "SPA"
+        result["Referer"] = "https://\(apiHost)/remote/"
+        return result
     }
 
     // MARK: - Shared Response Parser

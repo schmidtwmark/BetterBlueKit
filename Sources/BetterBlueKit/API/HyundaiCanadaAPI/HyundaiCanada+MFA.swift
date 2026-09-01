@@ -53,16 +53,13 @@ extension HyundaiCanadaAPIClient {
     /// account has on file, stashes the userInfoUuid + email for later
     /// `sendotp` / `genmfatkn` calls, then throws `requiresMFA` so the
     /// existing iOS MFA UI can pick up the challenge.
-    func beginMFAFlow(cookie: String) async throws {
+    func beginMFAFlow() async throws {
         BBLogger.info(.mfa, "HyundaiCanada: OTP required (errorCode 7110), starting MFA flow")
-
-        var loginMfaHeaders = headers()
-        loginMfaHeaders["Cookie"] = cookie
 
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/mfa/selverifmeth",
             method: .POST,
-            headers: loginMfaHeaders,
+            headers: headers(),
             body: [
                 "mfaApiCode": "0107",
                 "userAccount": username
@@ -134,15 +131,10 @@ extension HyundaiCanadaAPIClient {
             body["userPhone"] = mfaPhone ?? ""
         }
 
-        var mfaHeaders = headers()
-        if let cookie = cloudFlareCookie {
-            mfaHeaders["Cookie"] = cookie
-        }
-
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/mfa/sendotp",
             method: .POST,
-            headers: mfaHeaders,
+            headers: headers(),
             body: body,
             requestType: .sendMFA
         )
@@ -200,7 +192,7 @@ extension HyundaiCanadaAPIClient {
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/mfa/validateotp",
             method: .POST,
-            headers: mfaHeaders(),
+            headers: headers(),
             body: [
                 "otpNo": code,
                 "userAccount": username,
@@ -246,7 +238,7 @@ extension HyundaiCanadaAPIClient {
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/mfa/genmfatkn",
             method: .POST,
-            headers: mfaHeaders(),
+            headers: headers(),
             body: [
                 "userAccount": username,
                 "otpEmail": otpEmail,
@@ -271,16 +263,6 @@ extension HyundaiCanadaAPIClient {
             refreshToken: refreshToken,
             expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn))
         )
-    }
-
-    /// Default header set for any MFA endpoint — mirrors the standard
-    /// `headers()` helper plus the cached cookie when we have one.
-    private func mfaHeaders() -> [String: String] {
-        var result = headers()
-        if let cookie = cloudFlareCookie {
-            result["Cookie"] = cookie
-        }
-        return result
     }
 
     public func completeMFALogin(sid _: String, rmToken _: String) async throws -> AuthToken {

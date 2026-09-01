@@ -17,24 +17,18 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     let clientId = "HATAHSPACA0232141ED9722C67715A0B"
     let clientSecret = "CLISCR01AHSPA"
 
-    // Hyundai Canada sits behind Cloudflare and its behavior varies by
-    // user/IP, so the header identity is user-selectable (see
-    // `HyundaiCanadaVariant`). The `/login` GET that mints the `__cf_bm`
-    // cookie only returns it to a client Cloudflare trusts; for most
-    // users that's a browser-like client (`webPortal`), but some users
-    // only connect as the native MyHyundai app (`nativeApp`). The picker
-    // lets each user choose. (GitHub #67, #79, #35.)
-    static let webUserAgent =
+    // One identity, matching hyundai_kia_connect_api's KiaUvoApiCA: a
+    // browser-shaped client (`from: CWP`, Chrome UA) for everything except
+    // the "remote function" family (`fndmcr`, SVM), which requires
+    // `from: SPA` (`from: CWP` there draws errorCode 6459). The
+    // web-portal/native-app variant picker and the manual `__cf_bm`
+    // cookie dance this client used to carry are gone — URLSession's
+    // shared cookie storage already accumulates whatever Cloudflare sets,
+    // the same way `requests.Session` does for the Python reference,
+    // and hard-requiring the cookie was itself a failure mode (#35).
+    static let userAgent =
         "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
         + "(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
-    static let nativeUserAgent = "MyHyundai/2.0.25 (iPhone; iOS 18.3; Scale/3.00)"
-
-    /// The selected connection variant for this account.
-    var variant: HyundaiCanadaVariant { configuration.hyundaiCanadaVariant }
-    /// User-Agent for the selected variant.
-    var userAgent: String { variant == .nativeApp ? Self.nativeUserAgent : Self.webUserAgent }
-    /// `from` header value for the selected variant.
-    var fromHeader: String { variant == .nativeApp ? "SPA" : "CWP" }
 
     /// Stable per-account device ID. Hyundai Canada's anti-fraud
     /// challenge fires every time a "new device" logs in — using a
@@ -52,20 +46,6 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     // cleanup — the canonical Standard table now lives on
     // `Temperature` (see `Models/Measurements.swift`), and the HEX
     // encoding goes through `Temperature.encodeAirTempToHEX`.
-
-    var cloudFlareCookie: String?
-
-    // MARK: - Location Strategy State
-    //
-    // Which endpoint/header pairing this account's location works with
-    // varies (see `LocationStrategy`), so it is discovered once and
-    // reused. Per-instance, not persisted: the client is recreated on
-    // login, and re-discovering costs at most two extra calls.
-    var locationStrategy: LocationStrategy?
-    /// When the last full sweep ran, so an account where *nothing* works
-    /// backs off instead of sweeping on every status refresh.
-    var lastLocationSweep: Date?
-    static let locationSweepInterval: TimeInterval = 30 * 60
 
     // MARK: - MFA Flow State
     //
@@ -107,15 +87,10 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     public func login() async throws -> AuthToken {
         BBLogger.info(.auth, "HyundaiCanada: starting login")
 
-        let cookie = try await ensureCloudFlareCookie()
-
-        var loginHeaders = headers()
-        loginHeaders["Cookie"] = cookie
-
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/v2/login",
             method: .POST,
-            headers: loginHeaders,
+            headers: headers(),
             body: [
                 "loginId": username,
                 "password": password
@@ -130,15 +105,13 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
         // throws `requiresMFA` on success; control only returns here on
         // a non-7110 response, which the regular parser handles.
         if isOTPRequiredResponse(data) {
-            try await beginMFAFlow(cookie: cookie)
+            try await beginMFAFlow()
         }
 
         return try parseCanadaLoginResponse(data)
     }
 
     public func fetchVehicles(authToken: AuthToken) async throws -> [Vehicle] {
-        _ = try await ensureCloudFlareCookie()
-
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/vhcllst",
             method: .POST,
@@ -156,8 +129,6 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
         authToken: AuthToken,
         cached: Bool
     ) async throws -> VehicleStatus {
-        _ = try await ensureCloudFlareCookie()
-
         let statusEndpoint = cached ? "sltvhcl" : "rltmvhclsts"
         let (primaryData, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/\(statusEndpoint)",
@@ -236,8 +207,6 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     }
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
-        _ = try await ensureCloudFlareCookie()
-
         let authCode = try await fetchCommandAuthCode(authToken: authToken)
 
         try await sendCommandRequest(
@@ -320,15 +289,5 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
         )
 
         try validateCommandResponse(data, context: "command")
-    }
-
-    func ensureCloudFlareCookie() async throws -> String {
-        if let cloudFlareCookie, !cloudFlareCookie.isEmpty {
-            return cloudFlareCookie
-        }
-
-        let cookie = try await fetchCloudFlareCookie()
-        cloudFlareCookie = cookie
-        return cookie
     }
 }
