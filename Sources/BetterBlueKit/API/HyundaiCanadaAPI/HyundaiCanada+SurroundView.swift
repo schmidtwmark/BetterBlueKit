@@ -21,7 +21,7 @@ extension HyundaiCanadaAPIClient {
     // MARK: - APIClientProtocol
 
     public func requestSurroundViewCapture(for vehicle: Vehicle, authToken: AuthToken) async throws {
-        let authCode = try await fetchCommandAuthCode(authToken: authToken)
+        let authCode = try await fetchCommandAuthCode(authToken: authToken, vehicle: vehicle)
 
         _ = try await performSurroundViewRequest(
             path: "rfc/fndmcrsvm",
@@ -36,7 +36,7 @@ extension HyundaiCanadaAPIClient {
         for vehicle: Vehicle,
         authToken: AuthToken
     ) async throws -> [SurroundViewCapture] {
-        let authCode = try await fetchCommandAuthCode(authToken: authToken)
+        let authCode = try await fetchCommandAuthCode(authToken: authToken, vehicle: vehicle)
 
         let data = try await performSurroundViewRequest(
             path: "rfc/lastmcrsvm",

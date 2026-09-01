@@ -109,4 +109,38 @@ extension APIClientBase {
         logHTTPRequest(createErrorLogData(context: context, error: error.localizedDescription))
         return APIError(message: "Network error: \(error.localizedDescription)", apiName: apiName)
     }
+
+    /// EU CCSP `resCode 4002` recovery: the server invalidates device
+    /// ids routinely (e.g. whenever push delivery fails), and the only
+    /// fix is registering a fresh one. Runs `operation`, and on an
+    /// invalid-device-session error re-registers the device and retries
+    /// once — porting upstream's `@_retry_on_device_id_error`.
+    func withDeviceIdRecovery<T>(_ operation: () async throws -> T) async throws -> T {
+        do {
+            return try await operation()
+        } catch let error as APIError where error.errorType == .invalidVehicleSession {
+            BBLogger.info(.api, "\(apiName): invalid device id — re-registering and retrying once")
+            _ = try await registerDevice()
+            return try await operation()
+        }
+    }
+
+    /// Fresh 64-char random hex push handle for device registration,
+    /// matching upstream's `pushRegId`.
+    nonisolated static func randomPushRegId() -> String {
+        (0..<32).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined()
+    }
+
+    /// `ccuCCS2ProtocolSupport` from the EU vehicle list: any non-zero
+    /// value means CCS2 (upstream tests `!= 0`; the field has been seen
+    /// above 1, and a plain ==1 check misroutes those cars onto the
+    /// legacy endpoints).
+    nonisolated static func parseCCS2Flag(_ raw: Any?) -> Bool {
+        switch raw {
+        case let value as Bool: value
+        case let value as Int: value != 0
+        case let value as String: (Int(value) ?? 0) != 0 || value.lowercased() == "true"
+        default: false
+        }
+    }
 }

@@ -2,23 +2,29 @@
 //  HyundaiCanada+Commands.swift
 //  BetterBlueKit
 //
-//  Hyundai Canada command helpers
+//  Hyundai Canada command helpers. Paths and payloads port
+//  hyundai_kia_connect_api's KiaUvoApiCA: EVs use the `evc/*` family,
+//  everything else (gas, PHEV) uses `rmtstrt`/`rmtstp` with the
+//  `setting`-wrapped payload.
 //
 
 import Foundation
 
 extension HyundaiCanadaAPIClient {
 
-    func commandPath(for command: VehicleCommand) -> String {
+    func commandPath(for command: VehicleCommand, vehicle: Vehicle) -> String {
+        // Upstream branches strictly on ENGINE_TYPES.EV — PHEVs take the
+        // ICE climate path too.
+        let isEV = vehicle.fuelType == .electric
         switch command {
         case .lock:
             return "drlck"
         case .unlock:
             return "drulck"
         case .startClimate:
-            return "evc/rfon"
+            return isEV ? "evc/rfon" : "rmtstrt"
         case .stopClimate:
-            return "evc/rfoff"
+            return isEV ? "evc/rfoff" : "rmtstp"
         case .startCharge:
             return "evc/rcstrt"
         case .stopCharge:
@@ -30,31 +36,17 @@ extension HyundaiCanadaAPIClient {
 
     func makeCommandBody(
         command: VehicleCommand,
+        vehicle: Vehicle,
         useRemoteControl: Bool
     ) -> [String: Any] {
         switch command {
         case .startClimate(let options):
-            var hvacInfo: [String: Any] = [
-                "airCtrl": options.climate ? 1 : 0,
-                "defrost": options.defrost,
-                "airTemp": [
-                    "value": climateTemperatureValue(for: options),
-                    "unit": 0,
-                    "hvacTempType": 1
-                ],
-                "igniOnDuration": options.duration,
-                "heating1": options.heatValue
-            ]
-
-            let seatConfig = makeSeatClimateConfig(options: options)
-            if !seatConfig.isEmpty {
-                hvacInfo["seatHeaterVentCMD"] = seatConfig
+            if vehicle.fuelType == .electric {
+                return makeEVClimateBody(
+                    options: options, vehicle: vehicle, useRemoteControl: useRemoteControl
+                )
             }
-
-            return [
-                "pin": pin,
-                useRemoteControl ? "remoteControl" : "hvacInfo": hvacInfo
-            ]
+            return makeICEClimateBody(options: options, vehicle: vehicle)
 
         case .stopClimate, .startCharge, .stopCharge, .lock, .unlock:
             return ["pin": pin]
@@ -70,30 +62,76 @@ extension HyundaiCanadaAPIClient {
         }
     }
 
+    private func makeEVClimateBody(
+        options: ClimateOptions,
+        vehicle: Vehicle,
+        useRemoteControl: Bool
+    ) -> [String: Any] {
+        let climateSettings: [String: Any] = [
+            "airCtrl": options.climate ? 1 : 0,
+            "defrost": options.defrost,
+            "airTemp": [
+                "value": climateTemperatureValue(for: options, vehicle: vehicle),
+                "unit": 0,
+                "hvacTempType": 1
+            ],
+            "igniOnDuration": options.duration,
+            "heating1": options.heatValue,
+            "seatHeaterVentCMD": makeSeatClimateConfig(options: options)
+        ]
+        return [
+            "pin": pin,
+            useRemoteControl ? "remoteControl" : "hvacInfo": climateSettings
+        ]
+    }
+
+    /// Non-EV climate start (`rmtstrt`): the whole configuration rides
+    /// in a `setting` wrapper with `ims: 0` and `hvacTempType: 0`,
+    /// per upstream's ICE branch.
+    private func makeICEClimateBody(options: ClimateOptions, vehicle: Vehicle) -> [String: Any] {
+        [
+            "setting": [
+                "airCtrl": options.climate ? 1 : 0,
+                "defrost": options.defrost,
+                "heating1": options.heatValue,
+                "igniOnDuration": options.duration,
+                "ims": 0,
+                "airTemp": [
+                    "value": climateTemperatureValue(for: options, vehicle: vehicle),
+                    "unit": 0,
+                    "hvacTempType": 0
+                ],
+                "seatHeaterVentCMD": makeSeatClimateConfig(options: options)
+            ],
+            "pin": pin
+        ]
+    }
+
     private func makeSeatClimateConfig(options: ClimateOptions) -> [String: Int] {
-        let seatValues: [String: Int] = [
+        // All four keys are always sent, zeros included — upstream never
+        // omits entries, and a missing key risks reading as "no change"
+        // rather than "off" on the server side.
+        [
             "drvSeatOptCmd": convertSeatSetting(options.frontLeftSeat, options.frontLeftVentilationEnabled),
             "astSeatOptCmd": convertSeatSetting(options.frontRightSeat, options.frontRightVentilationEnabled),
             "rlSeatOptCmd": convertSeatSetting(options.rearLeftSeat, options.rearLeftVentilationEnabled),
             "rrSeatOptCmd": convertSeatSetting(options.rearRightSeat, options.rearRightVentilationEnabled)
         ]
-
-        return seatValues.filter { $0.value != 0 }
     }
 
-    private func climateTemperatureValue(for options: ClimateOptions) -> String {
-        // Hyundai Canada uses the legacy HEX scheme (e.g. "10H").
-        // Snap to the standard lookup table's 0.5°C grid first, then
-        // encode. Replaces the bespoke
-        // `hvacFahrenheitValues` / `hvacCelsiusValues` / `hvacEncodedValues`
-        // triple — they were redundant with the canonical Standard
-        // table + the inverse of `parseAirTempFromHEX`.
+    private func climateTemperatureValue(for options: ClimateOptions, vehicle: Vehicle) -> String {
+        // Hyundai Canada uses the legacy HEX scheme (e.g. "10H"), with a
+        // scale that shifted at MY2020 (14.0°C base vs 16.0°C). Snap to
+        // the standard lookup table's 0.5°C grid first, then encode with
+        // the vehicle's scale.
         let tempCelsius = Temperature.hvacConvert(
             options.temperature.value,
             from: options.temperature.units,
             to: .celsius,
             table: .standard
         )
-        return Temperature.encodeAirTempToHEX(celsiusValue: tempCelsius)
+        return Temperature.encodeCanadaAirTempToHEX(
+            celsiusValue: tempCelsius, modelYear: vehicle.modelYear
+        )
     }
 }

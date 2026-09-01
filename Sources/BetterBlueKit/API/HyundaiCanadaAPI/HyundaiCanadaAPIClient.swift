@@ -47,6 +47,16 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     // `Temperature` (see `Models/Measurements.swift`), and the HEX
     // encoding goes through `Temperature.encodeAirTempToHEX`.
 
+    // MARK: - Location Gate State
+    //
+    // Per-client-instance memory for the fndmcr gate (see
+    // `injectLocationCoordinates`): the last coordinates served per VIN,
+    // the odometer at the last fetch attempt, and whether the one
+    // speculative unknown-location attempt has been spent this session.
+    var lastLocationByVin: [String: VehicleStatus.Location] = [:]
+    var lastLocationOdometerByVin: [String: Double] = [:]
+    var locationFetchAttempted: Set<String> = []
+
     // MARK: - MFA Flow State
     //
     // Hyundai Canada's MFA differs slightly from Kia USA's: the OTP key
@@ -122,92 +132,126 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
         return try parseCanadaVehiclesResponse(data)
     }
 
-    // Cached (sltvhcl) vs real-time (rltmvhclsts) status. Real-time wakes
-    // the vehicle modem; use sparingly.
+    // Cached (lstvhclsts) vs real-time (rltmvhclsts) status — upstream's
+    // endpoint pair. Real-time wakes the vehicle modem; use sparingly.
+    // Both are POSTs with no body; the vehicle rides in the header.
     public func fetchVehicleStatus(
         for vehicle: Vehicle,
         authToken: AuthToken,
         cached: Bool
     ) async throws -> VehicleStatus {
-        let statusEndpoint = cached ? "sltvhcl" : "rltmvhclsts"
+        let statusEndpoint = cached ? "lstvhclsts" : "rltmvhclsts"
         let (primaryData, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/\(statusEndpoint)",
             method: .POST,
             headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId),
-            body: ["vehicleId": vehicle.regId],
             requestType: .fetchVehicleStatus,
             vin: vehicle.vin
         )
 
-        let statusData = cached ? primaryData : try await fetchRealtimeStatusData(
-            primaryData: primaryData,
-            vehicle: vehicle,
-            authToken: authToken
-        )
-        let finalData = await injectLocationCoordinates(into: statusData, vehicle: vehicle, authToken: authToken)
+        let finalData = await injectLocationCoordinates(into: primaryData, vehicle: vehicle, authToken: authToken)
 
         do {
             return try parseCanadaVehicleStatusResponse(finalData, for: vehicle)
         } catch {
-            BBLogger.debug(.api, "HyundaiCanada: parsing final status payload failed: \(error)")
-            return try parseCanadaVehicleStatusResponse(primaryData, for: vehicle)
-        }
-    }
-
-    private func fetchRealtimeStatusData(
-        primaryData: Data,
-        vehicle: Vehicle,
-        authToken: AuthToken
-    ) async throws -> Data {
-        // Fetch cached sltvhcl payload for complete vehicle metadata
-        var finalData = primaryData
-        do {
+            BBLogger.debug(.api, "HyundaiCanada: parsing status payload failed: \(error)")
+            if cached { throw error }
+            // The forced (rltmvhclsts) payload didn't parse — fall back
+            // to the server cache rather than failing the refresh.
             let (cachedData, _, _) = try await performJSONRequest(
-                url: "\(apiBaseURL)/sltvhcl",
+                url: "\(apiBaseURL)/lstvhclsts",
                 method: .POST,
                 headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId),
-                body: ["vehicleId": vehicle.regId],
                 requestType: .fetchVehicleStatus,
                 vin: vehicle.vin
             )
-            finalData = cachedData
-        } catch {
-            BBLogger.debug(.api, "HyundaiCanada: failed fetching sltvhcl: \(error)")
+            return try parseCanadaVehicleStatusResponse(cachedData, for: vehicle)
         }
-
-        return finalData
     }
 
+    /// Injects `fndmcr` coordinates into the status payload, but only
+    /// fetches when the car has moved (odometer increased since the last
+    /// fetch) or when no location is known yet — bounded to one
+    /// speculative attempt per session. Ports upstream's location gate
+    /// (kia_uvo#1844); `fndmcr` costs a `vrfypin` + a remote-function
+    /// call against an API that rate-limits, so it must not run on
+    /// every poll. Skipped polls re-inject the last known coordinates
+    /// so the host keeps showing a location.
     private func injectLocationCoordinates(into data: Data, vehicle: Vehicle, authToken: AuthToken) async -> Data {
+        let vin = vehicle.vin
+        let freshOdometer = extractOdometerValue(from: data)
+
+        let movedSinceLastFetch: Bool = {
+            guard let freshOdometer, let lastOdo = lastLocationOdometerByVin[vin] else { return true }
+            return freshOdometer > lastOdo
+        }()
+        let cachedLocation = lastLocationByVin[vin]
+        let shouldFetch = movedSinceLastFetch
+            || (cachedLocation == nil && !locationFetchAttempted.contains(vin))
+
+        guard shouldFetch else {
+            guard let cachedLocation else { return data }
+            return injectCoordinates(cachedLocation, into: data)
+        }
+
+        // Stamp the attempt regardless of outcome so a persistently
+        // failing Find-My-Car response can't re-run on every poll.
+        locationFetchAttempted.insert(vin)
+        if let freshOdometer { lastLocationOdometerByVin[vin] = freshOdometer }
+
         do {
-            let pAuth = try await fetchCommandAuthCode(authToken: authToken)
+            let pAuth = try await fetchCommandAuthCode(authToken: authToken, vehicle: vehicle)
             let locationData = try await fetchLocationData(vehicle: vehicle, authToken: authToken, pAuth: pAuth)
             let location = try parseCanadaLocationResponse(locationData)
-
-            guard var finalJson = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                return data
+            if location.latitude != 0 || location.longitude != 0 {
+                lastLocationByVin[vin] = location
             }
-
-            let coord: [String: Any] = [
-                "lat": location.latitude,
-                "lon": location.longitude
-            ]
-            var result = finalJson["result"] as? [String: Any] ?? [:]
-            var status = result["status"] as? [String: Any]
-                ?? result["vehicleStatus"] as? [String: Any] ?? [:]
-            status["coord"] = coord
-            status["vehicleLocation"] = ["coord": coord]
-            result["status"] = status
-            finalJson["result"] = result
-            return try JSONSerialization.data(withJSONObject: finalJson)
+            return injectCoordinates(location, into: data)
         } catch {
             BBLogger.debug(.api, "HyundaiCanada: failed injecting location: \(error)")
+            guard let cachedLocation else { return data }
+            return injectCoordinates(cachedLocation, into: data)
+        }
+    }
+
+    private func injectCoordinates(_ location: VehicleStatus.Location, into data: Data) -> Data {
+        guard var finalJson = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
             return data
         }
+        let coord: [String: Any] = [
+            "lat": location.latitude,
+            "lon": location.longitude
+        ]
+        var result = finalJson["result"] as? [String: Any] ?? [:]
+        var status = result["status"] as? [String: Any]
+            ?? result["vehicleStatus"] as? [String: Any] ?? [:]
+        status["coord"] = coord
+        status["vehicleLocation"] = ["coord": coord]
+        result["status"] = status
+        finalJson["result"] = result
+        return (try? JSONSerialization.data(withJSONObject: finalJson)) ?? data
+    }
+
+    /// Best-effort odometer read straight off the raw status payload,
+    /// for the location-fetch gate.
+    private func extractOdometerValue(from data: Data) -> Double? {
+        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let result = json["result"] as? [String: Any] else {
+            return nil
+        }
+        for block in [result["vehicle"], result["status"], result["vehicleStatus"]] {
+            guard let dict = block as? [String: Any] else { continue }
+            if let value: Double = extractNumber(from: dict["odometer"]) { return value }
+            if let odo = dict["odometer"] as? [String: Any],
+               let value: Double = extractNumber(from: odo["value"]) {
+                return value
+            }
+        }
+        return nil
     }
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
-        let authCode = try await fetchCommandAuthCode(authToken: authToken)
+        let authCode = try await fetchCommandAuthCode(authToken: authToken, vehicle: vehicle)
 
         try await sendCommandRequest(
             for: vehicle,
@@ -223,13 +267,15 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
 
     // MARK: - Command Flow
 
-    func fetchCommandAuthCode(authToken: AuthToken) async throws -> String {
+    func fetchCommandAuthCode(authToken: AuthToken, vehicle: Vehicle) async throws -> String {
+        // Upstream sends the vehicleId header on `vrfypin` too.
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/vrfypin",
             method: .POST,
-            headers: authorizedHeaders(authToken: authToken),
+            headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId),
             body: ["pin": pin],
-            requestType: .sendCommand
+            requestType: .sendCommand,
+            vin: vehicle.vin
         )
 
         return try parseCommandAuthResponse(data)
@@ -241,7 +287,11 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
         authToken: AuthToken,
         authCode: String
     ) async throws {
-        if case .startClimate = command {
+        // The hvacInfo → remoteControl fallback only applies to the EV
+        // payload (upstream's EV9 / IONIQ 9 use the remoteControl
+        // wrapper); the ICE `setting` body has no wrapper choice, and
+        // retrying it would just double the command.
+        if case .startClimate = command, vehicle.fuelType == .electric {
             do {
                 try await sendCommandRequest(
                     for: vehicle,
@@ -279,11 +329,21 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
         authCode: String,
         useRemoteControl: Bool
     ) async throws {
+        // `evc/setsoc` takes the remote-function identity (`from: SPA`)
+        // like the rest of the `fndmcr`/SVM family — upstream sets it
+        // explicitly for this call.
+        let headers: [String: String]
+        if case .setTargetSOC = command {
+            headers = remoteFunctionHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: authCode)
+        } else {
+            headers = authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: authCode)
+        }
+
         let (data, _, _) = try await performJSONRequest(
-            url: "\(apiBaseURL)/\(commandPath(for: command))",
+            url: "\(apiBaseURL)/\(commandPath(for: command, vehicle: vehicle))",
             method: .POST,
-            headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: authCode),
-            body: makeCommandBody(command: command, useRemoteControl: useRemoteControl),
+            headers: headers,
+            body: makeCommandBody(command: command, vehicle: vehicle, useRemoteControl: useRemoteControl),
             requestType: .sendCommand,
             vin: vehicle.vin
         )

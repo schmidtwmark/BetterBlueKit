@@ -22,9 +22,11 @@ extension KiaEuropeAPIClient {
             )
         }
 
-        let refreshToken: String = isRefresh
-            ? (json["refresh_token"] as? String ?? configuration.refreshToken ?? "")
-            : (configuration.refreshToken ?? "")
+        // Adopt a rotated refresh_token whenever the IDP sends one
+        // (upstream does) — re-presenting the old token after a rotation
+        // would be a dead credential.
+        let refreshToken: String =
+            json["refresh_token"] as? String ?? configuration.refreshToken ?? ""
 
         return AuthToken(
             accessToken: accessToken,
@@ -50,14 +52,17 @@ extension KiaEuropeAPIClient {
             else { return nil }
 
             let fuelKindCode = vehicleData["type"] as? String ?? ""
+            // The EU endpoint reports "GN"/"EV"/"PHEV"/"HV"/"PE" (per
+            // hyundai_kia_connect_api); plain hybrids fall to .gas since
+            // the model has no HEV case.
             let fuelType: FuelType =
                 switch fuelKindCode {
                 case "E", "EV": .electric
-                case "P", "PE": .phev
+                case "P", "PE", "PHEV": .phev
                 default: .gas
                 }
             let generation = 2
-            let ccs2: Bool = getBoolFromJson(from: vehicleData, key: "ccuCCS2ProtocolSupport")
+            let ccs2 = Self.parseCCS2Flag(vehicleData["ccuCCS2ProtocolSupport"])
 
             return Vehicle(
                 vin: vin,

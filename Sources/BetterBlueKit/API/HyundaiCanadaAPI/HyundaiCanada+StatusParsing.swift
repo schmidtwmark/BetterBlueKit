@@ -129,7 +129,10 @@ extension HyundaiCanadaAPIClient {
         )
     }
 
-    func parseCanadaClimateStatus(from statusData: [String: Any]) -> VehicleStatus.ClimateStatus {
+    func parseCanadaClimateStatus(
+        from statusData: [String: Any],
+        modelYear: Int?
+    ) -> VehicleStatus.ClimateStatus {
         let airTemp = statusData["airTemp"] as? [String: Any] ?? [:]
 
         return VehicleStatus.ClimateStatus(
@@ -138,7 +141,8 @@ extension HyundaiCanadaAPIClient {
             steeringWheelHeatingOn: (extractNumber(from: statusData["steerWheelHeat"]) ?? 0) != 0,
             temperature: parseCanadaAirTemp(
                 airTempBlock: airTemp,
-                airTempUnitTopLevel: statusData["airTempUnit"] as? String
+                airTempUnitTopLevel: statusData["airTempUnit"] as? String,
+                modelYear: modelYear
             )
         )
     }
@@ -147,11 +151,9 @@ extension HyundaiCanadaAPIClient {
     ///
     /// Unlike the US API (which returns `"72"` / `"70"` style numeric strings),
     /// the Canadian endpoint returns a hex-encoded code, e.g. `"00H"`, `"0EH"`,
-    /// `"32H"`. The hex byte indexes into a half-degree scale starting at 14°C
-    /// (matches the ladder used by the in-car HVAC UI and matches the
-    /// `hyundai_kia_connect_api` / bluelinky decoders):
-    ///
-    ///     celsius = (hex_value * 0.5) + 14
+    /// `"23H"`. The hex byte indexes into a half-degree scale whose base
+    /// depends on the model year — 14°C for MY2020+, 16°C for older —
+    /// matching the `hyundai_kia_connect_api` decoder's table split.
     ///
     /// Missing or unparseable values fall through to the legacy
     /// `Temperature(units:value:)` initializer so downstream display code
@@ -159,7 +161,8 @@ extension HyundaiCanadaAPIClient {
     /// will likely reject).
     private func parseCanadaAirTemp(
         airTempBlock: [String: Any],
-        airTempUnitTopLevel: String?
+        airTempUnitTopLevel: String?,
+        modelYear: Int?
     ) -> Temperature {
         let rawValue = stringify(airTempBlock["value"])
         let unitField: Int? = extractNumber(from: airTempBlock["unit"])
@@ -192,7 +195,7 @@ extension HyundaiCanadaAPIClient {
            raw.count >= 2,
            raw.uppercased().hasSuffix("H"),
            let hex = UInt8(raw.dropLast(), radix: 16) {
-            let celsius = (Double(hex) * 0.5) + 14.0
+            let celsius = Temperature.decodeCanadaAirTempHEX(index: Int(hex), modelYear: modelYear)
             let value = units == .fahrenheit ? celsius * 9.0 / 5.0 + 32.0 : celsius
             return Temperature(value: value, units: units)
         }

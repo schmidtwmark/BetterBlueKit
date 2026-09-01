@@ -23,7 +23,29 @@ extension KiaEuropeAPIClient {
                 ? ("ccs2/control/door", ["command": "open"])
                 : ("control/door", ["action": "open", "deviceId": deviceId])
         case .startClimate(let options):
-            return ("ccs2/control/temperature", startClimateBody(options: options, drvSeatLoc: drvSeatLoc))
+            // Legacy (non-CCS2) Kia EU cars take the v1 `control/temperature`
+            // action shape — this used to send the CCS2 body to a `ccs2/`
+            // path on the v1 URL regardless of protocol.
+            let tempCelsius = Temperature.hvacConvert(
+                options.temperature.value,
+                from: options.temperature.units,
+                to: .celsius,
+                table: .european
+            )
+            if ccs2 {
+                return ("ccs2/control/temperature", startClimateBody(options: options, drvSeatLoc: drvSeatLoc))
+            }
+            return ("control/temperature", [
+                "action": "start",
+                "hvacType": 0,
+                "options": [
+                    "defrost": options.defrost,
+                    "heating1": options.heatValue,
+                    "igniOnDuration": options.duration
+                ],
+                "tempCode": Temperature.encodeAirTempToHEX(celsiusValue: tempCelsius),
+                "unit": "C"
+            ])
         case .stopClimate:
             return ccs2
                 ? ("ccs2/control/temperature", ["command": "stop"])

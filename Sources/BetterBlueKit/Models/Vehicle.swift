@@ -15,13 +15,20 @@ public struct Vehicle: Codable, Identifiable, Equatable, Sendable {
     public var accountId: UUID, fuelType: FuelType
     public var generation: Int, odometer: Distance, vehicleKey: String?
     public var marketOptions: VehicleMarketOptions?
+    /// Model year, where the API reports one (Hyundai Canada's `vhcllst`
+    /// does). Canada's HVAC temperature scale changed with MY2020, so
+    /// the climate codec needs it; nil means unknown and decodes with
+    /// the pre-2020 scale, matching hyundai_kia_connect_api's default.
+    public var modelYear: Int?
 
     public init(vin: String, regId: String, model: String, accountId: UUID,
                 fuelType: FuelType, generation: Int, odometer: Distance,
-                vehicleKey: String? = nil, marketOptions: VehicleMarketOptions = .generic) {
+                vehicleKey: String? = nil, marketOptions: VehicleMarketOptions = .generic,
+                modelYear: Int? = nil) {
         (self.vin, self.regId, self.model, self.accountId) = (vin, regId, model, accountId)
         (self.fuelType, self.generation, self.odometer, self.vehicleKey) =
             (fuelType, generation, odometer, vehicleKey)
         self.marketOptions = marketOptions
+        self.modelYear = modelYear
     }
 }

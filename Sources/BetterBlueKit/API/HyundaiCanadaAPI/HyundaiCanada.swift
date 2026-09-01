@@ -97,8 +97,21 @@ extension HyundaiCanadaAPIClient {
 
         let error = json["error"] as? [String: Any]
         let errorDesc = (error?["errorDesc"] as? String) ?? "Unknown Canada API error: \(json)"
-        let lower = errorDesc.lowercased()
 
+        // Classify by errorCode first — upstream's documented map. The
+        // description text is localized (this API serves French too), so
+        // substring matching on it is a fallback, not the mechanism.
+        //   7402 account locked, 7403 auth expired, 7404 bad credentials,
+        //   7549 OTP verification failed, 7602 access token deleted,
+        //   7606 token bound to a changed IP.
+        let credentialCodes: Set<String> = ["7402", "7403", "7404", "7549", "7602", "7606"]
+        let errorCode = (error?["errorCode"] as? String)
+            ?? extractNumber(from: error?["errorCode"]).map { (code: Int) in String(code) }
+        if let errorCode, credentialCodes.contains(errorCode) {
+            throw APIError.invalidCredentials(errorDesc, apiName: apiName)
+        }
+
+        let lower = errorDesc.lowercased()
         if lower.contains("expired") || lower.contains("deleted") || lower.contains("ip validation") {
             throw APIError.invalidCredentials(errorDesc, apiName: apiName)
         }
@@ -120,7 +133,9 @@ extension HyundaiCanadaAPIClient {
     }
 
     var timezoneOffsetHeader: String {
+        // Unpadded signed hours ("-5", not "-05") — the form upstream
+        // sends and the only one the server is proven to take.
         let hours = TimeZone.current.secondsFromGMT() / 3600
-        return String(format: "%+03d", hours)
+        return String(format: "%+d", hours)
     }
 }

@@ -62,6 +62,11 @@ extension HyundaiCanadaAPIClient {
 
             let fuelType = detectFuelType(from: vehicleData)
 
+            // The HVAC HEX scale changed at MY2020, so the climate
+            // codec needs the model year (nil → pre-2020 scale, matching
+            // upstream's default).
+            let modelYear: Int? = extractNumber(from: vehicleData["modelYear"])
+
             return Vehicle(
                 vin: vin,
                 regId: regId,
@@ -69,7 +74,8 @@ extension HyundaiCanadaAPIClient {
                 accountId: accountId,
                 fuelType: fuelType,
                 generation: generation,
-                odometer: Distance(length: odometerValue, units: .kilometers)
+                odometer: Distance(length: odometerValue, units: .kilometers),
+                modelYear: modelYear
             )
         }
     }
@@ -114,7 +120,7 @@ extension HyundaiCanadaAPIClient {
             evStatus: parseCanadaEVStatus(from: statusData, vehicle: vehicle),
             location: parseCanadaLocation(from: statusData),
             lockStatus: VehicleStatus.LockStatus(locked: statusData["doorLock"] as? Bool),
-            climateStatus: parseCanadaClimateStatus(from: statusData),
+            climateStatus: parseCanadaClimateStatus(from: statusData, modelYear: vehicle.modelYear),
             odometer: odometer,
             syncDate: parseCanadaSyncDate(from: statusData),
             battery12V: parseCanadaBattery12V(from: statusData),

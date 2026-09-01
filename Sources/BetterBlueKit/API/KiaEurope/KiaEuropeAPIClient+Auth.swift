@@ -20,11 +20,11 @@ extension KiaEuropeAPIClient {
     // still work against it.
 
     /// Refresh-grant: trade stored refresh_token for a fresh access_token.
+    /// No `redirect_uri` — upstream doesn't send one on the refresh grant.
     func getAccessTokenFromRefreshToken() async throws -> AuthToken {
         let fields: [(String, String)] = [
             ("grant_type", "refresh_token"),
             ("refresh_token", configuration.refreshToken ?? ""),
-            ("redirect_uri", oauthRedirectURI),
             ("client_id", Self.clientId),
             ("client_secret", Self.clientSecret)
         ]
