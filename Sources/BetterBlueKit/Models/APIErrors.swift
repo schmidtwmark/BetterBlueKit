@@ -18,6 +18,11 @@ public struct APIError: LocalizedError, Codable {
         case general, invalidVehicleSession, invalidCredentials
         case serverError, invalidPin, concurrentRequest, failedRetryLogin
         case requiresMFA, kiaInvalidRequest, regionNotSupported
+        /// The service refused because this vehicle lacks the hardware
+        /// or subscription for the feature (e.g. surround view on a trim
+        /// without the cameras). Permanent for this vehicle — retrying
+        /// won't help, and UIs should explain rather than alarm.
+        case featureNotSupported
         /// The command was accepted, but post-command status polling didn't
         /// observe the expected change in time. NOT a command failure — the
         /// backends (especially Kia US) can take minutes to reflect a state
@@ -39,6 +44,7 @@ public struct APIError: LocalizedError, Codable {
             case .requiresMFA: "Verification Required"
             case .kiaInvalidRequest: "Request Rejected"
             case .regionNotSupported: "Region Not Supported"
+            case .featureNotSupported: "Not Supported by Vehicle"
             case .statusVerificationTimeout: "Awaiting Confirmation"
             }
         }
@@ -167,6 +173,13 @@ public struct APIError: LocalizedError, Codable {
         apiName: String? = nil,
     ) -> APIError {
         logError(message, code: 502, apiName: apiName, errorType: .kiaInvalidRequest)
+    }
+
+    public static func featureNotSupported(
+        _ message: String = "This vehicle does not support this feature",
+        apiName: String? = nil,
+    ) -> APIError {
+        logError(message, code: 502, apiName: apiName, errorType: .featureNotSupported)
     }
 
     public static func regionNotSupported(

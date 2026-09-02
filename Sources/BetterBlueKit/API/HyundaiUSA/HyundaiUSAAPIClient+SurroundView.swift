@@ -60,23 +60,46 @@ extension HyundaiUSAAPIClient {
                     apiName: apiName
                 )
             }
-            throw error
+            throw mapUnsupportedSurroundViewError(error)
         }
+    }
+
+    /// Remaps the BLODS refusal for vehicles without the feature —
+    /// HTTP 502 with "Your vehicle does not support this feature."
+    /// (errorSubMessage "Feature Status is OFF") — into a typed
+    /// `.featureNotSupported` error. Hyundai USA offers no per-vehicle
+    /// capability flag up front, so this refusal is the only way to learn
+    /// a vehicle lacks the cameras; the UI uses the type to explain that
+    /// instead of showing a generic server error (BetterBlue#105).
+    package func mapUnsupportedSurroundViewError(_ error: APIError) -> APIError {
+        guard error.message.contains("does not support this feature") else {
+            return error
+        }
+        return APIError.featureNotSupported(
+            "Your vehicle doesn't support surround view — it doesn't have the surround-view camera system.",
+            apiName: apiName
+        )
     }
 
     public func fetchSurroundViewCaptures(
         for vehicle: Vehicle,
         authToken: AuthToken
     ) async throws -> [SurroundViewCapture] {
-        let (data, _, _) = try await performJSONRequest(
-            url: "\(baseURL)/ac/v2/svm/getSVMDetails",
-            method: .GET,
-            headers: authorizedHeaders(authToken: authToken, vehicle: vehicle),
-            requestType: .fetchSurroundView,
-            vin: vehicle.vin
-        )
+        do {
+            let (data, _, _) = try await performJSONRequest(
+                url: "\(baseURL)/ac/v2/svm/getSVMDetails",
+                method: .GET,
+                headers: authorizedHeaders(authToken: authToken, vehicle: vehicle),
+                requestType: .fetchSurroundView,
+                vin: vehicle.vin
+            )
 
-        return try parseUSASurroundViewResponse(data, for: vehicle)
+            return try parseUSASurroundViewResponse(data, for: vehicle)
+        } catch let error as APIError where error.errorType == .serverError {
+            // The gallery endpoint refuses camera-less vehicles the same
+            // way the trigger does; give it the same typed remap.
+            throw mapUnsupportedSurroundViewError(error)
+        }
     }
 
     // MARK: - Parsing

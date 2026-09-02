@@ -192,4 +192,21 @@ struct HyundaiUSASurroundViewTests {
     @MainActor func testCapabilityDeclared() {
         #expect(makeClient().supportsSurroundView())
     }
+
+    /// The BLODS refusal for camera-less vehicles (BetterBlue#105):
+    /// `validateHTTPResponse` folds the 502 body into a `.serverError`,
+    /// and the client remaps that to `.featureNotSupported` so the UI can
+    /// explain the missing hardware instead of showing a generic error.
+    @Test("The 'does not support' 502 remaps to featureNotSupported")
+    @MainActor func testUnsupportedRemap() {
+        let refusal = APIError.serverError(
+            #"Server error (502): {"errorCode":502,"errorMessage":"Your vehicle does not support this feature.","errorSubCode":"GEN","errorSubMessage":"Feature Status is OFF"}"#,
+            apiName: "HyundaiUSA"
+        )
+        #expect(makeClient().mapUnsupportedSurroundViewError(refusal).errorType == .featureNotSupported)
+
+        // Any other 502 passes through untouched.
+        let other = APIError.serverError("Server error (502): upstream broke", apiName: "HyundaiUSA")
+        #expect(makeClient().mapUnsupportedSurroundViewError(other).errorType == .serverError)
+    }
 }
