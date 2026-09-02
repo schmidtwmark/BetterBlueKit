@@ -196,7 +196,13 @@ open class APIClientBase {
     func logHTTPRequest(_ logData: HTTPRequestLogData) {
         let duration = Date().timeIntervalSince(logData.startTime)
         let method = logData.request.httpMethod ?? "GET"
-        let url = logData.request.url?.absoluteString ?? "Unknown URL"
+        let rawURL = logData.request.url?.absoluteString ?? "Unknown URL"
+        // Request URLs can carry credentials too (e.g. the EU CCI token
+        // exchange's `?code=…`), so they go through the same redaction as
+        // bodies.
+        let url = configuration.redactPII
+            ? (SensitiveDataRedactor.redact(rawURL) ?? rawURL)
+            : rawURL
         let stackTrace = captureStackTrace()
 
         // Apply redaction unless disabled

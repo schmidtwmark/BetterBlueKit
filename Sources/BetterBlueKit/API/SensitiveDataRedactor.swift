@@ -57,6 +57,10 @@ public enum SensitiveDataRedactor {
             // (a flag, not a secret) is left alone.
             (#"(?:^|(?<=&))(password|username)=[^&]*"#,
              "$1=[REDACTED]"),
+            // OAuth authorization codes riding in a URL query (the EU CCI
+            // token exchange puts the signin code in `?code=…`).
+            (#"(?<=[?&])code=[^&\s"']+"#,
+             "code=[REDACTED]"),
             // Token/secret fields (handles escaped quotes)
             (#""(\#(tokenKeys))"\s*:\s*"(?:[^"\\]|\\.)*""#,
              "\"$1\":\"[REDACTED]\""),
@@ -207,7 +211,10 @@ public enum SensitiveDataRedactor {
         let sensitiveKeys: Set<String> = [
             "cookie", "set-cookie", "__cf_bm", "transactionid",
             "password", "pin", "bluelinkservicepin",
-            "clientsecret", "client_secret", "secretkey"
+            "clientsecret", "client_secret", "secretkey",
+            // The EU CCI signin answers with a 302 whose Location query
+            // carries the live OAuth authorization code.
+            "location"
         ]
 
         var redactedHeaders = headers

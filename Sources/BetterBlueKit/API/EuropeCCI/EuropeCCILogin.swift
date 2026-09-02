@@ -365,8 +365,14 @@ extension APIClientBase {
             )
         }
         var exchangeable = json["exchangeableAccessToken"] as? String ?? set.exchangeableAccessToken
+        // HTTPURLResponse coalesces multiple Set-Cookie headers into one
+        // comma-joined string, so anchor on a `t=` at an entry boundary and
+        // only accept a token-shaped value (≥20 chars of token alphabet).
+        // Without the shape check, a clearing cookie (`t=deleted; Expires=…`)
+        // or an unrelated cookie named `t` would overwrite — and persist —
+        // a garbage exchangeable token.
         if let setCookie = response.value(forHTTPHeaderField: "Set-Cookie"),
-           let match = setCookie.firstMatch(of: #/(?:^|[;,]\s*)t=([^;,]+)/#) {
+           let match = setCookie.firstMatch(of: #/(?:^|[;,]\s*)t=([A-Za-z0-9._~%+/=-]{20,})/#) {
             exchangeable = String(match.1)
         }
         return CCITokenSet(

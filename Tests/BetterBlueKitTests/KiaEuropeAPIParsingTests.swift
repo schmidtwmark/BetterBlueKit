@@ -260,19 +260,19 @@ struct KiaEuropeAPIClientTests {
 @Suite("Kia Europe Parsing — Auth Token")
 struct KiaEuropeAuthTokenParsingTests {
 
-    @Test("Fresh token response (isRefresh=true) extracts both access and refresh tokens")
+    @Test("Token response with a rotated refresh_token adopts both tokens")
     @MainActor func testParseFreshToken() throws {
         let client = makeClient()
         let data = Data(KiaEuropeSampleJSON.tokenResponse.utf8)
 
-        let token = try client.parseAuthToken(from: data, isRefresh: true)
+        let token = try client.parseLegacyAuthToken(from: data)
 
         #expect(token.accessToken == "fake-access-token-abc123")
         #expect(token.refreshToken == "FAKEREFRESHTOKEN0000000000000000000000000000ABCD")
         #expect(token.expiresAt > Date())
     }
 
-    @Test("Refresh-grant response (isRefresh=false) preserves stored refresh token")
+    @Test("Refresh-grant response without refresh_token preserves the stored one")
     @MainActor func testParseRefreshGrantPreservesStoredRefreshToken() throws {
         let client = makeClient(refreshToken: "ORIGINAL_REFRESH_TOKEN")
         // A refresh-grant response often omits refresh_token; we should fall back.
@@ -281,7 +281,7 @@ struct KiaEuropeAuthTokenParsingTests {
         """
         let data = Data(json.utf8)
 
-        let token = try client.parseAuthToken(from: data, isRefresh: false)
+        let token = try client.parseLegacyAuthToken(from: data)
 
         #expect(token.accessToken == "new-access")
         #expect(token.refreshToken == "ORIGINAL_REFRESH_TOKEN")
@@ -293,7 +293,7 @@ struct KiaEuropeAuthTokenParsingTests {
         let data = Data("{ \"expires_in\": 1 }".utf8)
 
         #expect(throws: APIError.self) {
-            _ = try client.parseAuthToken(from: data, isRefresh: true)
+            _ = try client.parseLegacyAuthToken(from: data)
         }
     }
 }

@@ -1,33 +1,36 @@
 //
-//  HyundaiEuropeAPIClient+Commands.swift
+//  EuropeCCSPClient+Commands.swift
 //  BetterBlueKit
 //
-//  Command helpers for Hyundai Europe API
+//  Command paths and payloads shared by the Hyundai and Kia EU clients.
+//  Both brands ride ApiImplType1 upstream, so the endpoint and body shapes
+//  are identical — CCS2 cars use flat `ccs2/…` command bodies, legacy cars
+//  use the v1 action/hvacType shapes.
 //
 
 import Foundation
 
-// MARK: - Command Helpers
+extension EuropeCCSPClient {
 
-extension HyundaiEuropeAPIClient {
-
-    func commandPathAndBody(for command: VehicleCommand, ccs2: Bool = true, drvSeatLoc: String = "L")
-    -> (String, [String: Any]) {
+    func commandPathAndBody(
+        for command: VehicleCommand,
+        ccs2: Bool = true,
+        drvSeatLoc: String = "L"
+    ) -> (String, [String: Any]) {
         let deviceId = configuration.deviceId ?? ""
         switch command {
         case .lock:
-            return ccs2 ? ("ccs2/control/door", ["command": "close"])
-            : ("control/door", ["action": "close", "deviceId": deviceId])
+            return ccs2
+                ? ("ccs2/control/door", ["command": "close"])
+                : ("control/door", ["action": "close", "deviceId": deviceId])
         case .unlock:
-            return ccs2 ? ("ccs2/control/door", ["command": "open"])
-            : ("control/door", ["action": "open", "deviceId": deviceId])
+            return ccs2
+                ? ("ccs2/control/door", ["command": "open"])
+                : ("control/door", ["action": "open", "deviceId": deviceId])
         case .startClimate(let options):
-            // EU vehicles share ApiImplType1.start_climate across
-            // both brands — CCS2 uses a flat body (same as Kia EU);
-            // legacy uses an action/hvacType body with a HEX temp
-            // code. We previously sent a hand-rolled `hvacInfo`
-            // body that matched neither, so Hyundai EU climate
-            // silently failed.
+            // Kia/Hyundai EU only accept temperatures on the 0.5°C grid
+            // (15.0–30.0). Sending 22.22 (linear F→C of 72°F) silently
+            // no-ops on the car — `hvacConvert` snaps to the EU lookup table.
             let tempCelsius = Temperature.hvacConvert(
                 options.temperature.value,
                 from: options.temperature.units,
@@ -40,6 +43,8 @@ extension HyundaiEuropeAPIClient {
                     startClimateCCS2Body(options: options, tempCelsius: tempCelsius, drvSeatLoc: drvSeatLoc)
                 )
             }
+            // Legacy (non-CCS2) cars take the v1 `control/temperature`
+            // action shape with a HEX temp code.
             return ("control/temperature", [
                 "action": "start",
                 "hvacType": 0,
@@ -52,27 +57,26 @@ extension HyundaiEuropeAPIClient {
                 "unit": "C"
             ])
         case .stopClimate:
-            return ccs2 ? ("ccs2/control/temperature", ["command": "stop"]) :
-            ("control/temperature", [
-                "action": "stop",
-                "hvacType": 0,
-                "options": [
-                    "defrost": true,
-                    "heating1": 1
-                ],
-                "tempCode": "10H",
-                "unit": "C"
-            ])
+            return ccs2
+                ? ("ccs2/control/temperature", ["command": "stop"])
+                : ("control/temperature", [
+                    "action": "stop",
+                    "hvacType": 0,
+                    "options": ["defrost": true, "heating1": 1],
+                    "tempCode": "10H",
+                    "unit": "C"
+                ])
         case .startCharge:
-            return ccs2 ? ("ccs2/control/charge", ["command": "start"])
-            : ("control/charge", ["action": "start", "deviceId": deviceId])
+            return ccs2
+                ? ("ccs2/control/charge", ["command": "start"])
+                : ("control/charge", ["action": "start", "deviceId": deviceId])
         case .stopCharge:
-            return ccs2 ? ("ccs2/control/charge", ["command": "stop"])
-            : ("control/charge", ["action": "stop", "deviceId": deviceId])
+            return ccs2
+                ? ("ccs2/control/charge", ["command": "stop"])
+                : ("control/charge", ["action": "stop", "deviceId": deviceId])
         case .setTargetSOC(let acLevel, let dcLevel):
             // plugType 0 = DC fast charge, 1 = AC — per ApiImplType1
-            // set_charge_limits. The mapping was inverted, so users
-            // set the AC and DC limits onto the opposite plug type.
+            // set_charge_limits.
             return ("charge/target", [
                 "targetSOClist": [
                     ["targetSOClevel": dcLevel, "plugType": 0],
@@ -82,8 +86,7 @@ extension HyundaiEuropeAPIClient {
         }
     }
 
-    /// CCS2 climate-start body. Identical shape to Kia EU's — both
-    /// brands share ApiImplType1.start_climate (CCS2 branch).
+    /// CCS2 climate-start body — ApiImplType1.start_climate (CCS2 branch).
     /// `tempCelsius` is already snapped to the 0.5°C EU grid.
     private func startClimateCCS2Body(
         options: ClimateOptions,

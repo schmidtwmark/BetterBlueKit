@@ -5,24 +5,31 @@
 //  Hyundai Europe API Client
 //  Based on: https://github.com/andyfase/egmp-bluelink-scriptable
 //
+//  All the client flows (login ladder, device registration, status fetch,
+//  command routing) are shared with Kia EU via `EuropeCCSPClient` — this
+//  file carries only the brand constants and the response parsers in the
+//  sibling extension files.
+//
 
 import Foundation
 
 // MARK: - Hyundai Europe API Client
 
 @MainActor
-public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
+public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol, EuropeCCSPClient {
 
     // MARK: - Constants
 
-    static let clientId = "6d477c38-3ca4-4cf3-9557-2a1929a94654"
-    static let clientSecret = "KUy49XxPzLpLuoK0xhBC77W6VXhmtQR9iQhmIFjjoY4IpxsV"
-    static let appId = "014d2225-8495-4735-812d-2616334fd15d"
-    static let authCfb = "RFtoRq/vDXJmRndoZaZQyfOot7OrIqGVFj96iY2WL3yyH5Z/pUvlUhqmCxD2t+D65SQ="
-    /// How long to wait after waking a CCS2 car before reading `/latest`,
-    /// in nanoseconds. 25s matches hyundai_kia_connect_api's sleep in
-    /// `_force_refresh_vehicle_state_ccs2`.
-    static let ccs2ForceRefreshDelay: UInt64 = 25 * 1_000_000_000
+    static let brandSpec = EuropeCCSPBrandSpec(
+        clientId: "6d477c38-3ca4-4cf3-9557-2a1929a94654",
+        clientSecret: "KUy49XxPzLpLuoK0xhBC77W6VXhmtQR9iQhmIFjjoY4IpxsV",
+        appId: "014d2225-8495-4735-812d-2616334fd15d",
+        authCfb: "RFtoRq/vDXJmRndoZaZQyfOot7OrIqGVFj96iY2WL3yyH5Z/pUvlUhqmCxD2t+D65SQ=",
+        pushType: "GCM",
+        cciConfig: .hyundai
+    )
+    var euBrandSpec: EuropeCCSPBrandSpec { Self.brandSpec }
+
     var commandToken: String = ""
     var commandTokenExpiration: Date = Date()
 
@@ -30,302 +37,19 @@ public final class HyundaiEuropeAPIClient: APIClientBase, APIClientProtocol {
         region.apiBaseURL(for: .hyundai)
     }
     var authBaseURL: String { "https://idpconnect-eu.hyundai.com" }
-    var apiHost =  Brand.hyundaiBaseUrl(region: Region.europe).replacing(/https:\/\//, with: "")
+    var apiHost = Brand.hyundaiBaseUrl(region: Region.europe).replacing(/https:\/\//, with: "")
 
     public override var apiName: String { "HyundaiEurope" }
 
-    // Header builders + `generateStamp()` are in
-    // `HyundaiEuropeAPIClient+Headers.swift` so this file stays under
-    // SwiftLint's 250-line type-body cap.
+    // MARK: - Overrides
 
-    // MARK: - Login (CCI token set, legacy refresh token, or password)
-
-    public func login() async throws -> AuthToken {
-        if let stored = configuration.refreshToken,
-           let set = CCITokenSet.decodeFromStorage(stored) {
-            BBLogger.info(.auth, "HyundaiEurope: Starting login flow (CCI token refresh)")
-            do {
-                return try await cciRefreshLogin(config: .hyundai, set: set)
-            } catch {
-                guard !password.isEmpty else { throw error }
-                BBLogger.info(.auth, "HyundaiEurope: CCI refresh failed, falling back to password login")
-                configuration = configuration.with(refreshToken: "")
-            }
-        } else if let refreshToken = configuration.refreshToken, !refreshToken.isEmpty {
-            // Pre-CCI refresh token — the legacy oauth2/token refresh grant
-            // still works for these, so don't force a fresh password login.
-            BBLogger.info(.auth, "HyundaiEurope: Starting login flow (legacy refresh token)")
-            do {
-                let token = try await getAccessTokenFromRefreshToken()
-                // The IDP may rotate the refresh token on this grant —
-                // keep the configuration (and the host's persistence,
-                // via the returned AuthToken) on the fresh one.
-                configuration = configuration.with(refreshToken: token.refreshToken)
-                BBLogger.info(.auth, "HyundaiEurope: Login completed successfully")
-                return token
-            } catch {
-                guard let apiError = error as? APIError,
-                      apiError.errorType == .invalidCredentials,
-                      !password.isEmpty else { throw error }
-                configuration = configuration.with(refreshToken: "")
-            }
-        }
-
-        // Password login runs the OneApp/CCI flow — the legacy signin has
-        // been WAF-blocked ("abusing request") since 2026-08-11.
-        BBLogger.info(.auth, "HyundaiEurope: using username/password login (OneApp/CCI)")
-        let token = try await cciPasswordLogin(config: .hyundai)
-        configuration = configuration.with(refreshToken: token.refreshToken)
-        BBLogger.info(.auth, "HyundaiEurope: Login completed successfully")
-        return token
-    }
-
-    /// use refresh token to get a fresh acces token
-    private func getAccessTokenFromRefreshToken() async throws -> AuthToken {
-        // Form-encoded, like upstream — this is an OAuth token endpoint,
-        // and the JSON body this used to send is not a shape those
-        // canonically accept.
-        let fields: [(String, String)] = [
-            ("grant_type", "refresh_token"),
-            ("refresh_token", configuration.refreshToken ?? ""),
-            ("client_id", Self.clientId),
-            ("client_secret", Self.clientSecret)
-        ]
-        var request = URLRequest(url: URL(string: "\(authBaseURL)/auth/api/v2/user/oauth2/token")!)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = Self.formEncode(fields).data(using: .utf8)
-        let (data, _) = try await performLoggedRequest(request, requestType: .login)
-        return try parseAuthToken(from: data, isRefresh: false)
-    }
-
+    // `login`, `fetchVehicles`, `fetchVehicleStatus`, and `sendCommand`
+    // come from the shared EuropeCCSPClient extension. `registerDevice`
+    // must live here because it overrides the APIClientBase default.
     public override func registerDevice() async throws -> String? {
-        let stamp = generateStamp()
-        let body = [
-            // A fresh random push handle per registration, matching
-            // upstream's 64-hex `pushRegId` (this used to send the Stamp,
-            // which encodes the app id + timestamp instead).
-            "pushRegId": Self.randomPushRegId(),
-            "pushType": "GCM",
-            "uuid": UUID().uuidString
-        ]
-
-        let headers = [
-            "ccsp-service-id": Self.clientId,
-            "ccsp-application-id": Self.appId,
-            "Stamp": stamp,
-            "Content-Type": "application/json;charset=UTF-8",
-            "Host": apiHost,
-            "Connection": "Keep-Alive",
-            "Accept-Encoding": "gzip",
-            "User-Agent": "okhttp/3.14.9"
-        ]
-
-        let (_, json, _) = try await performJSONRequest(
-            url: "\(baseURL)/api/v1/spa/notifications/register",
-            method: .POST,
-            headers: headers,
-            body: body,
-            requestType: .login
-        )
-        guard let resMsg = json["resMsg"] as? [String: Any],
-              let devId = resMsg["deviceId"] as? String else {
-            throw APIError(message: "Failed to get device id", apiName: apiName)
-        }
-        configuration = configuration.with(deviceId: devId)
-
-        return devId
-    }
-
-    // MARK: - Get command token
-    private func setCommandToken(authToken: AuthToken) async throws {
-        // if token is valid return it
-        if Date() < commandTokenExpiration.addingTimeInterval(-300) && !commandToken.isEmpty {
-            return
-        }
-
-        let body: [String: Any] = [
-            "deviceId": configuration.deviceId ?? "",
-            "pin": pin
-        ]
-
-        // Route through performJSONRequest so the PIN/control-token
-        // request is captured in the HTTP logs and its status is
-        // validated. Previously this used a raw URLSession call, so a
-        // failure here was invisible to diagnostics and surfaced only
-        // as a generic "Failed to get command token".
-        let (_, json, _) = try await performJSONRequest(
-            url: "\(baseURL)/api/v1/user/pin?token=",
-            method: .PUT,
-            headers: authorizedHeaders(authToken: authToken),
-            body: body,
-            requestType: .sendCommand
-        )
-
-        guard let token = json["controlToken"] as? String,
-              let expires = json["expiresTime"] as? Int else {
-            throw APIError(
-                message: "PIN verification failed — check that the account PIN is correct.",
-                apiName: apiName
-            )
-        }
-
-        commandToken = token
-        commandTokenExpiration = Date().addingTimeInterval(TimeInterval(expires))
-    }
-
-    // MARK: - Vehicles
-
-    public func fetchVehicles(authToken: AuthToken) async throws -> [Vehicle] {
-        try await withDeviceIdRecovery {
-            let (data, _, _) = try await performJSONRequest(
-                url: "\(baseURL)/api/v1/spa/vehicles",
-                method: .GET,
-                headers: authorizedHeaders(authToken: authToken),
-                requestType: .fetchVehicles
-            )
-            return try parseVehiclesResponse(data)
-        }
-    }
-
-    // MARK: - Vehicle Status
-
-    public func fetchVehicleStatus(
-        for vehicle: Vehicle,
-        authToken: AuthToken,
-        cached: Bool
-    ) async throws -> VehicleStatus {
-        try await withDeviceIdRecovery {
-            try await fetchVehicleStatusOnce(for: vehicle, authToken: authToken, cached: cached)
-        }
-    }
-
-    private func fetchVehicleStatusOnce(
-        for vehicle: Vehicle,
-        authToken: AuthToken,
-        cached: Bool
-    ) async throws -> VehicleStatus {
-
-        // CCS2 or Gen5W endpoint?
-        let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
-
-        // The `/latest` endpoint is a passive cache — it won't reflect a
-        // just-sent command (e.g. climate that just started) until the car
-        // next reports in on its own. A manual / post-command refresh
-        // (`cached == false`) therefore has to wake the car first. Mirrors
-        // hyundai_kia_connect_api's force_refresh_vehicle_state: the CCS2
-        // wake is async (ack + wait), the legacy `GET /status` is
-        // synchronous and refreshes the server cache before we read it.
-        if !cached {
-            if ccs2 {
-                try await forceRefreshCCS2(for: vehicle, authToken: authToken)
-            } else {
-                _ = try await performJSONRequest(
-                    url: "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)/status",
-                    method: .GET,
-                    headers: authorizedHeaders(authToken: authToken, ccs2: false),
-                    requestType: .fetchVehicleStatus,
-                    vin: vehicle.vin
-                )
-            }
-        }
-
-        let endpoint: String = ccs2 ? "/ccs2/carstatus/latest" : "/status/latest"
-        let (statusData, _, _) = try await performJSONRequest(
-            url: "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)\(endpoint)",
-            method: .GET,
-            headers: authorizedHeaders(authToken: authToken, ccs2: ccs2),
-            requestType: .fetchVehicleStatus,
-            vin: vehicle.vin
-        )
-
-        // `/location/park` frequently refuses with `5921 No Data Found`;
-        // upstream swallows every error here, so a park failure must not
-        // take down the whole status fetch — the parser falls back to
-        // the location embedded in the status payload.
-        let parkData = try? await performJSONRequest(
-            url: "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)/location/park",
-            method: .GET,
-            headers: authorizedHeaders(authToken: authToken, ccs2: ccs2),
-            requestType: .fetchVehicleStatus,
-            vin: vehicle.vin
-        ).0
-
-        return try parseVehicleStatusResponse(statusData, parkData, for: vehicle)
-    }
-
-    /// Wake a CCS2 vehicle so the subsequent `/latest` read returns current
-    /// state. `GET /ccs2/carstatus` (no `/latest`) triggers the wake and
-    /// returns an async ack envelope — its body is discarded, but errors
-    /// propagate so we never fall through to applying a stale snapshot.
-    /// Ports hyundai_kia_connect_api's `_force_refresh_vehicle_state_ccs2`.
-    func forceRefreshCCS2(for vehicle: Vehicle, authToken: AuthToken) async throws {
-        _ = try await performJSONRequest(
-            url: "\(baseURL)/api/v1/spa/vehicles/\(vehicle.regId)/ccs2/carstatus",
-            method: .GET,
-            headers: authorizedHeaders(authToken: authToken, ccs2: true),
-            requestType: .fetchVehicleStatus,
-            vin: vehicle.vin
-        )
-        // The car reports back asynchronously; give it time before reading
-        // `/latest` (~20s live-measured on a reachable EU CCS2 car).
-        try await Task.sleep(nanoseconds: Self.ccs2ForceRefreshDelay)
-    }
-
-    // MARK: - Commands
-
-    public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
-        try await withDeviceIdRecovery {
-            try await sendCommandOnce(for: vehicle, command: command, authToken: authToken)
-        }
-    }
-
-    private func sendCommandOnce(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
-        let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
-        // Pass the vehicle's actual protocol into the body builder.
-        // Previously this used the default (ccs2: true), so a legacy
-        // Hyundai EU vehicle got a v1 URL with CCS2-shaped bodies.
-        // "R" only for the mile-based RHD markets (UK/Ireland); everything
-        // else — including km-based continental EU (e.g. NL) — is "L".
-        // Mirrors hyundai_kia_connect_api's `_get_drv_seat_loc`.
-        let drvSeatLoc = vehicle.odometer.units == .miles ? "R" : "L"
-        let (path, body) = commandPathAndBody(for: command, ccs2: ccs2, drvSeatLoc: drvSeatLoc)
-
-        // `charge/target` is a v1 + access-token endpoint for every
-        // vehicle — upstream never versions it or fetches a control
-        // token for it, even on CCS2 cars.
-        let isChargeTarget: Bool = {
-            if case .setTargetSOC = command { return true }
-            return false
-        }()
-        let url =
-            "\(baseURL)/api/\(ccs2 && !isChargeTarget ? "v2" : "v1")"
-            + "/spa/vehicles/\(vehicle.regId)/\(path)"
-
-        // CCS2 (Gen5W) cars authenticate commands with a PIN-derived
-        // control token; legacy cars use the normal access token and
-        // have no PIN step at all. Fetching a control token for a
-        // legacy car is what produced the "Failed to get command token"
-        // error — the PIN endpoint isn't part of the legacy flow.
-        let header: [String: String]
-        if ccs2 && !isChargeTarget {
-            try await setCommandToken(authToken: authToken)
-            header = commandHeaders(authToken: authToken, ccs2: ccs2)
-        } else {
-            header = authorizedHeaders(authToken: authToken, ccs2: ccs2)
-        }
-
-        _ = try await performJSONRequest(
-            url: url,
-            method: .POST,
-            headers: header,
-            body: body,
-            requestType: .sendCommand,
-            vin: vehicle.vin
-        )
+        try await euRegisterDevice()
     }
 
     // Trip history (fetchEVTripSummary / fetchEVTripInfo) lives in
-    // `HyundaiEuropeAPIClient+TripDetails.swift`, alongside the other
-    // split-out extensions, to stay under the type-body-length cap.
+    // `HyundaiEuropeAPIClient+TripDetails.swift`.
 }

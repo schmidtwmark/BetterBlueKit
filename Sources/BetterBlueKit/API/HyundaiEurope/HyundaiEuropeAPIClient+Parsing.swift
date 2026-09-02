@@ -27,16 +27,7 @@ extension HyundaiEuropeAPIClient {
                     ?? vehicleData["vehicleName"] as? String
             else { return nil }
 
-            let fuelKindCode = vehicleData["type"] as? String ?? ""
-            // The EU endpoint reports "GN"/"EV"/"PHEV"/"HV"/"PE" (per
-            // hyundai_kia_connect_api); plain hybrids fall to .gas since
-            // the model has no HEV case.
-            let fuelType: FuelType =
-                switch fuelKindCode {
-                case "E", "EV": .electric
-                case "P", "PE", "PHEV": .phev
-                default: .gas
-                }
+            let fuelType = Self.parseEuropeFuelType(vehicleData["type"] as? String ?? "")
             let generation = 2  // always 2 there is no such attribute
             let ccs2 = Self.parseCCS2Flag(vehicleData["ccuCCS2ProtocolSupport"])
 
@@ -106,25 +97,8 @@ extension HyundaiEuropeAPIClient {
         )
     }
 
-    package func parseAuthToken(from data: Data, isRefresh: Bool) throws -> AuthToken {
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              // On the refresh grant, adopt a rotated refresh_token when
-              // the IDP sends one (upstream does) — re-presenting the old
-              // token after a rotation would be a dead credential.
-              let rToken = isRefresh
-                  ? json["refresh_token"] as? String
-                  : (json["refresh_token"] as? String ?? configuration.refreshToken),
-              let expiresIn = json["expires_in"] as? Int,
-              let accessToken = json["access_token"] as? String else {
-            throw APIError(message: "Failed to parse AuthToken info", apiName: apiName, errorType: .invalidCredentials)
-        }
-
-        return AuthToken(
-                accessToken: accessToken,
-                refreshToken: rToken,
-                expiresAt: Date().addingTimeInterval(TimeInterval(expiresIn))
-            )
-    }
+    // Auth-token parsing moved to the shared
+    // `EuropeCCSPClient.parseLegacyAuthToken(from:)`.
 
     private func parseEVStatus(from vehicleState: [String: Any], pathMap: HyEuResponseKeyPathMap)
         -> VehicleStatus.EVStatus? {

@@ -17,15 +17,16 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     let clientId = "HATAHSPACA0232141ED9722C67715A0B"
     let clientSecret = "CLISCR01AHSPA"
 
-    // One identity, matching hyundai_kia_connect_api's KiaUvoApiCA: a
-    // browser-shaped client (`from: CWP`, Chrome UA) for everything except
-    // the "remote function" family (`fndmcr`, SVM), which requires
-    // `from: SPA` (`from: CWP` there draws errorCode 6459). The
-    // web-portal/native-app variant picker and the manual `__cf_bm`
-    // cookie dance this client used to carry are gone — URLSession's
-    // shared cookie storage already accumulates whatever Cloudflare sets,
-    // the same way `requests.Session` does for the Python reference,
-    // and hard-requiring the cookie was itself a failure mode (#35).
+    // One identity, matching hyundai_kia_connect_api's KiaUvoApiCA:
+    // `from: SPA` with a browser User-Agent on every request — upstream's
+    // API_HEADERS carry `from: SPA` for login, status, and commands alike,
+    // and the "remote function" family (`fndmcr`, SVM) outright rejects
+    // any other identity with errorCode 6459. The web-portal/native-app
+    // variant picker and the manual `__cf_bm` cookie dance this client
+    // used to carry are gone — URLSession's shared cookie storage already
+    // accumulates whatever Cloudflare sets, the same way `requests.Session`
+    // does for the Python reference, and hard-requiring the cookie was
+    // itself a failure mode (#35).
     static let userAgent =
         "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
         + "(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
@@ -43,19 +44,24 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     lazy var deviceId: String = configuration.deviceId ?? UUID().uuidString.uppercased()
 
     // Note: temperature lookup tables removed in the EU temperature
-    // cleanup — the canonical Standard table now lives on
-    // `Temperature` (see `Models/Measurements.swift`), and the HEX
-    // encoding goes through `Temperature.encodeAirTempToHEX`.
+    // cleanup — the canonical tables now live on `Temperature` (see
+    // `Models/Measurements.swift`), and Canada's HEX codec goes through
+    // the model-year-aware `Temperature.encodeCanadaAirTempToHEX` /
+    // `decodeCanadaAirTempHEX` pair.
 
     // MARK: - Location Gate State
     //
     // Per-client-instance memory for the fndmcr gate (see
     // `injectLocationCoordinates`): the last coordinates served per VIN,
-    // the odometer at the last fetch attempt, and whether the one
-    // speculative unknown-location attempt has been spent this session.
+    // the odometer at the last fetch attempt, and when the last fetch
+    // attempt ran (successful or not) so retries are rate-limited rather
+    // than per-poll or never.
     var lastLocationByVin: [String: VehicleStatus.Location] = [:]
     var lastLocationOdometerByVin: [String: Double] = [:]
-    var locationFetchAttempted: Set<String> = []
+    var lastLocationAttemptByVin: [String: Date] = [:]
+    /// Minimum spacing between location fetches that aren't justified by
+    /// vehicle movement (unknown odometer, or no location cached yet).
+    static let locationRetryInterval: TimeInterval = 30 * 60
 
     // MARK: - MFA Flow State
     //
@@ -171,23 +177,34 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
 
     /// Injects `fndmcr` coordinates into the status payload, but only
     /// fetches when the car has moved (odometer increased since the last
-    /// fetch) or when no location is known yet — bounded to one
-    /// speculative attempt per session. Ports upstream's location gate
+    /// fetch) or on a rate-limited retry (at most one attempt per
+    /// `locationRetryInterval` when the odometer is unreadable or no
+    /// location is cached yet). Ports upstream's location gate
     /// (kia_uvo#1844); `fndmcr` costs a `vrfypin` + a remote-function
     /// call against an API that rate-limits, so it must not run on
-    /// every poll. Skipped polls re-inject the last known coordinates
-    /// so the host keeps showing a location.
+    /// every poll — and a payload without a parseable odometer must not
+    /// degrade back into per-poll fetching, while a single transient
+    /// failure must not disable location for the client's lifetime.
+    /// Skipped polls re-inject the last known coordinates so the host
+    /// keeps showing a location.
     private func injectLocationCoordinates(into data: Data, vehicle: Vehicle, authToken: AuthToken) async -> Data {
         let vin = vehicle.vin
         let freshOdometer = extractOdometerValue(from: data)
 
+        // Only a readable, increased odometer counts as movement; an
+        // unreadable one falls to the rate-limited retry path instead of
+        // being treated as "moved" on every poll.
         let movedSinceLastFetch: Bool = {
-            guard let freshOdometer, let lastOdo = lastLocationOdometerByVin[vin] else { return true }
+            guard let freshOdometer, let lastOdo = lastLocationOdometerByVin[vin] else { return false }
             return freshOdometer > lastOdo
         }()
         let cachedLocation = lastLocationByVin[vin]
+        let attemptDue: Bool = {
+            guard let lastAttempt = lastLocationAttemptByVin[vin] else { return true }
+            return Date().timeIntervalSince(lastAttempt) >= Self.locationRetryInterval
+        }()
         let shouldFetch = movedSinceLastFetch
-            || (cachedLocation == nil && !locationFetchAttempted.contains(vin))
+            || ((cachedLocation == nil || freshOdometer == nil) && attemptDue)
 
         guard shouldFetch else {
             guard let cachedLocation else { return data }
@@ -195,8 +212,9 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
         }
 
         // Stamp the attempt regardless of outcome so a persistently
-        // failing Find-My-Car response can't re-run on every poll.
-        locationFetchAttempted.insert(vin)
+        // failing Find-My-Car response backs off instead of re-running
+        // on every poll.
+        lastLocationAttemptByVin[vin] = Date()
         if let freshOdometer { lastLocationOdometerByVin[vin] = freshOdometer }
 
         do {

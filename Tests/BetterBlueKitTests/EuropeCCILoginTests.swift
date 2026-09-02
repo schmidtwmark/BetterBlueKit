@@ -91,4 +91,26 @@ struct EuropeCCILoginTests {
         #expect(redacted.contains("encryptedPassword=true"))
         #expect(redacted.contains("state=ccsp"))
     }
+
+    @Test("OAuth authorization codes in URLs are redacted")
+    func testAuthorizationCodeRedaction() {
+        let url = "https://cci-api-eu.hyundai.com/domain/api/v1/auth/token?code=SECRET-CODE-123"
+        let redacted = SensitiveDataRedactor.redact(url) ?? ""
+        #expect(!redacted.contains("SECRET-CODE-123"))
+        #expect(redacted.contains("code=[REDACTED]"))
+        // Words merely containing "code" must survive.
+        let benign = "https://example.com/api?promocode=abc&mode=1"
+        #expect(SensitiveDataRedactor.redact(benign) == benign)
+    }
+
+    @Test("The Location response header is redacted")
+    func testLocationHeaderRedaction() {
+        let headers = [
+            "Location": "https://oneapp.hyundai.com/redirect?code=SECRET-CODE-123&state=ccsp",
+            "Content-Type": "application/json"
+        ]
+        let redacted = SensitiveDataRedactor.redactHeaders(headers)
+        #expect(redacted["Location"] == "[REDACTED]")
+        #expect(redacted["Content-Type"] == "application/json")
+    }
 }

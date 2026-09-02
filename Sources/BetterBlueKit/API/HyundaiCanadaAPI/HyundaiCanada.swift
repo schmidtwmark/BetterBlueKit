@@ -11,10 +11,11 @@ extension HyundaiCanadaAPIClient {
 
     // MARK: - Headers
 
-    /// The one header identity this client uses — the browser-shaped
-    /// set from hyundai_kia_connect_api's `KiaUvoApiCA.API_HEADERS`,
-    /// plus the stable per-account `deviceid` (the backend recognizes
-    /// the install by it and skips the OTP challenge — BetterBlue#95).
+    /// The one header identity this client uses — hyundai_kia_connect_api's
+    /// `KiaUvoApiCA.API_HEADERS`, which sends `from: SPA` on every request
+    /// (login, status, and commands alike), plus a browser User-Agent and
+    /// the stable per-account `deviceid` (the backend recognizes the
+    /// install by it and skips the OTP challenge — BetterBlue#95).
     /// Cookies are NOT set manually: URLSession's shared cookie storage
     /// carries whatever Cloudflare mints, like `requests.Session` does
     /// for the Python reference.
@@ -23,7 +24,7 @@ extension HyundaiCanadaAPIClient {
             "client_id": clientId,
             "client_secret": clientSecret,
             "deviceid": deviceId,
-            "from": "CWP",
+            "from": "SPA",
             "language": "0",
             "offset": timezoneOffsetHeader,
             "User-Agent": Self.userAgent,
@@ -59,17 +60,16 @@ extension HyundaiCanadaAPIClient {
     }
 
     /// Headers for the "remote function" family (`fndmcr`, the SVM
-    /// endpoints): the standard set with `from: SPA` and the `/remote/`
-    /// referer, exactly as the Python reference's `get_location` does.
-    /// These endpoints reject the browser identity with errorCode 6459
-    /// regardless of how the account logged in.
+    /// endpoints): the standard set (already `from: SPA`) with the
+    /// `/remote/` referer the web portal presents on these calls. Kept
+    /// separate because the family historically rejected any other
+    /// identity with errorCode 6459.
     func remoteFunctionHeaders(
         authToken: AuthToken,
         vehicleId: String,
         pAuth: String
     ) -> [String: String] {
         var result = authorizedHeaders(authToken: authToken, vehicleId: vehicleId, pAuth: pAuth)
-        result["from"] = "SPA"
         result["Referer"] = "https://\(apiHost)/remote/"
         return result
     }
