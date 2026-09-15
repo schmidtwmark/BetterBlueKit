@@ -155,7 +155,12 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
             vin: vehicle.vin
         )
 
-        let finalData = await injectLocationCoordinates(into: primaryData, vehicle: vehicle, authToken: authToken)
+        // Neither status endpoint carries the odometer; upstream reads it
+        // from the next-service call. Fold it into the payload before the
+        // location gate runs so "has the car moved" can see it.
+        let serviceOdometer = await fetchNextServiceOdometer(vehicle: vehicle, authToken: authToken)
+        let statusData = injectOdometer(serviceOdometer, into: primaryData)
+        let finalData = await injectLocationCoordinates(into: statusData, vehicle: vehicle, authToken: authToken)
 
         do {
             return try parseCanadaVehicleStatusResponse(finalData, for: vehicle)
@@ -171,7 +176,10 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
                 requestType: .fetchVehicleStatus,
                 vin: vehicle.vin
             )
-            return try parseCanadaVehicleStatusResponse(cachedData, for: vehicle)
+            return try parseCanadaVehicleStatusResponse(
+                injectOdometer(serviceOdometer, into: cachedData),
+                for: vehicle
+            )
         }
     }
 

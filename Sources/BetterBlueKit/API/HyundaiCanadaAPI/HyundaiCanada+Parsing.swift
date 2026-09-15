@@ -92,19 +92,15 @@ extension HyundaiCanadaAPIClient {
             [:]
 
         let vehicleData = result["vehicle"] as? [String: Any] ?? [:]
-        let statusOdometer = statusData["odometer"] as? [String: Any] ?? [:]
-        let vehicleOdometer = vehicleData["odometer"] as? [String: Any] ?? [:]
 
-        let odometer: Distance? = {
-            let value: Double? =
-                extractNumber(from: statusData["odometer"]) ??
-                extractNumber(from: statusOdometer["value"]) ??
-                extractNumber(from: vehicleData["odometer"]) ??
-                extractNumber(from: vehicleOdometer["value"])
-
-            guard let value else { return vehicle.odometer }
-            return Distance(length: value, units: .kilometers)
-        }()
+        // The odometer normally arrives here injected from `nxtsvc` (see
+        // `injectOdometer`); the raw status endpoints don't carry one. A
+        // missing, null, or zero reading means "not reported" and yields
+        // nil so the host keeps its last known value instead of resetting
+        // to 0 km.
+        let odometer: Distance? =
+            parseCanadaOdometerBlock(statusData["odometer"]) ??
+            parseCanadaOdometerBlock(vehicleData["odometer"])
 
         // Parse additional boolean flags
         let engineOn = parseBoolOrInt(statusData["engine"])
@@ -176,5 +172,28 @@ extension HyundaiCanadaAPIClient {
         }
 
         throw APIError.logError("Invalid Canada location response", apiName: apiName)
+    }
+}
+
+// MARK: - Odometer
+
+extension HyundaiCanadaAPIClient {
+    /// Decodes an odometer field that is either a bare number or a
+    /// `{value, unit}` object. Unit codes follow upstream's DISTANCE_UNITS
+    /// (1 = km, 2/3 = miles); anything else is treated as kilometres, the
+    /// only unit the Canadian backend has been seen to report. Zero and
+    /// negative readings are "not reported" → nil.
+    func parseCanadaOdometerBlock(_ raw: Any?) -> Distance? {
+        let value: Double?
+        let unitCode: Int?
+        if let block = raw as? [String: Any] {
+            value = extractNumber(from: block["value"])
+            unitCode = extractNumber(from: block["unit"])
+        } else {
+            value = extractNumber(from: raw)
+            unitCode = nil
+        }
+        guard let value, value > 0 else { return nil }
+        return Distance(length: value, units: Self.canadaDistanceUnits(code: unitCode))
     }
 }

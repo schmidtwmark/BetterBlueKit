@@ -34,7 +34,7 @@ struct HyundaiCanadaParsingTests {
         try #require(try JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any])
     }
 
-    private func makeVehicle(fuelType: FuelType) -> Vehicle {
+    private func makeVehicle(fuelType: FuelType, odometer: Double? = nil) -> Vehicle {
         Vehicle(
             vin: "TESTVIN0000000000",
             regId: "reg",
@@ -42,7 +42,8 @@ struct HyundaiCanadaParsingTests {
             accountId: UUID(),
             fuelType: fuelType,
             generation: 2,
-            odometer: Distance(length: 0, units: .kilometers)
+            odometer: odometer.map { Distance(length: $0, units: .kilometers) }
+                ?? Distance(length: 42000, units: .kilometers)
         )
     }
 
@@ -105,5 +106,88 @@ struct HyundaiCanadaParsingTests {
     @MainActor func testGasRangeSkippedForEV() throws {
         let statusData = try json(#"{"fuelLevel": 59, "dte": {"unit": true, "value": 314}}"#)
         #expect(makeClient().parseCanadaGasRange(from: statusData, vehicle: makeVehicle(fuelType: .electric)) == nil)
+    }
+
+    // MARK: - Odometer parsing
+
+    /// Odometer readings arrive in the status payload only because the
+    /// client injects them from `nxtsvc`; the shape is `{value, unit}`.
+    @Test("Status odometer is parsed when present")
+    @MainActor func testStatusOdometerParsed() throws {
+        let vehicle = makeVehicle(fuelType: .gas, odometer: 0)
+        let data = Data(#"{"responseHeader": {"responseCode": 0}, "result": {"status": {"odometer": {"value": 45000, "unit": 1}}}}"#.utf8)
+        let status = try makeClient().parseCanadaVehicleStatusResponse(data, for: vehicle)
+        #expect(status.odometer?.length == 45000)
+        #expect(status.odometer?.units == .kilometers)
+    }
+
+    @Test("Status odometer honours a miles unit code")
+    @MainActor func testStatusOdometerMilesUnit() throws {
+        let vehicle = makeVehicle(fuelType: .gas, odometer: 0)
+        let data = Data(#"{"responseHeader": {"responseCode": 0}, "result": {"status": {"odometer": {"value": 12000, "unit": 3}}}}"#.utf8)
+        let status = try makeClient().parseCanadaVehicleStatusResponse(data, for: vehicle)
+        #expect(status.odometer?.length == 12000)
+        #expect(status.odometer?.units == .miles)
+    }
+
+    /// A zero, null, or missing odometer means the server didn't report
+    /// one. The parser must return nil — not 0 km, and not a guess — so the
+    /// host keeps the last reading it stored (BetterBlue#107).
+    @Test("Zero status odometer parses as nil", arguments: [
+        #"{"responseHeader": {"responseCode": 0}, "result": {"status": {"odometer": 0}}}"#,
+        #"{"responseHeader": {"responseCode": 0}, "result": {"status": {"odometer": {"value": 0, "unit": 1}}}}"#,
+        #"{"responseHeader": {"responseCode": 0}, "result": {"status": {"odometer": null}}}"#,
+        #"{"responseHeader": {"responseCode": 0}, "result": {"status": {"fuelLevel": 60}}}"#
+    ])
+    @MainActor func testUnreportedStatusOdometerIsNil(raw: String) throws {
+        let vehicle = makeVehicle(fuelType: .gas, odometer: 42000)
+        let status = try makeClient().parseCanadaVehicleStatusResponse(Data(raw.utf8), for: vehicle)
+        #expect(status.odometer == nil)
+    }
+
+    // MARK: - Next service (nxtsvc)
+
+    /// Shape from hyundai_kia_connect_api's `_get_next_service`: the
+    /// odometer sits in `result.maintenanceInfo.currentOdometer` with its
+    /// unit code alongside. None of the Canada status endpoints carry it.
+    @Test("Next-service odometer parses from maintenanceInfo")
+    @MainActor func testNextServiceOdometerParsed() throws {
+        let data = Data(#"""
+        {"responseHeader": {"responseCode": 0, "responseDesc": "Success"},
+         "result": {"maintenanceInfo": {
+            "currentOdometer": 45123, "currentOdometerUnit": 1,
+            "imatServiceOdometer": 48000, "imatServiceOdometerUnit": 1,
+            "msopServiceOdometer": 40000, "msopServiceOdometerUnit": 1}}}
+        """#.utf8)
+        let odometer = try makeClient().parseCanadaNextServiceOdometer(data)
+        #expect(odometer?.length == 45123)
+        #expect(odometer?.units == .kilometers)
+    }
+
+    @Test("Next-service odometer is nil when maintenanceInfo is absent or zero", arguments: [
+        #"{"responseHeader": {"responseCode": 0}, "result": {}}"#,
+        #"{"responseHeader": {"responseCode": 0}, "result": {"maintenanceInfo": {"currentOdometer": 0}}}"#
+    ])
+    @MainActor func testNextServiceOdometerMissing(raw: String) throws {
+        #expect(try makeClient().parseCanadaNextServiceOdometer(Data(raw.utf8)) == nil)
+    }
+
+    /// The injected reading must land where both the status parser and the
+    /// location gate look: `result.status.odometer` as `{value, unit}`.
+    @Test("Injected next-service odometer round-trips through the status parser")
+    @MainActor func testInjectedOdometerRoundTrips() throws {
+        let client = makeClient()
+        let statusData = Data(#"{"responseHeader": {"responseCode": 0}, "result": {"status": {"fuelLevel": 60, "doorLock": true}}}"#.utf8)
+        let injected = client.injectOdometer(Distance(length: 45123, units: .kilometers), into: statusData)
+        let status = try client.parseCanadaVehicleStatusResponse(injected, for: makeVehicle(fuelType: .gas))
+        #expect(status.odometer?.length == 45123)
+        #expect(status.odometer?.units == .kilometers)
+        #expect(status.lockStatus == .locked)
+    }
+
+    @Test("Injecting a nil odometer leaves the payload untouched")
+    @MainActor func testInjectNilOdometerIsNoop() throws {
+        let statusData = Data(#"{"responseHeader": {"responseCode": 0}, "result": {"status": {"fuelLevel": 60}}}"#.utf8)
+        #expect(makeClient().injectOdometer(nil, into: statusData) == statusData)
     }
 }
