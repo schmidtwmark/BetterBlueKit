@@ -247,9 +247,9 @@ public enum SurroundViewCaptureParser {
 
     /// Reads an open/closed flag that may arrive as a JSON boolean, as
     /// 0/1, or as a string. Regions mix the encodings even within one
-    /// payload — Hyundai Canada reports the same `unit` field as `true`
-    /// under `dte` and `1` under `distanceToEmpty` (BetterBlue#98) — so
-    /// never bet on a bare `as? Bool`.
+    /// payload — Hyundai Canada's status sends its `doorOpen` entries as
+    /// integers but `trunkOpen` / `hoodOpen` as booleans (kia_uvo#1017,
+    /// #1190) — so never bet on a bare `as? Bool`.
     ///
     /// Returns nil only when the key is absent entirely, keeping "closed"
     /// and "not reported" distinguishable.

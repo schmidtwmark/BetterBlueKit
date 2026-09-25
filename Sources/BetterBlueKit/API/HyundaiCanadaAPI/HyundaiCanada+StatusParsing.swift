@@ -40,9 +40,15 @@ extension HyundaiCanadaAPIClient {
         return .electric
     }
 
-    /// Canada reports distance units as a JSON boolean (`true` = kilometers),
-    /// unlike the integer codes elsewhere. Accepts either shape and defaults to
-    /// kilometers, which is what this region actually serves.
+    /// Decodes a Canada distance `unit`. Canadian hyundai_kia_connect_api
+    /// logs show the usual integer code — `'dte': {'value': 481.0,
+    /// 'unit': 1}` on a Tucson PHEV (kia_uvo#1190), 1 = kilometers.
+    /// BetterBlue#98's export showed `"unit": true`, but that build's
+    /// exporter wrote every JSON 0/1 as a boolean, so the wire value was
+    /// most likely 1. A real boolean is still accepted (`true` =
+    /// kilometers); a numeric 0/1 also matches `as? Bool` and lands on the
+    /// same unit `Distance.Units` gives it. Defaults to kilometers, which
+    /// is what this region actually serves.
     func canadaDistanceUnits(from value: Any?) -> Distance.Units {
         if let flag = value as? Bool { return flag ? .kilometers : .miles }
         if let code: Int = extractNumber(from: value) { return Distance.Units(code) }
@@ -86,11 +92,11 @@ extension HyundaiCanadaAPIClient {
             return nil
         }
 
-        // Canada names this `dte` ({"unit": true, "value": 314}); the
-        // `distanceToEmpty` spelling is kept as a fallback in case some
-        // firmware still uses it. Reading only the latter meant gas vehicles
-        // never showed a range even though the value was right there in the
-        // payload (BetterBlue#98).
+        // Canada names this `dte` ({"value": 481.0, "unit": 1} in
+        // kia_uvo#1190); the `distanceToEmpty` spelling is kept as a
+        // fallback in case some firmware still uses it. Reading only the
+        // latter meant gas vehicles never showed a range even though the
+        // value was right there in the payload (BetterBlue#98).
         let distanceToEmpty = (statusData["dte"] as? [String: Any])
             ?? (statusData["distanceToEmpty"] as? [String: Any])
         if let distanceToEmpty,
@@ -313,14 +319,22 @@ extension HyundaiCanadaAPIClient {
     }
 
     private func parseChargeTimeMinutes(from evStatusData: [String: Any]) -> Int {
+        // `atc` is the current session's ETA; hyundai_kia_connect_api
+        // reads it as minutes (Canadian logs tag it `unit: 1`).
         let remainTime2 = evStatusData["remainTime2"] as? [String: Any] ?? [:]
         let atc = remainTime2["atc"] as? [String: Any] ?? [:]
         if let value: Int = extractNumber(from: atc["value"]) {
             return value
         }
 
-        let remainChargeTime = evStatusData["remainChargeTime"] as? [[String: Any]] ?? []
-        return extractNumber(from: remainChargeTime.first?["value"]) ?? 0
+        // No Canadian payload with `remainChargeTime` has turned up — the
+        // Python Canada client reads only `remainTime2`, which the
+        // kia_uvo#1017 and #1190 logs carry. This fallback is for firmware
+        // that sends Kia USA's array instead, whose every known entry nests
+        // its minutes under `timeInterval` (unit 4). A flat
+        // `first?["value"]` read never finds them — the bug behind the
+        // missing Kia ETA in BetterBlue#107.
+        return Int(remainingChargeMinutes(in: evStatusData["remainChargeTime"]).rounded())
     }
 
     private func parseTargetSOCs(from evStatusData: [String: Any]) -> (Double?, Double?) {

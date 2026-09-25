@@ -32,8 +32,9 @@ extension HyundaiCanadaAPIClient {
 
     /// Detects the `errorCode == "7110"` (OTP Required) response shape
     /// without invoking the throwing parser. The server marks this as
-    /// a *failure* (`responseCode == true` in the modern bool form, `1`
-    /// in the older int form) carrying an `error.errorCode` of "7110".
+    /// a *failure* (`responseCode: 1` in bbcli's capture on
+    /// BetterBlue#52; see `isCanadaResponseSuccess` for the other shapes
+    /// it tolerates) carrying an `error.errorCode` of "7110".
     func isOTPRequiredResponse(_ data: Data) -> Bool {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let header = json["responseHeader"] as? [String: Any],

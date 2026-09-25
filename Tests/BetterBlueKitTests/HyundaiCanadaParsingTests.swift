@@ -3,12 +3,77 @@
 //  BetterBlueKit
 //
 //  Regression coverage for Hyundai Canada status parsing. Payload shapes are
-//  taken from a real Palisade debug export (BetterBlue#98).
+//  taken from a real Palisade debug export (BetterBlue#98) and from
+//  hyundai_kia_connect_api's Canadian debug logs (kia_uvo#1017, #1190).
+//  The #98 export came from a build whose exporter wrote every JSON 0/1 as
+//  `false` / `true`, so a boolean copied from it may be a 0/1 on the wire.
 //
 
 import Foundation
 import Testing
 @testable import BetterBlueKit
+
+// MARK: - Sample JSON
+
+enum HyundaiCanadaStatusSampleJSON {
+
+    /// Wraps a `status` object in the Canada status response envelope.
+    static func response(status: String) -> String {
+        """
+        {
+          "responseHeader": { "responseCode": 0, "responseDesc": "Success" },
+          "result": { "status": \(status) }
+        }
+        """
+    }
+
+    /// 2025 Tucson PHEV (Canada) charging — kia_uvo#1190, trimmed to the
+    /// charge and range fields these tests check. The ETA is
+    /// `remainTime2.atc` (minutes).
+    static let tucsonPHEVCharging = response(status: """
+    {
+      "lastStatusDate": "20250710002401",
+      "doorLock": true,
+      "evStatus": {
+        "batteryCharge": true,
+        "batteryStatus": 95,
+        "batteryPlugin": 2,
+        "remainTime2": {
+          "etc2": { "value": 35, "unit": 1 },
+          "etc3": { "value": 7, "unit": 1 },
+          "atc": { "value": 40, "unit": 1 }
+        },
+        "drvDistance": [
+          { "type": 2, "rangeByFuel": {
+              "gasModeRange": { "value": 429.0, "unit": 1 },
+              "evModeRange": { "value": 52.0, "unit": 1 },
+              "totalAvailableRange": { "value": 481.0, "unit": 1 } } }
+        ]
+      },
+      "dte": { "value": 481.0, "unit": 1 },
+      "fuelLevel": 61
+    }
+    """)
+
+    /// Synthetic: no Canadian payload with `remainChargeTime` has been
+    /// found. `remainTime2` is absent and the ETA is a single Kia USA-style
+    /// entry, copied from a charging Niro EV (kia_uvo#100).
+    static let evChargingRemainChargeTimeOnly = response(status: """
+    {
+      "evStatus": {
+        "batteryCharge": true,
+        "batteryStatus": 80,
+        "batteryPlugin": 2,
+        "remainChargeTime": [
+          { "remainChargeType": 3, "timeInterval": { "value": 95, "unit": 4 } }
+        ],
+        "drvDistance": [
+          { "type": 2, "rangeByFuel": { "evModeRange": { "value": 290, "unit": 1 } } }
+        ]
+      }
+    }
+    """)
+}
 
 @Suite("Hyundai Canada Parsing")
 struct HyundaiCanadaParsingTests {
@@ -76,18 +141,34 @@ struct HyundaiCanadaParsingTests {
 
     // MARK: - Gas range (DTE)
 
-    /// Canada sends `dte`, not `distanceToEmpty`, and reports the unit as a
-    /// JSON boolean. Reading the wrong key meant gas vehicles showed no range
-    /// at all even though the value was present (#98).
-    @Test("Gas range parses Canada's dte block with a boolean unit")
-    @MainActor func testGasRangeFromDte() throws {
+    /// Canada sends `dte`, not `distanceToEmpty`. Reading the wrong key
+    /// meant gas vehicles showed no range at all even though the value was
+    /// present (#98). The unit is the integer code 1 in the Canadian
+    /// hyundai_kia_connect_api logs (kia_uvo#1017, #1190).
+    @Test("Gas range parses Canada's dte block with a numeric unit")
+    @MainActor func testGasRangeFromDteNumericUnit() throws {
+        let statusData = try json(#"{"fuelLevel": 59, "dte": {"unit": 1, "value": 314}}"#)
+
+        let range = try #require(
+            makeClient().parseCanadaGasRange(from: statusData, vehicle: makeVehicle(fuelType: .gas))
+        )
+        #expect(range.range.length == 314)
+        #expect(range.range.units == .kilometers)
+        #expect(range.percentage == 59)
+    }
+
+    /// The #98 export showed `"unit": true` — most likely the 1 above,
+    /// rendered by that build's exporter. A real JSON boolean must still
+    /// decode, and to the same unit.
+    @Test("Gas range decodes a dte unit sent as a JSON boolean")
+    @MainActor func testGasRangeFromDteBooleanUnit() throws {
         let statusData = try json(#"{"fuelLevel": 59, "dte": {"unit": true, "value": 314}}"#)
 
         let range = try #require(
             makeClient().parseCanadaGasRange(from: statusData, vehicle: makeVehicle(fuelType: .gas))
         )
         #expect(range.range.length == 314)
-        #expect(range.range.units == .kilometers) // unit: true == km in this region
+        #expect(range.range.units == .kilometers)
         #expect(range.percentage == 59)
     }
 
@@ -106,6 +187,48 @@ struct HyundaiCanadaParsingTests {
     @MainActor func testGasRangeSkippedForEV() throws {
         let statusData = try json(#"{"fuelLevel": 59, "dte": {"unit": true, "value": 314}}"#)
         #expect(makeClient().parseCanadaGasRange(from: statusData, vehicle: makeVehicle(fuelType: .electric)) == nil)
+    }
+
+    // MARK: - Charge time remaining
+
+    @Test("Charge ETA comes from remainTime2.atc")
+    @MainActor func testChargeTimeFromRemainTime2() throws {
+        let data = Data(HyundaiCanadaStatusSampleJSON.tucsonPHEVCharging.utf8)
+        let status = try makeClient().parseCanadaVehicleStatusResponse(data, for: makeVehicle(fuelType: .phev))
+
+        let ev = try #require(status.evStatus)
+        #expect(ev.charging)
+        #expect(ev.chargeTime == .seconds(40 * 60))
+    }
+
+    /// Without `remainTime2` the parser falls back to `remainChargeTime`,
+    /// whose minutes sit under `timeInterval`. The old fallback read a flat
+    /// `value` and always got 0 — the Kia USA bug in BetterBlue#107.
+    @Test("Charge ETA falls back to remainChargeTime's timeInterval when remainTime2 is absent")
+    @MainActor func testChargeTimeFallsBackToRemainChargeTime() throws {
+        let data = Data(HyundaiCanadaStatusSampleJSON.evChargingRemainChargeTimeOnly.utf8)
+        let status = try makeClient().parseCanadaVehicleStatusResponse(data, for: makeVehicle(fuelType: .electric))
+
+        let ev = try #require(status.evStatus)
+        #expect(ev.charging)
+        #expect(ev.chargeTime == .seconds(95 * 60))
+    }
+
+    // MARK: - Response header
+
+    /// Raw captures show `responseCode` as 0 / 1 (BetterBlue#52,
+    /// kia_uvo#1017); the #98 export rendered the same values as
+    /// `false` / `true`. Both shapes must mean the same thing.
+    @Test("responseCode 0 and false mean success; 1 and true mean failure", arguments: [
+        (#"{"responseCode": 0}"#, true),
+        (#"{"responseCode": false}"#, true),
+        (#"{"responseCode": "0"}"#, true),
+        (#"{"responseCode": 1}"#, false),
+        (#"{"responseCode": true}"#, false)
+    ])
+    @MainActor func testResponseCodeShapes(raw: String, isSuccess: Bool) throws {
+        let header = try json(raw)
+        #expect(makeClient().isCanadaResponseSuccess(header["responseCode"]) == isSuccess)
     }
 
     // MARK: - Odometer parsing

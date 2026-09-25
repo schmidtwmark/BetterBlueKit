@@ -119,12 +119,14 @@ extension HyundaiCanadaAPIClient {
         throw APIError.logError("Canada \(context) failed: \(errorDesc)", apiName: apiName)
     }
 
-    /// Hyundai Canada's `responseCode` field has been observed in three
-    /// shapes: integer (`0`/`1`), string (`"0"`/`"1"`), and most
-    /// recently — as of mid-2026 — JSON boolean (`false`/`true`).
-    /// Boolean values are inverted: `false` means success, `true` means
-    /// failure (matching the `responseDesc: "Success"` / `"Failure"`
-    /// strings the same field carries).
+    /// Hyundai Canada's `responseCode` is `0` on success and `1` on
+    /// failure. Every raw capture found shows integers: bbcli's log on
+    /// BetterBlue#52 (May 2026) and hyundai_kia_connect_api's Canadian
+    /// logs (kia_uvo#1017, #1190). BetterBlue#98's debug export showed
+    /// `false` / `true`, but that build's exporter wrote every JSON 0/1
+    /// as a boolean, so the wire value was most likely still 0/1.
+    /// Booleans (`false` = success, matching the header's
+    /// `responseDesc: "Success"`) and strings (`"0"`) are accepted anyway.
     func isCanadaResponseSuccess(_ value: Any?) -> Bool {
         if let bool = value as? Bool { return bool == false }
         if let int = value as? Int { return int == 0 }
