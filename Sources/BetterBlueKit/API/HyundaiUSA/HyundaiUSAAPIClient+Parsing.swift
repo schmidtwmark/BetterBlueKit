@@ -196,6 +196,24 @@ extension HyundaiUSAAPIClient {
         let atc = remainTime2["atc"] as? [String: Any] ?? [:]
         let chargeTimeMinutes: Int = extractNumber(from: atc["value"]) ?? 0
         let batteryPlugin: Int = extractNumber(from: evStatusData["batteryPlugin"]) ?? 0
+        let charging = evStatusData["batteryCharge"] as? Bool ?? false
+
+        // `realTimePower` is the live charge rate in kW; on AC it equals
+        // `batteryStndChrgPower` (1.4 on an Ioniq 5, kia_uvo#1206; 3.8 on
+        // a Kona, egmp-bluelink-scriptable#63). hyundai_kia_connect_api
+        // switched to it (#1270) because the Standard figure is said to
+        // hold the AC rate through a DC fast charge. pyvisioniq, a logger
+        // reading these same fields, reports the opposite — Standard
+        // reads 0 on DC and the rate arrives in `batteryFstChrgPower` —
+        // so that stays as a floor. No raw US DC payload has turned up to
+        // settle it. Idle payloads seen so far omit `realTimePower` (so
+        // does openHAB's charging US fixture); fall back to Standard.
+        let realTimePower: Double? = extractNumber(from: evStatusData["realTimePower"])
+        let standardPower: Double = extractNumber(from: evStatusData["batteryStndChrgPower"]) ?? 0
+        let fastPower: Double = extractNumber(from: evStatusData["batteryFstChrgPower"]) ?? 0
+        // Only a rate mid-charge, as in the Kia USA parser: #1270
+        // describes the idle Standard figure as stale.
+        let chargeSpeed = charging ? max(realTimePower ?? standardPower, fastPower, 0) : 0
 
         let reserveChargeInfos = evStatusData["reservChargeInfos"] as? [String: Any] ?? [:]
         let targetSocList = reserveChargeInfos["targetSOClist"] as? [[String: Any]] ?? []
@@ -207,11 +225,8 @@ extension HyundaiUSAAPIClient {
         }
 
         return VehicleStatus.EVStatus(
-            charging: evStatusData["batteryCharge"] as? Bool ?? false,
-            chargeSpeed: max(
-                extractNumber(from: evStatusData["batteryStndChrgPower"]) ?? 0,
-                extractNumber(from: evStatusData["batteryFstChrgPower"]) ?? 0
-            ),
+            charging: charging,
+            chargeSpeed: chargeSpeed,
             evRange: VehicleStatus.FuelRange(range: evRange, percentage: fuelPercentage),
             plugType: VehicleStatus.PlugType(fromBatteryPlugin: batteryPlugin),
             chargeTime: .seconds(60 * chargeTimeMinutes),
