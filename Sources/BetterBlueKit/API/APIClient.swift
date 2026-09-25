@@ -301,3 +301,26 @@ func extractNumber<T: LosslessStringConvertible>(from value: Any?) -> T? {
     if let numString = value as? String { return T(numString) }
     return nil
 }
+
+/// Minutes left in the active charge session, from a Kia USA-style
+/// `remainChargeTime` array of
+/// `{remainChargeType, timeInterval: {value, unit}}` entries
+/// (unit 4 = minutes).
+///
+/// Unplugged, the array is a set of what-if estimates in no fixed
+/// order — types 1 / 2 / 3 appear to be DC fast, portable (L1) and
+/// L2 station. Plugged in, it collapses to a single entry: type 3
+/// on a charging Niro EV (and an idle, plugged-in EV6), type 4 on a
+/// charging ccNC EV9. So use the sole entry, or a type-4 entry if
+/// one turns up alongside estimates. Never guess by index:
+/// unplugged, index 0 is often the DC estimate.
+func remainingChargeMinutes(in rawEntries: Any?) -> Double {
+    let entries: [(type: Int?, minutes: Double)] = (rawEntries as? [[String: Any]] ?? [])
+        .compactMap { entry in
+            let interval = entry["timeInterval"] as? [String: Any]
+            guard let minutes: Double = extractNumber(from: interval?["value"]) else { return nil }
+            return (extractNumber(from: entry["remainChargeType"]), minutes)
+        }
+    let session = entries.count == 1 ? entries.first : entries.first { $0.type == 4 }
+    return max(0, session?.minutes ?? 0)
+}

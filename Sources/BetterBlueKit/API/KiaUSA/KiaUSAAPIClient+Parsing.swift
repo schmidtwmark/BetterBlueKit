@@ -124,15 +124,18 @@ extension KiaUSAAPIClient {
     /// vehicle data:
     ///
     /// - `4` → EV (confirmed by 2020 Niro EV and 2024 EV9)
+    /// - `7` → PHEV (2018 Niro PHEV, kia_uvo#558)
     ///
-    /// Other values (gas / hybrid / PHEV) are not yet confirmed against
-    /// a real Kia USA response, so we conservatively default to `.gas`
-    /// — the same approach the Python lib takes. If we mis-classify a
-    /// PHEV here, downstream status fetches that return both `evStatus`
-    /// and `gasRange` will still surface the gas range correctly.
+    /// Everything else defaults to `.gas`: `1` is a Sportage and `3` the
+    /// Niro / Sorento hybrids, and newer PHEVs' codes are unconfirmed. If
+    /// we mis-classify a PHEV here, downstream status fetches that return
+    /// both `evStatus` and `gasRange` will still surface the gas range.
+    /// The 2018 Niro PHEV sends no fuel level at all, so without code 7
+    /// its evStatus-only status would self-heal it into a pure EV.
     static func kiaUSAFuelType(from fuelType: Int) -> FuelType {
         switch fuelType {
         case 4: return .electric
+        case 7: return .phev
         default: return .gas
         }
     }
@@ -187,15 +190,22 @@ extension KiaUSAAPIClient {
         let drvDistance = evStatusData["drvDistance"] as? [[String: Any]] ?? []
         let rangeInfo = drvDistance.first?["rangeByFuel"] as? [String: Any] ?? [:]
         let evModeRange = rangeInfo["evModeRange"] as? [String: Any] ?? [:]
-        let chargeTimes = evStatusData["remainChargeTime"] as? [[String: Any]] ?? []
-        let chargeTime: Int = extractNumber(from: chargeTimes.first?["value"]) ?? 0
-
         let evRange = Distance(
             length: extractNumber(from: evModeRange["value"]) ?? 0,
             units: Distance.Units(extractNumber(from: evModeRange["unit"]) ?? 3)
         )
 
+        let charging = evStatusData["batteryCharge"] as? Bool ?? false
         let batteryPlugin: Int = extractNumber(from: evStatusData["batteryPlugin"]) ?? 0
+
+        // Kia USA reports the live charge rate as `realTimePower` in kW
+        // (e.g. 11.3 on an EV9 on L2). It never sends Hyundai's
+        // `batteryStndChrgPower` / `batteryFstChrgPower`, which this
+        // parser used to read — so every Kia showed no rate (issue #107).
+        // Only trust it mid-charge: the EV9 is V2L-capable and nothing
+        // says the field stays 0 while discharging.
+        let realTimePower: Double = extractNumber(from: evStatusData["realTimePower"]) ?? 0
+        let chargeMinutes = charging ? remainingChargeMinutes(in: evStatusData["remainChargeTime"]) : 0
 
         // Kia US encodes plugType 0 as DC fast charging and plugType 1
         // as AC (matches hyundai_kia_connect_api). Earlier code had it
@@ -210,33 +220,48 @@ extension KiaUSAAPIClient {
         }
 
         return VehicleStatus.EVStatus(
-            charging: evStatusData["batteryCharge"] as? Bool ?? false,
-            chargeSpeed: max(
-                extractNumber(from: evStatusData["batteryStndChrgPower"]) ?? 0,
-                extractNumber(from: evStatusData["batteryFstChrgPower"]) ?? 0
-            ),
+            charging: charging,
+            chargeSpeed: charging ? max(0, realTimePower) : 0,
             evRange: VehicleStatus.FuelRange(range: evRange, percentage: batteryStatus),
             plugType: VehicleStatus.PlugType(fromBatteryPlugin: batteryPlugin),
-            chargeTime: .seconds(60 * chargeTime),
+            chargeTime: .seconds(Int64((60 * chargeMinutes).rounded())),
             targetSocAC: targetSocAC,
             targetSocDC: targetSocDC
         )
     }
 
     private func parseGasRange(from vehicleStatus: [String: Any]) -> VehicleStatus.FuelRange? {
-        // Kia uses `fuelLevel: false` (a JSON boolean) as the "no gas
-        // tank" signal for pure EVs. The generic `extractNumber<Double>`
-        // happily coerces NSNumber-wrapped `false` to `0.0`, which would
-        // make every Kia EV report a phantom 0% gas range — and (now
-        // that `BBVehicle.updateStatus` self-heals fuelType from the
-        // status payload's shape) every Kia EV would get mis-classified
-        // as a PHEV. Reject booleans explicitly before extracting.
+        // A JSON boolean is never a fuel level, and `extractNumber`
+        // would coerce one to 0 / 1.
         guard let fuelLevelRaw = vehicleStatus["fuelLevel"],
               !Self.isJSONBoolean(fuelLevelRaw),
-              let fuelLevel: Double = extractNumber(from: fuelLevelRaw),
-              let distanceToEmptyData = vehicleStatus["distanceToEmpty"] as? [String: Any],
-              let gasRangeValue: Double = extractNumber(from: distanceToEmptyData["value"]),
-              let gasRangeUnit: Int = extractNumber(from: distanceToEmptyData["unit"]) else { return nil }
+              let fuelLevel: Double = extractNumber(from: fuelLevelRaw) else { return nil }
+
+        // The EV9 sends `fuelLevel: 0` (a number) next to a top-level
+        // `distanceToEmpty` that just repeats the EV range. Taken at
+        // face value that's a phantom 0% gas tank, and
+        // `BBVehicle.updateStatus` then promotes the EV to PHEV (issue
+        // #107). Debug exports from older builds rendered the 0 as
+        // `false`, which is why an earlier fix only rejected booleans.
+        // With a high-voltage battery on board, only a positive fuel
+        // level proves there's a tank. The cost: a PHEV run to exactly
+        // 0% reads as tankless and keeps its last gas reading — no Kia
+        // PHEV payload seen so far sends `fuelLevel` at all.
+        let evStatus = vehicleStatus["evStatus"] as? [String: Any]
+        if evStatus != nil && fuelLevel <= 0 { return nil }
+
+        // A plug-in hybrid reports its gas-only range as the evStatus
+        // `gasModeRange`; hyundai_kia_connect_api reads that first and
+        // falls back to `distanceToEmpty`. EVs carry a zero
+        // `gasModeRange` or none, so only a positive one counts.
+        let drvDistance = evStatus?["drvDistance"] as? [[String: Any]]
+        let rangeByFuel = drvDistance?.first?["rangeByFuel"] as? [String: Any]
+        let gasModeRange = rangeByFuel?["gasModeRange"] as? [String: Any]
+        let gasModeValue: Double = extractNumber(from: gasModeRange?["value"]) ?? 0
+        let distanceToEmpty = vehicleStatus["distanceToEmpty"] as? [String: Any]
+        guard let rangeData = gasModeValue > 0 ? gasModeRange : distanceToEmpty,
+              let gasRangeValue: Double = extractNumber(from: rangeData["value"]),
+              let gasRangeUnit: Int = extractNumber(from: rangeData["unit"]) else { return nil }
 
         let gasRangeDistance = Distance(length: gasRangeValue, units: Distance.Units(gasRangeUnit))
         return VehicleStatus.FuelRange(range: gasRangeDistance, percentage: fuelLevel)
