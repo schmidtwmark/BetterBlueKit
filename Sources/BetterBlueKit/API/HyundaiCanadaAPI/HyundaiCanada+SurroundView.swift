@@ -38,7 +38,7 @@ extension HyundaiCanadaAPIClient {
     ) async throws -> [SurroundViewCapture] {
         let authCode = try await fetchCommandAuthCode(authToken: authToken, vehicle: vehicle)
 
-        let data = try await performSurroundViewRequest(
+        let json = try await performSurroundViewRequest(
             path: "rfc/lastmcrsvm",
             vehicle: vehicle,
             authToken: authToken,
@@ -46,7 +46,7 @@ extension HyundaiCanadaAPIClient {
             requestType: .fetchSurroundView
         )
 
-        return try parseCanadaSurroundViewResponse(data, for: vehicle)
+        return try parseCanadaSurroundViewCaptures(json, for: vehicle)
     }
 
     // MARK: - Request
@@ -62,20 +62,19 @@ extension HyundaiCanadaAPIClient {
         authToken: AuthToken,
         authCode: String,
         requestType: HTTPRequestType
-    ) async throws -> Data {
-        let (data, _, _) = try await performJSONRequest(
+    ) async throws -> [String: Any] {
+        let (data, _) = try await performRequest(
             url: "\(apiBaseURL)/\(path)",
             method: .POST,
             headers: remoteFunctionHeaders(authToken: authToken, vehicleId: vehicle.regId, pAuth: authCode),
-            body: ["pin": pin],
+            body: try JSONSerialization.data(withJSONObject: ["pin": pin]),
             requestType: requestType,
             vin: vehicle.vin
         )
 
         // Validated here because this API signals refusal as HTTP 200
         // with `responseCode: 1` in the body.
-        _ = try parseCanadaResponse(data, context: "surround view")
-        return data
+        return try parseCanadaResponse(data, context: "surround view")
     }
 
     // MARK: - Parsing
@@ -85,7 +84,13 @@ extension HyundaiCanadaAPIClient {
         for vehicle: Vehicle
     ) throws -> [SurroundViewCapture] {
         let json = try parseCanadaResponse(data, context: "surround view")
+        return try parseCanadaSurroundViewCaptures(json, for: vehicle)
+    }
 
+    private func parseCanadaSurroundViewCaptures(
+        _ json: [String: Any],
+        for vehicle: Vehicle
+    ) throws -> [SurroundViewCapture] {
         guard let result = json["result"] as? [String: Any],
               let locations = result["svmLocations"] as? [[String: Any]] else {
             throw APIError.logError("Invalid Canada surround view response", apiName: apiName)
