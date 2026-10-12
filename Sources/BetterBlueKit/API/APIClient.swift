@@ -28,6 +28,8 @@ public struct APIClientConfiguration {
     /// Currently used only by `KiaUSAAPIClient`; other implementations
     /// may opt in by capturing their respective rotated tokens.
     public let onRememberMeTokenRotated: (@MainActor @Sendable (String) -> Void)?
+    /// Checked before preparing an HTTP log so callers can toggle logging on an existing client.
+    public let shouldLogHTTPRequest: @MainActor @Sendable () -> Bool
 
     public init(
         region: Region,
@@ -41,7 +43,8 @@ public struct APIClientConfiguration {
         rememberMeToken: String? = nil,
         redactPII: Bool = true,
         deviceId: String? = nil,
-        onRememberMeTokenRotated: (@MainActor @Sendable (String) -> Void)? = nil
+        onRememberMeTokenRotated: (@MainActor @Sendable (String) -> Void)? = nil,
+        shouldLogHTTPRequest: @escaping @MainActor @Sendable () -> Bool = { true }
     ) {
         self.region = region
         self.brand = brand
@@ -55,6 +58,7 @@ public struct APIClientConfiguration {
         self.redactPII = redactPII
         self.deviceId = deviceId
         self.onRememberMeTokenRotated = onRememberMeTokenRotated
+        self.shouldLogHTTPRequest = shouldLogHTTPRequest
     }
 
     public func with(deviceId: String? = nil, refreshToken: String? = nil) -> Self {
@@ -70,7 +74,8 @@ public struct APIClientConfiguration {
             rememberMeToken: rememberMeToken,
             redactPII: redactPII,
             deviceId: deviceId ?? self.deviceId,
-            onRememberMeTokenRotated: onRememberMeTokenRotated
+            onRememberMeTokenRotated: onRememberMeTokenRotated,
+            shouldLogHTTPRequest: shouldLogHTTPRequest
         )
     }
 }

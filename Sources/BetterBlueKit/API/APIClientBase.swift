@@ -194,6 +194,8 @@ open class APIClientBase {
     }
 
     func logHTTPRequest(_ logData: HTTPRequestLogData) {
+        guard let logSink, configuration.shouldLogHTTPRequest() else { return }
+
         let duration = Date().timeIntervalSince(logData.startTime)
         let method = logData.request.httpMethod ?? "GET"
         let rawURL = logData.request.url?.absoluteString ?? "Unknown URL"
@@ -248,7 +250,7 @@ open class APIClientBase {
             vin: logData.vin
         )
 
-        logSink?(httpLog)
+        logSink(httpLog)
     }
 
     func createErrorLogData(context: RequestContext, error: String) -> HTTPRequestLogData {
