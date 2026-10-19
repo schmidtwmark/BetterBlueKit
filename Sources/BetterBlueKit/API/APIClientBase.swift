@@ -98,11 +98,15 @@ open class APIClientBase {
     /// `session` overrides the client's URLSession for this one request —
     /// the EU CCI signin uses a redirect-blocking session so the 302's
     /// Location (which carries the auth code) can be read instead of chased.
+    /// `validateStatus: false` hands back an error response instead of
+    /// throwing, for callers that branch on the body of a 4xx (the EU CCI
+    /// fingerprint gate's 9035/9036/9037 rejections).
     func performLoggedRequest(
         _ request: URLRequest,
         requestType: HTTPRequestType,
         vin: String? = nil,
-        session: URLSession? = nil
+        session: URLSession? = nil,
+        validateStatus: Bool = true
     ) async throws -> (Data, HTTPURLResponse) {
         let startTime = Date()
         let requestHeaders = request.allHTTPHeaderFields ?? [:]
@@ -125,7 +129,9 @@ open class APIClientBase {
 
         do {
             let (data, response) = try await (session ?? urlSession).data(for: request)
-            return try handleSuccessfulRequest(data: data, response: response, context: context)
+            return try handleSuccessfulRequest(
+                data: data, response: response, context: context, validateStatus: validateStatus
+            )
         } catch let error as APIError {
             throw error
         } catch {
@@ -136,7 +142,8 @@ open class APIClientBase {
     private func handleSuccessfulRequest(
         data: Data,
         response: URLResponse,
-        context: RequestContext
+        context: RequestContext,
+        validateStatus: Bool
     ) throws -> (Data, HTTPURLResponse) {
         guard let httpResponse = response as? HTTPURLResponse else {
             logHTTPRequest(createErrorLogData(context: context, error: "Invalid response type"))
@@ -163,7 +170,9 @@ open class APIClientBase {
             vin: context.vin
         ))
 
-        try validateHTTPResponse(httpResponse, data: data, responseBody: responseBody)
+        if validateStatus {
+            try validateHTTPResponse(httpResponse, data: data, responseBody: responseBody)
+        }
 
         return (data, httpResponse)
     }
