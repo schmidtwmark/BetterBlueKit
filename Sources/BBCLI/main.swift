@@ -346,7 +346,7 @@ func sendCommand(_ command: VehicleCommand, description: String, state: CLIState
 
     try await client.sendCommand(for: vehicle, command: command, authToken: token)
 
-    printSuccess("\(description) command sent successfully!")
+    printSuccess("\(description) request accepted. Vehicle state is not yet confirmed.")
 }
 
 @MainActor
