@@ -23,6 +23,13 @@ public func createBetterBlueKitAPIClient(
         return try createHyundaiClient(configuration: configuration)
     case .kia:
         return try createKiaClient(configuration: configuration)
+    case .genesis:
+        guard configuration.region == .canada else {
+            throw APIError.regionNotSupported(
+                "Genesis is not yet supported in \(configuration.region.rawValue)"
+            )
+        }
+        return HyundaiCanadaAPIClient(configuration: configuration)
     case .fake:
         throw APIError.regionNotSupported(
             "Fake brand is not supported by BetterBlueKit API client factory"
@@ -73,6 +80,8 @@ public func supportedRegions(for brand: Brand) -> [Region] {
         return [.usa, .canada, .europe]
     case .kia:
         return [.usa, .europe]
+    case .genesis:
+        return [.canada]
     case .fake:
         return Region.allCases
     }
@@ -84,6 +93,8 @@ public func betaRegions(for brand: Brand) -> [Region] {
         return [.canada, .europe]
     case .kia:
         return [.europe]
+    case .genesis:
+        return [.canada]
     default: return []
     }
 }
@@ -95,6 +106,7 @@ public func betaRegions(for brand: Brand) -> [Region] {
 /// Today the gating is hardcoded:
 ///   - Hyundai USA / Canada / EU
 ///   - Kia EU
+///   - Genesis Canada
 ///
 /// Kia USA and Fake authenticate without a PIN.
 public func requiresPin(brand: Brand, region: Region) -> Bool {
@@ -102,7 +114,8 @@ public func requiresPin(brand: Brand, region: Region) -> Bool {
     case (.hyundai, .usa),
          (.hyundai, .canada),
          (.hyundai, .europe),
-         (.kia, .europe):
+         (.kia, .europe),
+         (.genesis, .canada):
         return true
     default:
         return false

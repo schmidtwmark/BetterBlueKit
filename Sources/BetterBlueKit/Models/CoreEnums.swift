@@ -10,12 +10,13 @@ import Foundation
 // MARK: - Core Enums
 
 public enum Brand: String, Codable, CaseIterable, Sendable {
-    case hyundai, kia, fake
+    case hyundai, kia, genesis, fake
 
     public var displayName: String {
         switch self {
         case .hyundai: "Hyundai"
         case .kia: "Kia"
+        case .genesis: "Genesis"
         case .fake: "Fake (Testing)"
         }
     }
@@ -27,7 +28,7 @@ public enum Brand: String, Codable, CaseIterable, Sendable {
             if isTestAccount(username: username, password: password) {
                 return Brand.allCases
             }
-            return [.hyundai, .kia]
+            return [.hyundai, .kia, .genesis]
         #endif
     }
 
@@ -82,12 +83,15 @@ public enum Region: String, CaseIterable, Codable, Sendable {
     case usa = "US", canada = "CA", europe = "EU"
     case australia = "AU", china = "CN", india = "IN"
 
+    /// This package currently configures only the Canadian Genesis endpoint.
     public func apiBaseURL(for brand: Brand) -> String {
         switch brand {
         case .hyundai:
             return Brand.hyundaiBaseUrl(region: self)
         case .kia:
             return Brand.kiaBaseUrl(region: self)
+        case .genesis:
+            return self == .canada ? "https://genesisconnect.ca" : ""
         case .fake:
             return "https://fake.api.testing.com"
         }

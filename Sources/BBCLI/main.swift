@@ -118,7 +118,7 @@ func parseArguments(state: CLIState) {
                 if let brand = Brand(rawValue: brandArg) {
                     state.brand = brand
                 } else {
-                    printError("Unknown brand: \(args[argIndex + 1]). Use 'hyundai' or 'kia'.")
+                    printError("Unknown brand: \(args[argIndex + 1]). Use 'hyundai', 'kia', or 'genesis'.")
                     exit(1)
                 }
                 argIndex += 1
@@ -159,9 +159,9 @@ func printUsage() {
       -u, --username <email>    Account username/email
       -p, --password <pass>     Account password
       -rt, --token <token>      Account refresh token (optional, no password in case of use needed)
-      --pin <pin>               Vehicle PIN (required for Hyundai)
-      -b, --brand <brand>       Brand: 'hyundai' or 'kia' (default: hyundai)
-      -r, --region <region>     Region: 'USA', 'Canada', 'Europe' (default: USA)
+      --pin <pin>               Vehicle PIN (required for Hyundai, Kia EU, and Genesis CA)
+      -b, --brand <brand>       Brand: 'hyundai', 'kia', or 'genesis' (default: hyundai)
+      -r, --region <region>     Region: 'US', 'CA', 'EU' (default: US; Genesis supports CA only)
       --no-redaction            Disable PII redaction in HTTP logs
       --forget                  Discard the saved session for this account and log in fresh
       -h, --help                Show this help message
@@ -183,6 +183,7 @@ func printUsage() {
     Examples:
       bbcli -u user@email.com -p password --pin 1234 -b hyundai
       bbcli -b kia -u user@email.com -p password
+      bbcli -b genesis -r CA
       bbcli parse -b hyundai -r US -t vehicleStatus response.json
       bbcli parse -b hyundai -r US -t vehicleStatus '{"vehicleStatus": {...}}'
       bbcli parse -b kia -r US -t vehicles --electric response.json
@@ -214,6 +215,9 @@ func fetchVehicles(state: CLIState) async throws {
         print("\n[\(index + 1)] \(vehicle.model)")
         print("    VIN: \(displayVIN)")
         print("    Model: \(vehicle.model)")
+        if let modelYear = vehicle.modelYear {
+            print("    Model Year: \(modelYear)")
+        }
         print("    Fuel Type: \(vehicle.fuelType.rawValue)")
         print("    Generation: \(vehicle.generation)")
         if let key = vehicle.vehicleKey {
@@ -529,7 +533,7 @@ func parseParseArguments() -> ParseOptions {
                 if let brand = Brand(rawValue: brandArg) {
                     options.brand = brand
                 } else {
-                    printError("Unknown brand: \(args[argIndex + 1]). Use 'hyundai' or 'kia'.")
+                    printError("Unknown brand: \(args[argIndex + 1]). Use 'hyundai', 'kia', or 'genesis'.")
                     exit(1)
                 }
                 argIndex += 1
@@ -745,6 +749,11 @@ func runCLI() async -> Int32 {
     let state = CLIState()
     parseArguments(state: state)
 
+    guard supportedRegions(for: state.brand).contains(state.region) else {
+        printError("\(state.brand.displayName) is not yet supported in \(state.region.rawValue).")
+        return 1
+    }
+
     // Prompt for missing credentials
     if state.username.isEmpty {
         state.username = prompt("Username/Email: ")
@@ -755,7 +764,7 @@ func runCLI() async -> Int32 {
     if state.password.isEmpty && state.refreshToken.isEmpty {
         state.refreshToken = prompt("Refresh Token: ")
     }
-    if state.brand == .hyundai && state.pin.isEmpty {
+    if requiresPin(brand: state.brand, region: state.region) && state.pin.isEmpty {
         let rawPin = prompt("PIN: ")
         // Filter to digits only - PIN should be numeric
         state.pin = rawPin.filter { $0.isNumber }

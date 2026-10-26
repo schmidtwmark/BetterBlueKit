@@ -114,6 +114,56 @@ struct HyundaiCanadaParsingTests {
 
     // MARK: - Fuel type detection
 
+    @Test @MainActor func `Genesis Canada vehicle list parses a gasoline GV70`() throws {
+        let config = APIClientConfiguration(
+            region: .canada,
+            brand: .genesis,
+            username: "test@example.com",
+            password: "password123",
+            pin: "1234",
+            accountId: UUID()
+        )
+        let data = Data("""
+        {
+          "responseHeader": { "responseCode": 0 },
+          "result": {
+            "vehicles": [{
+              "vehicleId": "vehicle-id",
+              "nickName": "My GV70",
+              "modelName": "GV70",
+              "modelYear": "2024",
+              "fuelKindCode": "G",
+              "genType": "G1",
+              "vin": "TESTVIN0000000000",
+              "mainBatteryType": false
+            }]
+          }
+        }
+        """.utf8)
+
+        let vehicles = try HyundaiCanadaAPIClient(configuration: config).parseCanadaVehiclesResponse(data)
+        #expect(vehicles.count == 1)
+        let vehicle = try #require(vehicles.first)
+        #expect(vehicle.vin == "TESTVIN0000000000")
+        #expect(vehicle.regId == "vehicle-id")
+        #expect(vehicle.model == "My GV70")
+        #expect(vehicle.modelYear == 2024)
+        #expect(vehicle.fuelType == .gas)
+
+        // G1 retains Canada's existing fallback. Canada request paths do not use Vehicle.generation.
+        #expect(vehicle.generation == 3)
+    }
+
+    @Test @MainActor func `Genesis OTP challenge accepts response code zero`() {
+        let data = Data("""
+        {
+          "responseHeader": { "responseCode": 0 },
+          "error": { "errorCode": "7110", "errorDesc": "OTP required" }
+        }
+        """.utf8)
+        #expect(makeClient().isOTPRequiredResponse(data))
+    }
+
     /// A Canadian gas vehicle exposes its powertrain only as `fuelKindCode`.
     /// Before #98 this fell through to the `.electric` default, which hid the
     /// fuel range and gave a Palisade a phantom CCS1 charge port.

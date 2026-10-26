@@ -17,7 +17,7 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     let clientId = "HATAHSPACA0232141ED9722C67715A0B"
     let clientSecret = "CLISCR01AHSPA"
 
-    // One identity, matching hyundai_kia_connect_api's KiaUvoApiCA:
+    // One Hyundai identity, matching hyundai_kia_connect_api's KiaUvoApiCA:
     // `from: SPA` with a browser User-Agent on every request — upstream's
     // API_HEADERS carry `from: SPA` for login, status, and commands alike,
     // and the "remote function" family (`fndmcr`, SVM) outright rejects
@@ -27,6 +27,8 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     // accumulates whatever Cloudflare sets, the same way `requests.Session`
     // does for the Python reference, and hard-requiring the cookie was
     // itself a failure mode (#35).
+    //
+    // Genesis account endpoints use `from: CWP` with the same client credentials.
     static let userAgent =
         "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
         + "(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
@@ -86,22 +88,23 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     /// dance under the hood.
     var mfaCompletedAuthToken: AuthToken?
 
-    var baseURL: String { region.apiBaseURL(for: .hyundai) }
+    var baseURL: String { region.apiBaseURL(for: brand == .genesis ? .genesis : .hyundai) }
     var apiBaseURL: String { "\(baseURL)/tods/api" }
-    var apiHost: String { "mybluelink.ca" }
+    var apiHost: String { URL(string: baseURL)?.host ?? "" }
 
-    public override var apiName: String { "HyundaiCanada" }
+    public override var apiName: String { brand == .genesis ? "GenesisCanada" : "HyundaiCanada" }
 
     // MARK: - APIClientProtocol Implementation
 
     // Declared here rather than in `+MFA` so one list covers every
     // optional capability the Canada client implements.
+    // Genesis camera endpoints require separate vehicle checks.
     public func optionalFeaturesSupported() -> [OptionalAPIFeature] {
-        [.mfa, .surroundView, .surroundViewCapture]
+        return brand == .genesis ? [.mfa] : [.mfa, .surroundView, .surroundViewCapture]
     }
 
     public func login() async throws -> AuthToken {
-        BBLogger.info(.auth, "HyundaiCanada: starting login")
+        BBLogger.info(.auth, "\(apiName): starting login")
 
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/v2/login",

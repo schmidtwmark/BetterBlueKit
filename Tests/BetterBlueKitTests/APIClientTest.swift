@@ -226,6 +226,24 @@ struct APIClientFactoryTests {
         #expect(client is HyundaiCanadaAPIClient)
     }
 
+    @Test @MainActor func `Create Genesis Canada client`() throws {
+        let config = APIClientConfiguration(
+            region: .canada,
+            brand: .genesis,
+            username: "test@example.com",
+            password: "password123",
+            pin: "0000",
+            accountId: UUID()
+        )
+
+        let client = try #require(
+            try createBetterBlueKitAPIClient(configuration: config) as? HyundaiCanadaAPIClient
+        )
+        #expect(client.apiName == "GenesisCanada")
+        #expect(client.apiHost == "genesisconnect.ca")
+        #expect(client.headers()["from"] == "CWP")
+    }
+
     @Test("Fake brand throws error")
     @MainActor func testFakeBrandThrows() {
         let config = APIClientConfiguration(

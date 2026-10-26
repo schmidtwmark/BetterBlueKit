@@ -11,7 +11,7 @@ extension HyundaiCanadaAPIClient {
 
     // MARK: - Headers
 
-    /// The one header identity this client uses — hyundai_kia_connect_api's
+    /// The Hyundai header identity — hyundai_kia_connect_api's
     /// `KiaUvoApiCA.API_HEADERS`, which sends `from: SPA` on every request
     /// (login, status, and commands alike), plus a browser User-Agent and
     /// the stable per-account `deviceid` (the backend recognizes the
@@ -19,12 +19,14 @@ extension HyundaiCanadaAPIClient {
     /// Cookies are NOT set manually: URLSession's shared cookie storage
     /// carries whatever Cloudflare mints, like `requests.Session` does
     /// for the Python reference.
+    ///
+    /// Genesis account endpoints use `CWP` and can require an OTP despite a stable device ID.
     func headers() -> [String: String] {
         [
             "client_id": clientId,
             "client_secret": clientSecret,
             "deviceid": deviceId,
-            "from": "SPA",
+            "from": brand == .genesis ? "CWP" : "SPA",
             "language": "0",
             "offset": timezoneOffsetHeader,
             "User-Agent": Self.userAgent,
@@ -60,10 +62,11 @@ extension HyundaiCanadaAPIClient {
     }
 
     /// Headers for the "remote function" family (`fndmcr`, the SVM
-    /// endpoints): the standard set (already `from: SPA`) with the
+    /// endpoints): the standard set (`from: SPA` for Hyundai) with the
     /// `/remote/` referer the web portal presents on these calls. Kept
     /// separate because the family historically rejected any other
     /// identity with errorCode 6459.
+    /// Genesis remote-function endpoints remain unverified.
     func remoteFunctionHeaders(
         authToken: AuthToken,
         vehicleId: String,
