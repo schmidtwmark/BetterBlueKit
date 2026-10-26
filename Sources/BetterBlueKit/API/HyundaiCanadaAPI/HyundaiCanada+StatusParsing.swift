@@ -161,15 +161,13 @@ extension HyundaiCanadaAPIClient {
     /// depends on the model year — 14°C for MY2020+, 16°C for older —
     /// matching the `hyundai_kia_connect_api` decoder's table split.
     ///
-    /// Missing or unparseable values fall through to the legacy
-    /// `Temperature(units:value:)` initializer so downstream display code
-    /// still gets a value (albeit one `TemperatureDisplay.isPlausibleForDisplay`
-    /// will likely reject).
+    /// Genesis gas vehicles can omit `airTemp`; return nil rather than
+    /// the legacy initializer's minimum temperature when no value exists.
     private func parseCanadaAirTemp(
         airTempBlock: [String: Any],
         airTempUnitTopLevel: String?,
         modelYear: Int?
-    ) -> Temperature {
+    ) -> Temperature? {
         let rawValue = stringify(airTempBlock["value"])
         let unitField: Int? = extractNumber(from: airTempBlock["unit"])
 
@@ -211,8 +209,7 @@ extension HyundaiCanadaAPIClient {
             return Temperature(value: number, units: units)
         }
 
-        // Fall back to the legacy initializer so we always return something.
-        return Temperature(units: unitField, value: rawValue)
+        return nil
     }
 
     func parseCanadaSyncDate(from statusData: [String: Any]) -> Date? {

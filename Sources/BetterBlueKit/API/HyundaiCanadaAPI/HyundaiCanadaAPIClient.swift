@@ -150,7 +150,7 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
         cached: Bool
     ) async throws -> VehicleStatus {
         let statusEndpoint = cached ? "lstvhclsts" : "rltmvhclsts"
-        let (primaryData, _, _) = try await performJSONRequest(
+        var (statusData, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/\(statusEndpoint)",
             method: .POST,
             headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId),
@@ -158,32 +158,48 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
             vin: vehicle.vin
         )
 
-        // Neither status endpoint carries the odometer; upstream reads it
-        // from the next-service call. Fold it into the payload before the
-        // location gate runs so "has the car moved" can see it.
-        let serviceOdometer = await fetchNextServiceOdometer(vehicle: vehicle, authToken: authToken)
-        let statusData = injectOdometer(serviceOdometer, into: primaryData)
-        let finalData = await injectLocationCoordinates(into: statusData, vehicle: vehicle, authToken: authToken)
+        if cached {
+            let json = try parseCanadaResponse(statusData, context: "status")
+            let result = json["result"] as? [String: Any]
+            let status = result?["status"] as? [String: Any] ?? result?["vehicleStatus"] as? [String: Any]
+
+            // Genesis can return success after its status cache expires.
+            // Retry once against the vehicle, before supplemental data can hide an empty status.
+            if status?.isEmpty ?? true {
+                (statusData, _, _) = try await performJSONRequest(
+                    url: "\(apiBaseURL)/rltmvhclsts",
+                    method: .POST,
+                    headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId),
+                    requestType: .fetchVehicleStatus,
+                    vin: vehicle.vin
+                )
+            }
+        }
 
         do {
-            return try parseCanadaVehicleStatusResponse(finalData, for: vehicle)
+            _ = try parseCanadaVehicleStatusResponse(statusData, for: vehicle)
         } catch {
-            BBLogger.debug(.api, "HyundaiCanada: parsing status payload failed: \(error)")
+            BBLogger.debug(.api, "\(apiName): parsing status payload failed: \(error)")
             if cached { throw error }
             // The forced (rltmvhclsts) payload didn't parse — fall back
             // to the server cache rather than failing the refresh.
-            let (cachedData, _, _) = try await performJSONRequest(
+            (statusData, _, _) = try await performJSONRequest(
                 url: "\(apiBaseURL)/lstvhclsts",
                 method: .POST,
                 headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId),
                 requestType: .fetchVehicleStatus,
                 vin: vehicle.vin
             )
-            return try parseCanadaVehicleStatusResponse(
-                injectOdometer(serviceOdometer, into: cachedData),
-                for: vehicle
-            )
+            _ = try parseCanadaVehicleStatusResponse(statusData, for: vehicle)
         }
+
+        // Neither status endpoint carries the odometer; upstream reads it
+        // from the next-service call. Fold it into the payload before the
+        // location gate runs so "has the car moved" can see it.
+        let serviceOdometer = await fetchNextServiceOdometer(vehicle: vehicle, authToken: authToken)
+        statusData = injectOdometer(serviceOdometer, into: statusData)
+        let finalData = await injectLocationCoordinates(into: statusData, vehicle: vehicle, authToken: authToken)
+        return try parseCanadaVehicleStatusResponse(finalData, for: vehicle)
     }
 
     /// Injects `fndmcr` coordinates into the status payload, but only
@@ -201,6 +217,20 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     private func injectLocationCoordinates(into data: Data, vehicle: Vehicle, authToken: AuthToken) async -> Data {
         let vin = vehicle.vin
         let freshOdometer = extractOdometerValue(from: data)
+
+        // Genesis status includes a location beside the status block.
+        // Use that fix before a PIN check and a separate Find My Car request.
+        if let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+           let result = json["result"] as? [String: Any] {
+            let location = parseCanadaLocation(from: result)
+            if location.hasCoordinates {
+                lastLocationByVin[vin] = location
+                if let freshOdometer {
+                    lastLocationOdometerByVin[vin] = freshOdometer
+                }
+                return data
+            }
+        }
 
         // Only a readable, increased odometer counts as movement; an
         // unreadable one falls to the rate-limited retry path instead of

@@ -79,10 +79,10 @@ enum HyundaiCanadaStatusSampleJSON {
 struct HyundaiCanadaParsingTests {
 
     @MainActor
-    private func makeClient() -> HyundaiCanadaAPIClient {
+    private func makeClient(brand: Brand = .hyundai) -> HyundaiCanadaAPIClient {
         let config = APIClientConfiguration(
             region: .canada,
-            brand: .hyundai,
+            brand: brand,
             username: "test@example.com",
             password: "password123",
             pin: "1234",
@@ -190,6 +190,38 @@ struct HyundaiCanadaParsingTests {
     }
 
     // MARK: - Gas range (DTE)
+
+    /// Trimmed from a real 2024 gas GV70 response. Coordinates are synthetic;
+    /// the other values retain the reported units.
+    @Test @MainActor func `Genesis gasoline status uses the supplied location without EV data`() throws {
+        let data = Data("""
+        {
+          "responseHeader": {"responseCode": 0},
+          "result": {
+            "status": {
+              "lastStatusDate": "20261026014351",
+              "fuelLevel": 84, "dte": {"value": 297, "unit": 3},
+              "doorLock": false, "engine": false, "airCtrlOn": false, "airTempUnit": "C",
+              "doorOpen": {"frontLeft": 1, "frontRight": 1, "backLeft": 0, "backRight": 1},
+              "trunkOpen": true, "hoodOpen": false
+            },
+            "vehicleLocation": {"coord": {"lat": 49.0, "lon": -123.0}}
+          }
+        }
+        """.utf8)
+        let status = try makeClient(brand: .genesis).parseCanadaVehicleStatusResponse(data, for: makeVehicle(fuelType: .gas))
+
+        #expect(status.gasRange == VehicleStatus.FuelRange(range: Distance(length: 297, units: .miles), percentage: 84))
+        #expect(status.evStatus == nil)
+        #expect(status.climateStatus.temperature == nil)
+        #expect(status.location == VehicleStatus.Location(latitude: 49, longitude: -123))
+        #expect(status.lockStatus == .unlocked)
+        #expect(status.engineOn == false)
+        #expect(status.doorOpen == VehicleStatus.DoorStatus(frontLeft: true, frontRight: true, backLeft: false, backRight: true))
+        #expect(status.trunkOpen == true)
+        #expect(status.hoodOpen == false)
+        #expect(status.syncDate == ISO8601DateFormatter().date(from: "2026-10-26T01:43:51Z"))
+    }
 
     /// Canada sends `dte`, not `distanceToEmpty`. Reading the wrong key
     /// meant gas vehicles showed no range at all even though the value was

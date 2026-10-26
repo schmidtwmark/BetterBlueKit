@@ -256,7 +256,7 @@ func selectVehicle(state: CLIState) -> Vehicle? {
 }
 
 @MainActor
-func fetchVehicleStatus(state: CLIState) async throws {
+func fetchVehicleStatus(state: CLIState, cached: Bool) async throws {
     guard let vehicle = selectVehicle(state: state) else { return }
     guard let token = state.authToken else {
         throw APIError(message: "Not logged in")
@@ -271,7 +271,7 @@ func fetchVehicleStatus(state: CLIState) async throws {
     // cached: false → wake the car and read fresh state. On EU CCS2 vehicles
     // this adds a ~20s wait but is the only way to see a just-sent command
     // (e.g. climate) actually reflected, instead of a stale cached snapshot.
-    let status = try await client.fetchVehicleStatus(for: vehicle, authToken: token, cached: false)
+    let status = try await client.fetchVehicleStatus(for: vehicle, authToken: token, cached: cached)
 
     printSuccess("Status fetched successfully")
 
@@ -279,7 +279,36 @@ func fetchVehicleStatus(state: CLIState) async throws {
     print("\n📊 Status Summary:")
     print("  Lock Status: \(status.lockStatus)")
     print("  Climate On: \(status.climateStatus.airControlOn)")
-    print("  Climate Temp: \(status.climateStatus.temperature.value)°\(status.climateStatus.temperature.units == .celsius ? "C" : "F")")
+    if let temperature = status.climateStatus.temperature {
+        print("  Climate Temp: \(temperature.value)\(temperature.units.symbol)")
+    } else {
+        print("  Climate Temp: Unknown")
+    }
+    if let engineOn = status.engineOn {
+        print("  Engine On: \(engineOn)")
+    }
+    if let doors = status.doorOpen {
+        print("  Open Doors: \(doors.openDoorsDescription)")
+    }
+    if let trunkOpen = status.trunkOpen {
+        print("  Trunk Open: \(trunkOpen)")
+    }
+    if let hoodOpen = status.hoodOpen {
+        print("  Hood Open: \(hoodOpen)")
+    }
+    if status.location.hasCoordinates {
+        print("  Location: \(state.redactPII ? "[redacted]" : status.location.debug)")
+    } else {
+        print("  Location: Unknown")
+    }
+    if let syncDate = status.syncDate {
+        print("  Last Vehicle Update: \(syncDate)")
+    } else {
+        print("  Last Vehicle Update: Unknown")
+    }
+    if let odometer = status.odometer {
+        print("  Odometer: \(odometer.length) \(odometer.units == .miles ? "mi" : "km")")
+    }
 
     if let evStatus = status.evStatus {
         print("  🔋 EV Status:")
@@ -395,7 +424,7 @@ func showMenu() {
 
     Commands:
       1. Fetch Vehicles
-      2. Fetch Vehicle Status
+      2. Fetch Vehicle Status (fresh)
       3. Lock Vehicle
       4. Unlock Vehicle
       5. Start Climate
@@ -410,6 +439,7 @@ func showMenu() {
      14. Probe Vehicle Features (Kia US)
      15. Probe 360 View Trigger (Kia US)
      16. Confirm 360 View Trigger (Kia US)
+     17. Fetch Vehicle Status (cached)
       0. Exit
 
     """)
@@ -451,7 +481,7 @@ func promptAndSetChargeLimits(state: CLIState) async throws {
 func runMenuChoice(_ choice: String, state: CLIState) async throws -> Bool {
     switch choice {
     case "1": try await fetchVehicles(state: state)
-    case "2": try await fetchVehicleStatus(state: state)
+    case "2": try await fetchVehicleStatus(state: state, cached: false)
     case "3": try await sendCommand(.lock, description: "Lock", state: state)
     case "4": try await sendCommand(.unlock, description: "Unlock", state: state)
     case "5": try await promptAndStartClimate(state: state)
@@ -466,6 +496,7 @@ func runMenuChoice(_ choice: String, state: CLIState) async throws -> Bool {
     case "14": try await probeVehicleFeatures(state: state)
     case "15": try await probeSurroundViewTrigger(state: state)
     case "16": try await confirmSurroundViewTrigger(state: state)
+    case "17": try await fetchVehicleStatus(state: state, cached: true)
     case "0", "q", "quit", "exit":
         print("\nGoodbye!")
         return false
