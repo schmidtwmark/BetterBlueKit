@@ -519,10 +519,20 @@ func runInteractiveLoop(state: CLIState) async {
             if let userInfo = error.userInfo {
                 print("User Info: \(userInfo)")
             }
-            // A reused session the server has since invalidated fails on
-            // every command with no obvious way out — unlike the app, the
-            // CLI has no re-authenticate-and-retry. Point at the exit.
-            if error.errorType == .invalidVehicleSession || error.errorType == .invalidCredentials {
+
+            if error.errorType == .invalidCredentials, state.authToken != nil {
+                state.authToken = nil
+                state.updateSession { $0.authToken = nil }
+                print("\nSession rejected. Sign-in uses the saved device identity.")
+                do {
+                    try await performLogin(state: state)
+                    printSuccess("Session restored. Select the command again.")
+                } catch {
+                    printError("Sign-in failed: \(error.localizedDescription)")
+                    print("Run bbcli again to retry sign-in with the saved device identity.")
+                }
+            } else if error.errorType == .invalidVehicleSession || error.errorType == .invalidCredentials {
+                // Some session errors require a fresh device identity.
                 print("\nThe saved session looks stale. Re-run with `--forget` to log in fresh.")
             }
         } catch {
