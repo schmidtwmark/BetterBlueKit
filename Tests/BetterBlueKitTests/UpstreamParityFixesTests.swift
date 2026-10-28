@@ -90,9 +90,10 @@ struct CanadaErrorCodeTests {
     }
 
     @Test(arguments: [
-        (["7402", "7403", "7404", "7549", "7602", "7606"], APIError.ErrorType.invalidCredentials),
-        (["7310", "7311", "7312", "7313", "7314", "7315", "7316"], .invalidPin)
-    ]) func `Canada authentication codes preserve their error type`(codes: [String], errorType: APIError.ErrorType) {
+        (["7402", "7403", "7404", "7406", "7549", "7602", "7606"], APIError.ErrorType.invalidCredentials),
+        (["7310", "7311", "7312", "7313", "7314", "7315", "7316"], .invalidPin),
+        (["6533"], .concurrentRequest)
+    ]) func `Canada error codes preserve their error type`(codes: [String], errorType: APIError.ErrorType) {
         // A French errorDesc defeats the old substring matching; the
         // code must carry the classification.
         for code in codes {

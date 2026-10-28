@@ -107,9 +107,12 @@ extension HyundaiCanadaAPIClient {
         //   7402 account locked, 7403 auth expired, 7404 bad credentials,
         //   7549 OTP verification failed, 7602 access token deleted,
         //   7606 token bound to a changed IP.
-        let credentialCodes: Set<String> = ["7402", "7403", "7404", "7549", "7602", "7606"]
+        let credentialCodes: Set<String> = ["7402", "7403", "7404", "7406", "7549", "7602", "7606"]
         let errorCode = (error?["errorCode"] as? String)
             ?? extractNumber(from: error?["errorCode"]).map { (code: Int) in String(code) }
+        if errorCode == "6533" {
+            throw APIError.concurrentRequest(errorDesc, apiName: apiName)
+        }
         if let errorCode, ["7310", "7311", "7312", "7313", "7314", "7315", "7316"].contains(errorCode) {
             throw APIError.invalidPin(errorDesc, apiName: apiName)
         }

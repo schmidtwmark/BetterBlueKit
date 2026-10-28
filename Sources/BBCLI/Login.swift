@@ -91,7 +91,7 @@ func performLogin(state: CLIState) async throws {
     print("Region: \(region.rawValue)")
     print("Username: \(username)")
     if brand == .genesis {
-        print("Genesis Canada beta: sign-in, vehicle discovery, vehicle status, and lock/unlock. Other operations remain unverified.")
+        print("Genesis Canada beta: sign-in, vehicles, status, lock/unlock, and gas climate. Other operations remain unverified.")
     }
     if state.redactPII == false {
         print("⚠️  PII redaction disabled - sensitive data will be visible in logs")
