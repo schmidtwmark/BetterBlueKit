@@ -21,6 +21,11 @@ extension HyundaiCanadaAPIClient {
     // MARK: - APIClientProtocol
 
     public func requestSurroundViewCapture(for vehicle: Vehicle, authToken: AuthToken) async throws {
+        guard supportsSurroundViewCapture() else {
+            throw APIError.featureNotSupported(
+                "Surround view capture is not yet supported for \(brand.displayName) in BetterBlueKit.", apiName: apiName
+            )
+        }
         let authCode = try await fetchCommandAuthCode(authToken: authToken, vehicle: vehicle)
 
         _ = try await performSurroundViewRequest(
@@ -36,6 +41,11 @@ extension HyundaiCanadaAPIClient {
         for vehicle: Vehicle,
         authToken: AuthToken
     ) async throws -> [SurroundViewCapture] {
+        guard supportsSurroundView() else {
+            throw APIError.featureNotSupported(
+                "Surround view retrieval is not yet supported for \(brand.displayName) in BetterBlueKit.", apiName: apiName
+            )
+        }
         let authCode = try await fetchCommandAuthCode(authToken: authToken, vehicle: vehicle)
 
         let data = try await performSurroundViewRequest(

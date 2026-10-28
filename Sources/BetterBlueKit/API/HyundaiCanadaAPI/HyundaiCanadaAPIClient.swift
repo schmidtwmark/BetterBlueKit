@@ -310,6 +310,22 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     }
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
+        if brand == .genesis {
+            switch command {
+            case .startCharge, .stopCharge, .setTargetSOC:
+                throw APIError.featureNotSupported(
+                    "Charging is not yet supported for Genesis in BetterBlueKit.", apiName: apiName
+                )
+            case .startClimate, .stopClimate:
+                if vehicle.fuelType.hasElectricCapability {
+                    throw APIError.featureNotSupported(
+                        "EV climate control is not yet supported for Genesis in BetterBlueKit.", apiName: apiName
+                    )
+                }
+            default:
+                break
+            }
+        }
         let authCode = try await fetchCommandAuthCode(authToken: authToken, vehicle: vehicle)
 
         try await sendCommandRequest(
