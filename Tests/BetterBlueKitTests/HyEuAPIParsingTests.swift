@@ -1026,6 +1026,57 @@ struct HyEuAPIClientTests {
         #expect(trips.isEmpty)
     }
 
+    /// `tripTime` is Central European wall-clock time. The case from
+    /// BetterBlue#126: a UK account got 0909 on 20 Oct (CEST) for a trip the
+    /// official app shows at 08:09 BST — 07:09 UTC.
+    @Test("Individual trip times are read as Central European time")
+    @MainActor func testIndividualTripTimeIsCentralEuropean() throws {
+        let json = """
+        {
+          "resMsg": {
+            "dayTripList": [
+              {
+                "tripDay": "20261020",
+                "tripList": [
+                  {"tripTime": "090900", "tripDrvTime": 24, "tripIdleTime": 7, "tripDist": 8},
+                  {"tripTime": "162400", "tripDrvTime": 6, "tripIdleTime": 2, "tripDist": 1}
+                ]
+              },
+              {
+                "tripDay": "20261228",
+                "tripList": [
+                  {"tripTime": "083000", "tripDrvTime": 10, "tripIdleTime": 0, "tripDist": 5}
+                ]
+              }
+            ]
+          }
+        }
+        """
+
+        let config = APIClientConfiguration(
+            region: .europe,
+            brand: .hyundai,
+            username: "test@example.com",
+            password: "password123",
+            pin: "0000",
+            accountId: UUID(),
+            deviceId: UUID().uuidString
+        )
+        let client = HyundaiEuropeAPIClient(configuration: config)
+
+        let trips = try client.parseIndividualTripsResponse(Data(json.utf8))
+        #expect(trips.count == 3)
+
+        var london = Calendar(identifier: .gregorian)
+        london.timeZone = try #require(TimeZone(identifier: "Europe/London"))
+        let rendered = trips.map { london.dateComponents([.month, .day, .hour, .minute], from: $0.date) }
+
+        // Summer (CEST → BST) and winter (CET → GMT) are both an hour apart.
+        #expect(rendered[0] == DateComponents(month: 10, day: 20, hour: 8, minute: 9))
+        #expect(rendered[1] == DateComponents(month: 10, day: 20, hour: 15, minute: 24))
+        #expect(rendered[2] == DateComponents(month: 12, day: 28, hour: 7, minute: 30))
+    }
+
 }
 
 // MARK: - JSON Format Documentation Tests

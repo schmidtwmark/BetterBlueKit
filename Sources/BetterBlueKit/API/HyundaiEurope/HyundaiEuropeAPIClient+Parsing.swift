@@ -444,14 +444,13 @@ extension HyundaiEuropeAPIClient {
         let dateFormatter = DateFormatter()
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         dateFormatter.dateFormat = "yyyyMMddHHmmss"
-        // No explicit zone: `tripDay`+`tripTime` is a wall-clock reading of
-        // when the driver was in the car, and the UI renders it in the
-        // device's zone — so interpreting it locally shows the clock time the
-        // backend reported. Pinning it to a fixed European zone shifted every
-        // trip time by the offset between that zone and the user's
-        // (BetterBlueKit#46 fixed the same mistake on the day-level dates).
-        // If a live account ever shows these an hour off, the backend is
-        // reporting CET rather than vehicle-local and this needs revisiting.
+        // `tripDay`+`tripTime` is Central European wall-clock time, not the
+        // vehicle's or the device's: a UK account (BetterBlue#126) got 0909
+        // for a trip the official app shows at 08:09 BST. Reading it as Berlin
+        // time yields the real instant, which the UI then renders in the
+        // device's zone. Unlike the floating day in `drivingDate` above, this
+        // is a moment in time, so a fixed zone is right here.
+        dateFormatter.timeZone = TimeZone(identifier: "Europe/Berlin")
 
         for dayTrip in dayTripList {
             guard let dateStr = dayTrip["tripDay"] as? String,
