@@ -173,17 +173,17 @@ struct VehicleStatusTests {
         #expect(climateStatus.defrostOn == true)
         #expect(climateStatus.airControlOn == false)
         #expect(climateStatus.steeringWheelHeatingOn == true)
-        #expect(climateStatus.temperature.value == 72.0)
-        #expect(climateStatus.temperature.units == .fahrenheit)
+        #expect(climateStatus.temperature == temperature)
     }
 
-    @Test("ClimateStatus Codable")
-    func testClimateStatusCodable() throws {
+    @Test(arguments: [
+        Temperature(value: 20.0, units: .celsius), nil
+    ]) func `ClimateStatus preserves reported and unknown temperatures through Codable`(temperature: Temperature?) throws {
         let original = VehicleStatus.ClimateStatus(
             defrostOn: false,
             airControlOn: true,
             steeringWheelHeatingOn: false,
-            temperature: Temperature(value: 20.0, units: .celsius)
+            temperature: temperature
         )
 
         let encoded = try JSONEncoder().encode(original)
@@ -192,8 +192,7 @@ struct VehicleStatusTests {
         #expect(decoded.defrostOn == original.defrostOn)
         #expect(decoded.airControlOn == original.airControlOn)
         #expect(decoded.steeringWheelHeatingOn == original.steeringWheelHeatingOn)
-        #expect(decoded.temperature.value == original.temperature.value)
-        #expect(decoded.temperature.units == original.temperature.units)
+        #expect(decoded.temperature == original.temperature)
     }
 
     // MARK: - Additional Flag Tests

@@ -118,7 +118,7 @@ func parseArguments(state: CLIState) {
                 if let brand = Brand(rawValue: brandArg) {
                     state.brand = brand
                 } else {
-                    printError("Unknown brand: \(args[argIndex + 1]). Use 'hyundai' or 'kia'.")
+                    printError("Unknown brand: \(args[argIndex + 1]). Use 'hyundai', 'kia', or 'genesis'.")
                     exit(1)
                 }
                 argIndex += 1
@@ -150,7 +150,7 @@ func parseArguments(state: CLIState) {
 
 func printUsage() {
     print("""
-    BetterBlueKit CLI - Test tool for Hyundai/Kia API
+    BetterBlueKit CLI - Test tool for Hyundai/Kia/Genesis API
 
     Usage: bbcli [OPTIONS]
            bbcli parse [OPTIONS] <json-string-or-file>
@@ -159,9 +159,9 @@ func printUsage() {
       -u, --username <email>    Account username/email
       -p, --password <pass>     Account password
       -rt, --token <token>      Account refresh token (optional, no password in case of use needed)
-      --pin <pin>               Vehicle PIN (required for Hyundai)
-      -b, --brand <brand>       Brand: 'hyundai' or 'kia' (default: hyundai)
-      -r, --region <region>     Region: 'USA', 'Canada', 'Europe' (default: USA)
+      --pin <pin>               Vehicle PIN (required for Hyundai, Kia EU, and Genesis CA)
+      -b, --brand <brand>       Brand: 'hyundai', 'kia', or 'genesis' (default: hyundai)
+      -r, --region <region>     Region: 'US', 'CA', 'EU' (default: US; Genesis supports CA only)
       --no-redaction            Disable PII redaction in HTTP logs
       --forget                  Discard the saved session for this account and log in fresh
       -h, --help                Show this help message
@@ -183,6 +183,7 @@ func printUsage() {
     Examples:
       bbcli -u user@email.com -p password --pin 1234 -b hyundai
       bbcli -b kia -u user@email.com -p password
+      bbcli -b genesis -r CA
       bbcli parse -b hyundai -r US -t vehicleStatus response.json
       bbcli parse -b hyundai -r US -t vehicleStatus '{"vehicleStatus": {...}}'
       bbcli parse -b kia -r US -t vehicles --electric response.json
@@ -214,6 +215,9 @@ func fetchVehicles(state: CLIState) async throws {
         print("\n[\(index + 1)] \(vehicle.model)")
         print("    VIN: \(displayVIN)")
         print("    Model: \(vehicle.model)")
+        if let modelYear = vehicle.modelYear {
+            print("    Model Year: \(modelYear)")
+        }
         print("    Fuel Type: \(vehicle.fuelType.rawValue)")
         print("    Generation: \(vehicle.generation)")
         if let key = vehicle.vehicleKey {
@@ -252,7 +256,7 @@ func selectVehicle(state: CLIState) -> Vehicle? {
 }
 
 @MainActor
-func fetchVehicleStatus(state: CLIState) async throws {
+func fetchVehicleStatus(state: CLIState, cached: Bool) async throws {
     guard let vehicle = selectVehicle(state: state) else { return }
     guard let token = state.authToken else {
         throw APIError(message: "Not logged in")
@@ -267,7 +271,7 @@ func fetchVehicleStatus(state: CLIState) async throws {
     // cached: false → wake the car and read fresh state. On EU CCS2 vehicles
     // this adds a ~20s wait but is the only way to see a just-sent command
     // (e.g. climate) actually reflected, instead of a stale cached snapshot.
-    let status = try await client.fetchVehicleStatus(for: vehicle, authToken: token, cached: false)
+    let status = try await client.fetchVehicleStatus(for: vehicle, authToken: token, cached: cached)
 
     printSuccess("Status fetched successfully")
 
@@ -275,7 +279,36 @@ func fetchVehicleStatus(state: CLIState) async throws {
     print("\n📊 Status Summary:")
     print("  Lock Status: \(status.lockStatus)")
     print("  Climate On: \(status.climateStatus.airControlOn)")
-    print("  Climate Temp: \(status.climateStatus.temperature.value)°\(status.climateStatus.temperature.units == .celsius ? "C" : "F")")
+    if let temperature = status.climateStatus.temperature {
+        print("  Climate Temp: \(temperature.value)\(temperature.units.symbol)")
+    } else {
+        print("  Climate Temp: Unknown")
+    }
+    if let engineOn = status.engineOn {
+        print("  Engine On: \(engineOn)")
+    }
+    if let doors = status.doorOpen {
+        print("  Open Doors: \(doors.openDoorsDescription)")
+    }
+    if let trunkOpen = status.trunkOpen {
+        print("  Trunk Open: \(trunkOpen)")
+    }
+    if let hoodOpen = status.hoodOpen {
+        print("  Hood Open: \(hoodOpen)")
+    }
+    if status.location.hasCoordinates {
+        print("  Location: \(state.redactPII ? "[redacted]" : status.location.debug)")
+    } else {
+        print("  Location: Unknown")
+    }
+    if let syncDate = status.syncDate {
+        print("  Last Vehicle Update: \(syncDate)")
+    } else {
+        print("  Last Vehicle Update: Unknown")
+    }
+    if let odometer = status.odometer {
+        print("  Odometer: \(odometer.length) \(odometer.units == .miles ? "mi" : "km")")
+    }
 
     if let evStatus = status.evStatus {
         print("  🔋 EV Status:")
@@ -313,7 +346,7 @@ func sendCommand(_ command: VehicleCommand, description: String, state: CLIState
 
     try await client.sendCommand(for: vehicle, command: command, authToken: token)
 
-    printSuccess("\(description) command sent successfully!")
+    printSuccess("\(description) request accepted. Vehicle state is not yet confirmed.")
 }
 
 @MainActor
@@ -391,7 +424,7 @@ func showMenu() {
 
     Commands:
       1. Fetch Vehicles
-      2. Fetch Vehicle Status
+      2. Fetch Vehicle Status (fresh)
       3. Lock Vehicle
       4. Unlock Vehicle
       5. Start Climate
@@ -406,6 +439,7 @@ func showMenu() {
      14. Probe Vehicle Features (Kia US)
      15. Probe 360 View Trigger (Kia US)
      16. Confirm 360 View Trigger (Kia US)
+     17. Fetch Vehicle Status (cached)
       0. Exit
 
     """)
@@ -447,7 +481,7 @@ func promptAndSetChargeLimits(state: CLIState) async throws {
 func runMenuChoice(_ choice: String, state: CLIState) async throws -> Bool {
     switch choice {
     case "1": try await fetchVehicles(state: state)
-    case "2": try await fetchVehicleStatus(state: state)
+    case "2": try await fetchVehicleStatus(state: state, cached: false)
     case "3": try await sendCommand(.lock, description: "Lock", state: state)
     case "4": try await sendCommand(.unlock, description: "Unlock", state: state)
     case "5": try await promptAndStartClimate(state: state)
@@ -462,6 +496,7 @@ func runMenuChoice(_ choice: String, state: CLIState) async throws -> Bool {
     case "14": try await probeVehicleFeatures(state: state)
     case "15": try await probeSurroundViewTrigger(state: state)
     case "16": try await confirmSurroundViewTrigger(state: state)
+    case "17": try await fetchVehicleStatus(state: state, cached: true)
     case "0", "q", "quit", "exit":
         print("\nGoodbye!")
         return false
@@ -484,10 +519,20 @@ func runInteractiveLoop(state: CLIState) async {
             if let userInfo = error.userInfo {
                 print("User Info: \(userInfo)")
             }
-            // A reused session the server has since invalidated fails on
-            // every command with no obvious way out — unlike the app, the
-            // CLI has no re-authenticate-and-retry. Point at the exit.
-            if error.errorType == .invalidVehicleSession || error.errorType == .invalidCredentials {
+
+            if error.errorType == .invalidCredentials, state.authToken != nil {
+                state.authToken = nil
+                state.updateSession { $0.authToken = nil }
+                print("\nSession rejected. Sign-in uses the saved device identity.")
+                do {
+                    try await performLogin(state: state)
+                    printSuccess("Session restored. Select the command again.")
+                } catch {
+                    printError("Sign-in failed: \(error.localizedDescription)")
+                    print("Run bbcli again to retry sign-in with the saved device identity.")
+                }
+            } else if error.errorType == .invalidVehicleSession || error.errorType == .invalidCredentials {
+                // Some session errors require a fresh device identity.
                 print("\nThe saved session looks stale. Re-run with `--forget` to log in fresh.")
             }
         } catch {
@@ -529,7 +574,7 @@ func parseParseArguments() -> ParseOptions {
                 if let brand = Brand(rawValue: brandArg) {
                     options.brand = brand
                 } else {
-                    printError("Unknown brand: \(args[argIndex + 1]). Use 'hyundai' or 'kia'.")
+                    printError("Unknown brand: \(args[argIndex + 1]). Use 'hyundai', 'kia', or 'genesis'.")
                     exit(1)
                 }
                 argIndex += 1
@@ -714,6 +759,8 @@ func parseVehicles(client: any APIClientProtocol, data: Data, options: ParseOpti
         return try hyundaiUSA.parseVehiclesResponse(data)
     } else if let hyundaiCanada = client as? HyundaiCanadaAPIClient {
         return try hyundaiCanada.parseCanadaVehiclesResponse(data)
+    } else if let genesisCanada = client as? GenesisCanadaAPIClient {
+        return try genesisCanada.parseCanadaVehiclesResponse(data)
     } else if let hyundaiEurope = client as? HyundaiEuropeAPIClient {
         return try hyundaiEurope.parseVehiclesResponse(data)
     } else if let kiaUSA = client as? KiaUSAAPIClient {
@@ -729,6 +776,8 @@ func parseVehicleStatus(client: any APIClientProtocol, data: Data, vehicle: Vehi
         return try hyundaiUSA.parseVehicleStatusResponse(data, for: vehicle)
     } else if let hyundaiCanada = client as? HyundaiCanadaAPIClient {
         return try hyundaiCanada.parseCanadaVehicleStatusResponse(data, for: vehicle)
+    } else if let genesisCanada = client as? GenesisCanadaAPIClient {
+        return try genesisCanada.parseCanadaVehicleStatusResponse(data, for: vehicle)
     } else if let hyundaiEurope = client as? HyundaiEuropeAPIClient {
         return try hyundaiEurope.parseVehicleStatusResponse(data, nil, for: vehicle)
     } else if let kiaUSA = client as? KiaUSAAPIClient {
@@ -745,6 +794,11 @@ func runCLI() async -> Int32 {
     let state = CLIState()
     parseArguments(state: state)
 
+    guard supportedRegions(for: state.brand).contains(state.region) else {
+        printError("\(state.brand.displayName) is not yet supported in \(state.region.rawValue).")
+        return 1
+    }
+
     // Prompt for missing credentials
     if state.username.isEmpty {
         state.username = prompt("Username/Email: ")
@@ -755,7 +809,7 @@ func runCLI() async -> Int32 {
     if state.password.isEmpty && state.refreshToken.isEmpty {
         state.refreshToken = prompt("Refresh Token: ")
     }
-    if state.brand == .hyundai && state.pin.isEmpty {
+    if requiresPin(brand: state.brand, region: state.region) && state.pin.isEmpty {
         let rawPin = prompt("PIN: ")
         // Filter to digits only - PIN should be numeric
         state.pin = rawPin.filter { $0.isNumber }

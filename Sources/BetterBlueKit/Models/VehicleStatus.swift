@@ -119,8 +119,8 @@ public struct VehicleStatus: Codable, Hashable, Sendable {
     public var lockStatus: LockStatus
     public struct ClimateStatus: Codable, Hashable, Sendable {
         public var defrostOn: Bool, airControlOn: Bool
-        public var steeringWheelHeatingOn: Bool, temperature: Temperature
-        public init(defrostOn: Bool, airControlOn: Bool, steeringWheelHeatingOn: Bool, temperature: Temperature) {
+        public var steeringWheelHeatingOn: Bool, temperature: Temperature?
+        public init(defrostOn: Bool, airControlOn: Bool, steeringWheelHeatingOn: Bool, temperature: Temperature?) {
             (self.defrostOn, self.airControlOn, self.steeringWheelHeatingOn, self.temperature) =
                 (defrostOn, airControlOn, steeringWheelHeatingOn, temperature)
         }
