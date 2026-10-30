@@ -11,7 +11,7 @@ extension HyundaiCanadaAPIClient {
 
     // MARK: - Headers
 
-    /// The Hyundai header identity — hyundai_kia_connect_api's
+    /// The one header identity this client uses — hyundai_kia_connect_api's
     /// `KiaUvoApiCA.API_HEADERS`, which sends `from: SPA` on every request
     /// (login, status, and commands alike), plus a browser User-Agent and
     /// the stable per-account `deviceid` (the backend recognizes the
@@ -19,14 +19,12 @@ extension HyundaiCanadaAPIClient {
     /// Cookies are NOT set manually: URLSession's shared cookie storage
     /// carries whatever Cloudflare mints, like `requests.Session` does
     /// for the Python reference.
-    ///
-    /// Genesis account endpoints use `CWP` and can require an OTP despite a stable device ID.
     func headers() -> [String: String] {
         [
             "client_id": clientId,
             "client_secret": clientSecret,
             "deviceid": deviceId,
-            "from": brand == .genesis ? "CWP" : "SPA",
+            "from": "SPA",
             "language": "0",
             "offset": timezoneOffsetHeader,
             "User-Agent": Self.userAgent,
@@ -62,11 +60,10 @@ extension HyundaiCanadaAPIClient {
     }
 
     /// Headers for the "remote function" family (`fndmcr`, the SVM
-    /// endpoints): the standard set (`from: SPA` for Hyundai) with the
+    /// endpoints): the standard set (already `from: SPA`) with the
     /// `/remote/` referer the web portal presents on these calls. Kept
     /// separate because the family historically rejected any other
     /// identity with errorCode 6459.
-    /// Genesis remote-function endpoints remain unverified.
     func remoteFunctionHeaders(
         authToken: AuthToken,
         vehicleId: String,
@@ -107,15 +104,9 @@ extension HyundaiCanadaAPIClient {
         //   7402 account locked, 7403 auth expired, 7404 bad credentials,
         //   7549 OTP verification failed, 7602 access token deleted,
         //   7606 token bound to a changed IP.
-        let credentialCodes: Set<String> = ["7402", "7403", "7404", "7406", "7549", "7602", "7606"]
+        let credentialCodes: Set<String> = ["7402", "7403", "7404", "7549", "7602", "7606"]
         let errorCode = (error?["errorCode"] as? String)
             ?? extractNumber(from: error?["errorCode"]).map { (code: Int) in String(code) }
-        if errorCode == "6533" {
-            throw APIError.concurrentRequest(errorDesc, apiName: apiName)
-        }
-        if let errorCode, ["7310", "7311", "7312", "7313", "7314", "7315", "7316"].contains(errorCode) {
-            throw APIError.invalidPin(errorDesc, apiName: apiName)
-        }
         if let errorCode, credentialCodes.contains(errorCode) {
             throw APIError.invalidCredentials(errorDesc, apiName: apiName)
         }

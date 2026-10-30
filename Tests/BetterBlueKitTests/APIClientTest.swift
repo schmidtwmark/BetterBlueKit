@@ -237,7 +237,7 @@ struct APIClientFactoryTests {
         )
 
         let client = try #require(
-            try createBetterBlueKitAPIClient(configuration: config) as? HyundaiCanadaAPIClient
+            try createBetterBlueKitAPIClient(configuration: config) as? GenesisCanadaAPIClient
         )
         #expect(client.apiName == "GenesisCanada")
         #expect(client.apiHost == "genesisconnect.ca")

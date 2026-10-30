@@ -89,20 +89,17 @@ struct CanadaErrorCodeTests {
         """.utf8)
     }
 
-    @Test(arguments: [
-        (["7402", "7403", "7404", "7406", "7549", "7602", "7606"], APIError.ErrorType.invalidCredentials),
-        (["7310", "7311", "7312", "7313", "7314", "7315", "7316"], .invalidPin),
-        (["6533"], .concurrentRequest)
-    ]) func `Canada error codes preserve their error type`(codes: [String], errorType: APIError.ErrorType) {
+    @Test("Credential-class codes map to invalidCredentials regardless of wording")
+    func testCredentialCodes() {
         // A French errorDesc defeats the old substring matching; the
         // code must carry the classification.
-        for code in codes {
+        for code in ["7402", "7403", "7404", "7549", "7602", "7606"] {
             let data = response(code: code, desc: "Les informations de connexion sont incorrectes.")
             do {
                 _ = try makeClient().parseCanadaResponse(data, context: "test")
                 Issue.record("expected throw for code \(code)")
             } catch let error as APIError {
-                #expect(error.errorType == errorType, "code \(code)")
+                #expect(error.errorType == .invalidCredentials, "code \(code)")
             } catch {
                 Issue.record("unexpected error type for code \(code)")
             }

@@ -123,15 +123,15 @@ struct SurroundViewTests {
     // MARK: - Hyundai Canada payload
 
     @MainActor
-    private func makeClient(brand: Brand = .hyundai, urlSession: URLSession = .shared) -> HyundaiCanadaAPIClient {
+    private func makeClient() -> HyundaiCanadaAPIClient {
         HyundaiCanadaAPIClient(configuration: APIClientConfiguration(
             region: .canada,
-            brand: brand,
+            brand: .hyundai,
             username: "test@example.com",
             password: "password123",
             pin: "1234",
             accountId: UUID()
-        ), urlSession: urlSession)
+        ))
     }
 
     @MainActor
@@ -140,7 +140,10 @@ struct SurroundViewTests {
 
         // An invalidated session prevents requests to the live service if this guard regresses.
         session.invalidateAndCancel()
-        let client = makeClient(brand: .genesis, urlSession: session)
+        let client = GenesisCanadaAPIClient(configuration: APIClientConfiguration(
+            region: .canada, brand: .genesis, username: "test@example.com", password: "password123",
+            pin: "1234", accountId: UUID()
+        ), urlSession: session)
         let token = AuthToken(accessToken: "test", refreshToken: "", expiresAt: .distantFuture)
         do {
             if capture {

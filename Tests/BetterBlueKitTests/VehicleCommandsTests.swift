@@ -110,7 +110,7 @@ struct VehicleCommandsTests {
 
         // An invalidated session prevents requests to the live service if this guard regresses.
         session.invalidateAndCancel()
-        let client = HyundaiCanadaAPIClient(configuration: APIClientConfiguration(
+        let client = GenesisCanadaAPIClient(configuration: APIClientConfiguration(
             region: .canada, brand: .genesis, username: "test@example.com", password: "password123",
             pin: "1234", accountId: UUID()
         ), urlSession: session)

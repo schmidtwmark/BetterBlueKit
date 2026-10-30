@@ -150,7 +150,7 @@ func parseArguments(state: CLIState) {
 
 func printUsage() {
     print("""
-    BetterBlueKit CLI - Test tool for Hyundai/Kia API
+    BetterBlueKit CLI - Test tool for Hyundai/Kia/Genesis API
 
     Usage: bbcli [OPTIONS]
            bbcli parse [OPTIONS] <json-string-or-file>
@@ -759,6 +759,8 @@ func parseVehicles(client: any APIClientProtocol, data: Data, options: ParseOpti
         return try hyundaiUSA.parseVehiclesResponse(data)
     } else if let hyundaiCanada = client as? HyundaiCanadaAPIClient {
         return try hyundaiCanada.parseCanadaVehiclesResponse(data)
+    } else if let genesisCanada = client as? GenesisCanadaAPIClient {
+        return try genesisCanada.parseCanadaVehiclesResponse(data)
     } else if let hyundaiEurope = client as? HyundaiEuropeAPIClient {
         return try hyundaiEurope.parseVehiclesResponse(data)
     } else if let kiaUSA = client as? KiaUSAAPIClient {
@@ -774,6 +776,8 @@ func parseVehicleStatus(client: any APIClientProtocol, data: Data, vehicle: Vehi
         return try hyundaiUSA.parseVehicleStatusResponse(data, for: vehicle)
     } else if let hyundaiCanada = client as? HyundaiCanadaAPIClient {
         return try hyundaiCanada.parseCanadaVehicleStatusResponse(data, for: vehicle)
+    } else if let genesisCanada = client as? GenesisCanadaAPIClient {
+        return try genesisCanada.parseCanadaVehicleStatusResponse(data, for: vehicle)
     } else if let hyundaiEurope = client as? HyundaiEuropeAPIClient {
         return try hyundaiEurope.parseVehicleStatusResponse(data, nil, for: vehicle)
     } else if let kiaUSA = client as? KiaUSAAPIClient {

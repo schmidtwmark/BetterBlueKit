@@ -10,7 +10,7 @@ import Foundation
 // MARK: - API Client Factory
 
 /// Creates the appropriate API client for a given brand and region.
-/// This factory handles the core Hyundai/Kia clients but NOT:
+/// This factory handles the core Hyundai/Kia/Genesis clients but NOT:
 /// - Fake/testing clients (app-specific)
 /// - Caching wrappers (app-specific)
 /// Those should be handled by the consuming application.
@@ -29,7 +29,7 @@ public func createBetterBlueKitAPIClient(
                 "Genesis is not yet supported in \(configuration.region.rawValue)"
             )
         }
-        return HyundaiCanadaAPIClient(configuration: configuration)
+        return GenesisCanadaAPIClient(configuration: configuration)
     case .fake:
         throw APIError.regionNotSupported(
             "Fake brand is not supported by BetterBlueKit API client factory"

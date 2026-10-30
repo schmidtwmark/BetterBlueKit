@@ -91,12 +91,7 @@ extension HyundaiCanadaAPIClient {
             result["vehicleStatus"] as? [String: Any] ??
             [:]
 
-        guard !statusData.isEmpty else {
-            throw APIError.logError("Empty Canada status response", apiName: apiName)
-        }
-
         let vehicleData = result["vehicle"] as? [String: Any] ?? [:]
-        let location = parseCanadaLocation(from: result)
 
         // The odometer normally arrives here injected from `nxtsvc` (see
         // `injectOdometer`); the raw status endpoints don't carry one. A
@@ -119,7 +114,7 @@ extension HyundaiCanadaAPIClient {
             vin: vehicle.vin,
             gasRange: parseCanadaGasRange(from: statusData, vehicle: vehicle),
             evStatus: parseCanadaEVStatus(from: statusData, vehicle: vehicle),
-            location: location.hasCoordinates ? location : parseCanadaLocation(from: statusData),
+            location: parseCanadaLocation(from: statusData),
             lockStatus: VehicleStatus.LockStatus(locked: statusData["doorLock"] as? Bool),
             climateStatus: parseCanadaClimateStatus(from: statusData, modelYear: vehicle.modelYear),
             odometer: odometer,

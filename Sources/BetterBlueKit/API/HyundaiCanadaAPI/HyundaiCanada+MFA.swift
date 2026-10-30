@@ -31,13 +31,14 @@ extension HyundaiCanadaAPIClient {
     // MARK: - Login-time challenge detection
 
     /// Detects the `errorCode == "7110"` (OTP Required) response shape
-    /// without invoking the throwing parser. Hyundai marks this as
+    /// without invoking the throwing parser. The server marks this as
     /// a *failure* (`responseCode: 1` in bbcli's capture on
     /// BetterBlue#52; see `isCanadaResponseSuccess` for the other shapes
     /// it tolerates) carrying an `error.errorCode` of "7110".
-    /// Genesis can report `responseCode: 0` with the same OTP challenge.
     func isOTPRequiredResponse(_ data: Data) -> Bool {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let header = json["responseHeader"] as? [String: Any],
+              !isCanadaResponseSuccess(header["responseCode"]),
               let error = json["error"] as? [String: Any] else {
             return false
         }
@@ -54,7 +55,7 @@ extension HyundaiCanadaAPIClient {
     /// `sendotp` / `genmfatkn` calls, then throws `requiresMFA` so the
     /// existing iOS MFA UI can pick up the challenge.
     func beginMFAFlow() async throws {
-        BBLogger.info(.mfa, "\(apiName): OTP required (errorCode 7110), starting MFA flow")
+        BBLogger.info(.mfa, "HyundaiCanada: OTP required (errorCode 7110), starting MFA flow")
 
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/mfa/selverifmeth",

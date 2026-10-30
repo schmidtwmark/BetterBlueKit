@@ -17,7 +17,7 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     let clientId = "HATAHSPACA0232141ED9722C67715A0B"
     let clientSecret = "CLISCR01AHSPA"
 
-    // One Hyundai identity, matching hyundai_kia_connect_api's KiaUvoApiCA:
+    // One identity, matching hyundai_kia_connect_api's KiaUvoApiCA:
     // `from: SPA` with a browser User-Agent on every request — upstream's
     // API_HEADERS carry `from: SPA` for login, status, and commands alike,
     // and the "remote function" family (`fndmcr`, SVM) outright rejects
@@ -27,8 +27,6 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     // accumulates whatever Cloudflare sets, the same way `requests.Session`
     // does for the Python reference, and hard-requiring the cookie was
     // itself a failure mode (#35).
-    //
-    // Genesis account endpoints use `from: CWP` with the same client credentials.
     static let userAgent =
         "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
         + "(KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
@@ -88,23 +86,22 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     /// dance under the hood.
     var mfaCompletedAuthToken: AuthToken?
 
-    var baseURL: String { region.apiBaseURL(for: brand == .genesis ? .genesis : .hyundai) }
+    var baseURL: String { region.apiBaseURL(for: .hyundai) }
     var apiBaseURL: String { "\(baseURL)/tods/api" }
-    var apiHost: String { URL(string: baseURL)?.host ?? "" }
+    var apiHost: String { "mybluelink.ca" }
 
-    public override var apiName: String { brand == .genesis ? "GenesisCanada" : "HyundaiCanada" }
+    public override var apiName: String { "HyundaiCanada" }
 
     // MARK: - APIClientProtocol Implementation
 
     // Declared here rather than in `+MFA` so one list covers every
     // optional capability the Canada client implements.
-    // Genesis camera endpoints require separate vehicle checks.
     public func optionalFeaturesSupported() -> [OptionalAPIFeature] {
-        return brand == .genesis ? [.mfa] : [.mfa, .surroundView, .surroundViewCapture]
+        [.mfa, .surroundView, .surroundViewCapture]
     }
 
     public func login() async throws -> AuthToken {
-        BBLogger.info(.auth, "\(apiName): starting login")
+        BBLogger.info(.auth, "HyundaiCanada: starting login")
 
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/v2/login",
@@ -150,7 +147,7 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
         cached: Bool
     ) async throws -> VehicleStatus {
         let statusEndpoint = cached ? "lstvhclsts" : "rltmvhclsts"
-        var (statusData, _, _) = try await performJSONRequest(
+        let (primaryData, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/\(statusEndpoint)",
             method: .POST,
             headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId),
@@ -158,48 +155,32 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
             vin: vehicle.vin
         )
 
-        if cached {
-            let json = try parseCanadaResponse(statusData, context: "status")
-            let result = json["result"] as? [String: Any]
-            let status = result?["status"] as? [String: Any] ?? result?["vehicleStatus"] as? [String: Any]
-
-            // Genesis can return success after its status cache expires.
-            // Retry once against the vehicle, before supplemental data can hide an empty status.
-            if status?.isEmpty ?? true {
-                (statusData, _, _) = try await performJSONRequest(
-                    url: "\(apiBaseURL)/rltmvhclsts",
-                    method: .POST,
-                    headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId),
-                    requestType: .fetchVehicleStatus,
-                    vin: vehicle.vin
-                )
-            }
-        }
+        // Neither status endpoint carries the odometer; upstream reads it
+        // from the next-service call. Fold it into the payload before the
+        // location gate runs so "has the car moved" can see it.
+        let serviceOdometer = await fetchNextServiceOdometer(vehicle: vehicle, authToken: authToken)
+        let statusData = injectOdometer(serviceOdometer, into: primaryData)
+        let finalData = await injectLocationCoordinates(into: statusData, vehicle: vehicle, authToken: authToken)
 
         do {
-            _ = try parseCanadaVehicleStatusResponse(statusData, for: vehicle)
+            return try parseCanadaVehicleStatusResponse(finalData, for: vehicle)
         } catch {
-            BBLogger.debug(.api, "\(apiName): parsing status payload failed: \(error)")
+            BBLogger.debug(.api, "HyundaiCanada: parsing status payload failed: \(error)")
             if cached { throw error }
             // The forced (rltmvhclsts) payload didn't parse — fall back
             // to the server cache rather than failing the refresh.
-            (statusData, _, _) = try await performJSONRequest(
+            let (cachedData, _, _) = try await performJSONRequest(
                 url: "\(apiBaseURL)/lstvhclsts",
                 method: .POST,
                 headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId),
                 requestType: .fetchVehicleStatus,
                 vin: vehicle.vin
             )
-            _ = try parseCanadaVehicleStatusResponse(statusData, for: vehicle)
+            return try parseCanadaVehicleStatusResponse(
+                injectOdometer(serviceOdometer, into: cachedData),
+                for: vehicle
+            )
         }
-
-        // Neither status endpoint carries the odometer; upstream reads it
-        // from the next-service call. Fold it into the payload before the
-        // location gate runs so "has the car moved" can see it.
-        let serviceOdometer = await fetchNextServiceOdometer(vehicle: vehicle, authToken: authToken)
-        statusData = injectOdometer(serviceOdometer, into: statusData)
-        let finalData = await injectLocationCoordinates(into: statusData, vehicle: vehicle, authToken: authToken)
-        return try parseCanadaVehicleStatusResponse(finalData, for: vehicle)
     }
 
     /// Injects `fndmcr` coordinates into the status payload, but only
@@ -217,20 +198,6 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     private func injectLocationCoordinates(into data: Data, vehicle: Vehicle, authToken: AuthToken) async -> Data {
         let vin = vehicle.vin
         let freshOdometer = extractOdometerValue(from: data)
-
-        // Genesis status includes a location beside the status block.
-        // Use that fix before a PIN check and a separate Find My Car request.
-        if let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-           let result = json["result"] as? [String: Any] {
-            let location = parseCanadaLocation(from: result)
-            if location.hasCoordinates {
-                lastLocationByVin[vin] = location
-                if let freshOdometer {
-                    lastLocationOdometerByVin[vin] = freshOdometer
-                }
-                return data
-            }
-        }
 
         // Only a readable, increased odometer counts as movement; an
         // unreadable one falls to the rate-limited retry path instead of
@@ -310,22 +277,6 @@ public final class HyundaiCanadaAPIClient: APIClientBase, APIClientProtocol {
     }
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
-        if brand == .genesis {
-            switch command {
-            case .startCharge, .stopCharge, .setTargetSOC:
-                throw APIError.featureNotSupported(
-                    "Charging is not yet supported for Genesis in BetterBlueKit.", apiName: apiName
-                )
-            case .startClimate, .stopClimate:
-                if vehicle.fuelType.hasElectricCapability {
-                    throw APIError.featureNotSupported(
-                        "EV climate control is not yet supported for Genesis in BetterBlueKit.", apiName: apiName
-                    )
-                }
-            default:
-                break
-            }
-        }
         let authCode = try await fetchCommandAuthCode(authToken: authToken, vehicle: vehicle)
 
         try await sendCommandRequest(
