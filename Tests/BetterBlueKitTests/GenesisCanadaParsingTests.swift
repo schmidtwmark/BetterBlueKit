@@ -115,7 +115,9 @@ struct GenesisCanadaParsingTests {
 
         #expect(status.gasRange == VehicleStatus.FuelRange(range: Distance(length: 297, units: .miles), percentage: 84))
         #expect(status.evStatus == nil)
-        #expect(status.climateStatus.temperature == nil)
+        #expect(status.climateStatus.temperature == Temperature(
+            value: Temperature.Units.fahrenheit.convert(Temperature.minimum, to: .celsius), units: .celsius
+        ))
         #expect(status.location == VehicleStatus.Location(latitude: 49, longitude: -123))
         #expect(status.lockStatus == .unlocked)
         #expect(status.engineOn == false)

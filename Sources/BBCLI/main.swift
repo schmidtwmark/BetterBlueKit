@@ -279,11 +279,7 @@ func fetchVehicleStatus(state: CLIState, cached: Bool) async throws {
     print("\n📊 Status Summary:")
     print("  Lock Status: \(status.lockStatus)")
     print("  Climate On: \(status.climateStatus.airControlOn)")
-    if let temperature = status.climateStatus.temperature {
-        print("  Climate Temp: \(temperature.value)\(temperature.units.symbol)")
-    } else {
-        print("  Climate Temp: Unknown")
-    }
+    print("  Climate Temp: \(status.climateStatus.temperature.value)°\(status.climateStatus.temperature.units == .celsius ? "C" : "F")")
     if let engineOn = status.engineOn {
         print("  Engine On: \(engineOn)")
     }

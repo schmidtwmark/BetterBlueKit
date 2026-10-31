@@ -35,13 +35,13 @@ extension GenesisCanadaAPIClient {
     /// depends on the model year — 14°C for MY2020+, 16°C for older —
     /// matching the `hyundai_kia_connect_api` decoder's table split.
     ///
-    /// Genesis gas vehicles can omit `airTemp`; return nil rather than
-    /// the legacy initializer's minimum temperature when no value exists.
+    /// Genesis gas vehicles can omit `airTemp`. Use the legacy minimum
+    /// temperature fallback to preserve the shared model's cached format.
     private func parseCanadaAirTemp(
         airTempBlock: [String: Any],
         airTempUnitTopLevel: String?,
         modelYear: Int?
-    ) -> Temperature? {
+    ) -> Temperature {
         let rawValue = stringify(airTempBlock["value"])
         let unitField: Int? = extractNumber(from: airTempBlock["unit"])
 
@@ -83,7 +83,8 @@ extension GenesisCanadaAPIClient {
             return Temperature(value: number, units: units)
         }
 
-        return nil
+        // Fall back to the legacy initializer so we always return something.
+        return Temperature(units: unitField, value: rawValue)
     }
 
     private func stringify(_ value: Any?) -> String? {
