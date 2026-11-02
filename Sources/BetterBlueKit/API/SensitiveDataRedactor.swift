@@ -16,19 +16,26 @@ public enum SensitiveDataRedactor {
         let tokenKeys = [
             "access_token", "refresh_token", "accessToken", "refreshToken",
             "serializedAuthToken", "rememberMeToken", "Accesstoken", "Pauth",
+            // Canada `vrfypin` returns the PIN-auth token in its body as
+            // `pAuth`; only the `Pauth` header spelling was covered.
+            "pAuth",
             "TransactionId", "Cookie", "__cf_bm", "otpKey", "otpValidationKey",
             // EU OneApp/CCI token set (login + token-refresh bodies)
             "exchangeableAccessToken", "exchangeableRefreshToken",
             "nonCcsToken", "nonCcsRefreshToken", "idToken", "ccsAccessToken"
         ].joined(separator: "|")
 
+        // `userAccount` / `otpEmail` are the Canada MFA bodies' spellings
+        // (selverifmeth, sendotp, validateotp, genmfatkn); missing them put
+        // a user's address verbatim into a debug export.
         let emailKeys = [
-            "username", "email", "userId", "loginId", "notificationEmail"
+            "username", "email", "userId", "loginId", "notificationEmail",
+            "userAccount", "otpEmail"
         ].joined(separator: "|")
 
         let phoneKeys = [
             "phone", "phoneNumber", "mobileNumber", "cellPhone",
-            "telematicsPhoneNumber", "number"
+            "telematicsPhoneNumber", "number", "userPhone"
         ].joined(separator: "|")
 
         let idKeys = [
@@ -85,9 +92,11 @@ public enum SensitiveDataRedactor {
             // Names
             (#""(firstName|lastName)"\s*:\s*"[^"]*""#,
              "\"$1\":\"[REDACTED]\""),
-            // Email addresses in JSON fields (keep first char + TLD)
+            // Email addresses in JSON fields (keep first char + TLD). The
+            // key is group 1, so the kept pieces are $2 and $3 (it used to
+            // read $3/$4, which printed "user@example.com" as ".com***@***").
             (#""(\#(emailKeys))"\s*:\s*"([^"@])[^"@]*@[^".]*(\.[^"]+)""#,
-             "\"$1\":\"$3***@***$4\""),
+             "\"$1\":\"$2***@***$3\""),
             // Emails embedded in URL paths
             (#"(\/)[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#,
              "$1[EMAIL_REDACTED]"),

@@ -390,6 +390,28 @@ struct APIClientRedactionTests {
         let result = SensitiveDataRedactor.redact(input)!
 
         #expect(!result.contains("user@example.com"))
+        // First character and TLD survive, in that order.
+        #expect(result.contains(#""loginId":"u***@***.com""#))
+    }
+
+    /// Shapes from a Canada MFA debug export that leaked the user's
+    /// address: the request and the server's upper-cased echo, the
+    /// phone suffix, and the `vrfypin` body's PIN-auth token.
+    @Test("redact Canada MFA and vrfypin bodies")
+    func testRedactCanadaMFABodies() {
+        let input = """
+        {"mfaApiCode" : "0107", "userAccount" : "user@example.com"}
+        {"result" : {"userAccount" : "USER@EXAMPLE.COM", "userPhone" : "1234"}}
+        {"otpEmail":"user@example.com"}
+        {"result" : {"pAuth" : "vgQeGYZjXVHcpydCrrygDMLxuzQc"}}
+        """
+
+        let result = SensitiveDataRedactor.redact(input)!
+
+        #expect(!result.lowercased().contains("user@example.com"))
+        #expect(!result.contains("1234"))
+        #expect(!result.contains("vgQeGYZjXVHcpydCrrygDMLxuzQc"))
+        #expect(result.contains("0107"))
     }
 
     @Test("redact emails in URL paths")
