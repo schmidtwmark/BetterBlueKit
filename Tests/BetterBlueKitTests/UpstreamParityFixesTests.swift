@@ -89,20 +89,41 @@ struct CanadaErrorCodeTests {
         """.utf8)
     }
 
-    @Test("Credential-class codes map to invalidCredentials regardless of wording")
-    func testCredentialCodes() {
+    @Test(arguments: [
+        (["7402", "7403", "7404", "7406", "7549", "7602", "7606"], APIError.ErrorType.invalidCredentials),
+        (["7310", "7311", "7312", "7313", "7314", "7315", "7316"], .invalidPin),
+        (["6533"], .concurrentRequest)
+    ]) func `Canada error codes preserve their error type`(codes: [String], errorType: APIError.ErrorType) {
         // A French errorDesc defeats the old substring matching; the
         // code must carry the classification.
-        for code in ["7402", "7403", "7404", "7549", "7602", "7606"] {
+        for code in codes {
             let data = response(code: code, desc: "Les informations de connexion sont incorrectes.")
             do {
                 _ = try makeClient().parseCanadaResponse(data, context: "test")
                 Issue.record("expected throw for code \(code)")
             } catch let error as APIError {
-                #expect(error.errorType == .invalidCredentials, "code \(code)")
+                #expect(error.errorType == errorType, "code \(code)")
             } catch {
                 Issue.record("unexpected error type for code \(code)")
             }
+        }
+    }
+
+    /// The exact 7406 body from a Nov 2026 debug export: an expired session
+    /// on `vhcllst`, `lstvhclsts`, `nxtsvc`, and `vrfypin` alike.
+    @Test func `Expired session 7406 asks for a re-login`() {
+        let data = Data("""
+        {"error":{"errorCode":"7406","errorDesc":"We apologize, but your request could not be processed. \
+        Please try again. If the issue persists, contact Customer Support in the \\"Help\\" section."},
+        "responseHeader":{"responseCode":1}}
+        """.utf8)
+        do {
+            _ = try makeClient().parseCanadaResponse(data, context: "status")
+            Issue.record("expected throw")
+        } catch let error as APIError {
+            #expect(error.errorType == .invalidCredentials)
+        } catch {
+            Issue.record("unexpected error type")
         }
     }
 

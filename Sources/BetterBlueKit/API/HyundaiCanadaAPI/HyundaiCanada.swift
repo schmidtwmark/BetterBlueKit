@@ -101,12 +101,21 @@ extension HyundaiCanadaAPIClient {
         // Classify by errorCode first — upstream's documented map. The
         // description text is localized (this API serves French too), so
         // substring matching on it is a fallback, not the mechanism.
-        //   7402 account locked, 7403 auth expired, 7404 bad credentials,
+        //   7402 account locked, 7403/7406 auth expired, 7404 bad credentials,
         //   7549 OTP verification failed, 7602 access token deleted,
         //   7606 token bound to a changed IP.
-        let credentialCodes: Set<String> = ["7402", "7403", "7404", "7549", "7602", "7606"]
+        // 7406 is what an expired access token gets on every endpoint, under
+        // a generic "could not be processed" message the substring fallback
+        // can't see; unmapped, the app never re-logged in (Nov 2026 reports).
+        let credentialCodes: Set<String> = ["7402", "7403", "7404", "7406", "7549", "7602", "7606"]
         let errorCode = (error?["errorCode"] as? String)
             ?? extractNumber(from: error?["errorCode"]).map { (code: Int) in String(code) }
+        if errorCode == "6533" {
+            throw APIError.concurrentRequest(errorDesc, apiName: apiName)
+        }
+        if let errorCode, ["7310", "7311", "7312", "7313", "7314", "7315", "7316"].contains(errorCode) {
+            throw APIError.invalidPin(errorDesc, apiName: apiName)
+        }
         if let errorCode, credentialCodes.contains(errorCode) {
             throw APIError.invalidCredentials(errorDesc, apiName: apiName)
         }
