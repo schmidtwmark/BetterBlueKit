@@ -206,12 +206,10 @@ extension GenesisCanadaAPIClient {
         // processed." Treat this OTP validation refusal as
         // an invalid-credentials error so the iOS UI shows "Try
         // again or request a new code" instead of the cryptic raw
-        // server text.
+        // server text. Matched on the code alone: Genesis can send an
+        // error block under `responseCode: 0`.
         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let header = json["responseHeader"] as? [String: Any],
-           !isCanadaResponseSuccess(header["responseCode"]),
-           let error = json["error"] as? [String: Any],
-           (error["errorCode"] as? String) == "7999" {
+           canadaErrorCode(in: json) == "7999" {
             throw APIError.invalidCredentials(
                 "Verification rejected. Try again or request a new code.",
                 apiName: apiName

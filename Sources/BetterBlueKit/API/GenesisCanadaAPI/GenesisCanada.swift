@@ -87,11 +87,16 @@ extension GenesisCanadaAPIClient {
             )
         }
 
-        if isCanadaResponseSuccess(responseHeader["responseCode"]) {
+        let error = json["error"] as? [String: Any]
+        let errorCode = canadaErrorCode(in: json)
+
+        // Genesis can pair `responseCode: 0` with an error block (the
+        // 7110 OTP challenge arrives that way), so a success code alone
+        // doesn't mean success: a populated errorCode wins.
+        if isCanadaResponseSuccess(responseHeader["responseCode"]), errorCode == nil {
             return json
         }
 
-        let error = json["error"] as? [String: Any]
         let errorDesc = (error?["errorDesc"] as? String) ?? "Unknown Canada API error: \(json)"
 
         // Classify by errorCode first — upstream's documented map. The
@@ -101,8 +106,6 @@ extension GenesisCanadaAPIClient {
         //   7549 OTP verification failed, 7602 access token deleted,
         //   7606 token bound to a changed IP.
         let credentialCodes: Set<String> = ["7402", "7403", "7404", "7406", "7549", "7602", "7606"]
-        let errorCode = (error?["errorCode"] as? String)
-            ?? extractNumber(from: error?["errorCode"]).map { (code: Int) in String(code) }
         if errorCode == "6533" {
             throw APIError.concurrentRequest(errorDesc, apiName: apiName)
         }
@@ -119,6 +122,19 @@ extension GenesisCanadaAPIClient {
         }
 
         throw APIError.logError("Canada \(context) failed: \(errorDesc)", apiName: apiName)
+    }
+
+    /// `error.errorCode` as a string, sent as either a string or a number.
+    /// Nil when there is no error block, or when the code is empty or zero
+    /// (no error).
+    func canadaErrorCode(in json: [String: Any]) -> String? {
+        let error = json["error"] as? [String: Any]
+        guard let code = (error?["errorCode"] as? String)
+            ?? extractNumber(from: error?["errorCode"]).map({ (code: Int) in String(code) }),
+            !code.isEmpty, Int(code) != 0 else {
+            return nil
+        }
+        return code
     }
 
     /// Uses Hyundai Canada's `responseCode` rules: `0` on success and `1` on

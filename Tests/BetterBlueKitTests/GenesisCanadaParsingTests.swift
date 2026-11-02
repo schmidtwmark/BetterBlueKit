@@ -147,4 +147,29 @@ struct GenesisCanadaParsingTests {
             }
         }
     }
+
+    @Test @MainActor func `Genesis error block under response code zero still throws`() {
+        let data = Data("""
+        {"responseHeader":{"responseCode":0,"responseDesc":"Success"},
+        "error":{"errorCode":"6533","errorDesc":"Previous request is pending"}}
+        """.utf8)
+        do {
+            _ = try makeClient().parseCanadaResponse(data, context: "command")
+            Issue.record("expected throw")
+        } catch let error as APIError {
+            #expect(error.errorType == .concurrentRequest)
+        } catch {
+            Issue.record("unexpected error type")
+        }
+    }
+
+    @Test(arguments: [
+        #"null"#, #"{}"#, #"{"errorCode":""}"#, #"{"errorCode":"0"}"#, #"{"errorCode":0}"#
+    ]) @MainActor func `Genesis success with an empty error block parses`(errorBlock: String) throws {
+        let data = Data("""
+        {"responseHeader":{"responseCode":0},"error":\(errorBlock),"result":{}}
+        """.utf8)
+        let json = try makeClient().parseCanadaResponse(data, context: "test")
+        #expect(json["result"] != nil)
+    }
 }

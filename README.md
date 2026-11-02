@@ -112,7 +112,7 @@ Task {
 
 - Modern async/await API
 - Type-safe configuration and models
-- Support for Hyundai BlueLink and Kia Connect
+- Support for Hyundai BlueLink, Kia Connect, and Genesis Connect (Canada)
 - Support for both electric and gas vehicles
 - Plug-in hybrid vehicle support (PHEV)
 - Comprehensive HTTP request/response logging
@@ -135,8 +135,8 @@ Task {
 
 ## Important Notes
 
-- Connecting to your vehicle requires an active Hyundai BlueLink or Kia Connect subscription.
-- This is an unofficial package and is not affiliated with Hyundai or Kia
+- Connecting to your vehicle requires an active Hyundai BlueLink, Kia Connect, or Genesis Connect subscription.
+- This is an unofficial package and is not affiliated with Hyundai, Kia, or Genesis
 - Using this package may affect your vehicle's 12V battery if used too frequently
 - Make sure you have read and understood the terms of use of your Kia or Hyundai account before using this package
 
