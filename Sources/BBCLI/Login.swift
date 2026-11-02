@@ -90,6 +90,9 @@ func performLogin(state: CLIState) async throws {
     print("Brand: \(brand.displayName)")
     print("Region: \(region.rawValue)")
     print("Username: \(username)")
+    if brand == .genesis {
+        print("Genesis Canada beta: sign-in, vehicles, status, lock/unlock, and gas climate. Other operations remain unverified.")
+    }
     if state.redactPII == false {
         print("⚠️  PII redaction disabled - sensitive data will be visible in logs")
     }
@@ -221,5 +224,5 @@ func handleMFA(client: any APIClientProtocol, error: APIError, state: CLIState) 
     state.updateSession { $0.authToken = token }
     printSuccess("Login completed!")
     print("Auth token received (expires: \(token.expiresAt))")
-    print("Saved to \(SessionStore.displayPath) — the next run should skip MFA.")
+    print("Saved to \(SessionStore.displayPath). The CLI can reuse this session until it expires.")
 }

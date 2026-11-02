@@ -134,6 +134,32 @@ struct SurroundViewTests {
         ))
     }
 
+    @MainActor
+    @Test(arguments: [false, true]) func `Genesis surround view rejects unsupported calls`(capture: Bool) async {
+        let session = URLSession(configuration: .ephemeral)
+
+        // An invalidated session prevents requests to the live service if this guard regresses.
+        session.invalidateAndCancel()
+        let client = GenesisCanadaAPIClient(configuration: APIClientConfiguration(
+            region: .canada, brand: .genesis, username: "test@example.com", password: "password123",
+            pin: "1234", accountId: UUID()
+        ), urlSession: session)
+        let token = AuthToken(accessToken: "test", refreshToken: "", expiresAt: .distantFuture)
+        do {
+            if capture {
+                try await client.requestSurroundViewCapture(for: makeVehicle(), authToken: token)
+            } else {
+                _ = try await client.fetchSurroundViewCaptures(for: makeVehicle(), authToken: token)
+            }
+            Issue.record("Expected an unsupported-feature error")
+        } catch let error as APIError {
+            #expect(error.errorType == .featureNotSupported)
+            #expect(error.apiName == "GenesisCanada")
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
     private func makeVehicle() -> Vehicle {
         Vehicle(
             vin: "TESTVIN0000000000",

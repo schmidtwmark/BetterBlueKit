@@ -18,6 +18,7 @@ struct CoreEnumsTests {
     func testBrandDisplayNames() {
         #expect(Brand.hyundai.displayName == "Hyundai")
         #expect(Brand.kia.displayName == "Kia")
+        #expect(Brand.genesis.displayName == "Genesis")
         #expect(Brand.fake.displayName == "Fake (Testing)")
     }
 
@@ -26,9 +27,10 @@ struct CoreEnumsTests {
         // In DEBUG mode, should return all brands
         #if DEBUG
         let brands = Brand.availableBrands()
-        #expect(brands.count == 3)
+        #expect(brands.count == 4)
         #expect(brands.contains(.hyundai))
         #expect(brands.contains(.kia))
+        #expect(brands.contains(.genesis))
         #expect(brands.contains(.fake))
         #endif
     }
@@ -38,12 +40,13 @@ struct CoreEnumsTests {
         let brands = Brand.availableBrands(for: "normal@example.com", password: "password")
         #if DEBUG
         // In debug, still returns all brands
-        #expect(brands.count == 3)
+        #expect(brands.count == 4)
         #else
         // In release, returns only production brands
-        #expect(brands.count == 2)
+        #expect(brands.count == 3)
         #expect(brands.contains(.hyundai))
         #expect(brands.contains(.kia))
+        #expect(brands.contains(.genesis))
         #expect(!brands.contains(.fake))
         #endif
     }
@@ -51,9 +54,10 @@ struct CoreEnumsTests {
     @Test("Brand availableBrands returns all brands for test account")
     func testAvailableBrandsTestAccount() {
         let brands = Brand.availableBrands(for: "testaccount@betterblue.com", password: "betterblue")
-        #expect(brands.count == 3)
+        #expect(brands.count == 4)
         #expect(brands.contains(.hyundai))
         #expect(brands.contains(.kia))
+        #expect(brands.contains(.genesis))
         #expect(brands.contains(.fake))
     }
 
@@ -78,6 +82,10 @@ struct CoreEnumsTests {
     }
 
     // MARK: - Region Tests
+
+    @Test func `Region API base URL for Genesis Canada`() {
+        #expect(Region.canada.apiBaseURL(for: .genesis) == "https://genesisconnect.ca")
+    }
 
     @Test("Region apiBaseURL returns correct URLs for Hyundai")
     func testRegionApiBaseURLHyundai() {

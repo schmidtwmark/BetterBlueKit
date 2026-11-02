@@ -95,6 +95,43 @@ struct VehicleCommandsTests {
 
     // MARK: - VehicleCommand Tests
 
+    @MainActor
+    @Test(arguments: [
+        (VehicleCommand.startCharge, FuelType.gas),
+        (.startCharge, .electric),
+        (.stopCharge, .electric),
+        (.setTargetSOC(acLevel: 80, dcLevel: 80), .electric),
+        (.startClimate(ClimateOptions()), .electric),
+        (.stopClimate, .electric),
+        (.startClimate(ClimateOptions()), .phev),
+        (.stopClimate, .phev)
+    ]) func `Genesis rejects unsupported EV commands`(command: VehicleCommand, fuelType: FuelType) async {
+        let session = URLSession(configuration: .ephemeral)
+
+        // An invalidated session prevents requests to the live service if this guard regresses.
+        session.invalidateAndCancel()
+        let client = GenesisCanadaAPIClient(configuration: APIClientConfiguration(
+            region: .canada, brand: .genesis, username: "test@example.com", password: "password123",
+            pin: "1234", accountId: UUID()
+        ), urlSession: session)
+        let vehicle = Vehicle(
+            vin: "TESTVIN0000000000", regId: "reg", model: "Genesis", accountId: client.accountId,
+            fuelType: fuelType, generation: 3, odometer: Distance(length: 0, units: .kilometers)
+        )
+        do {
+            try await client.sendCommand(
+                for: vehicle, command: command,
+                authToken: AuthToken(accessToken: "test", refreshToken: "", expiresAt: .distantFuture)
+            )
+            Issue.record("Expected an unsupported-feature error")
+        } catch let error as APIError {
+            #expect(error.errorType == .featureNotSupported)
+            #expect(error.apiName == "GenesisCanada")
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
     @Test("VehicleCommand simple commands")
     func testSimpleCommands() {
         let lockCommand = VehicleCommand.lock
