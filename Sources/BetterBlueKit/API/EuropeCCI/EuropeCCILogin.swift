@@ -273,7 +273,7 @@ extension APIClientBase {
 
     /// Parse the signin redirect's query for `code`, translating the known
     /// error shapes into typed errors.
-    private func parseCCISigninCode(fromLocation location: String) throws -> String {
+    func parseCCISigninCode(fromLocation location: String) throws -> String {
         guard let comps = URLComponents(string: location) else {
             throw APIError(message: "Unparseable redirect after signin", apiName: apiName)
         }
@@ -292,8 +292,15 @@ extension APIClientBase {
             )
         }
         if comps.path.contains("authorize") {
+            // Some EU accounts hold only the first 20 characters: the official
+            // app truncates longer passwords when saving them, so the full
+            // value fails here while the app keeps working (kia_uvo #1979).
+            let lengthHint = password.count > 20
+                ? "If your password is longer than 20 characters, the account may only accept "
+                    + "the first 20 of them. Try the first 20 characters. "
+                : ""
             throw APIError.invalidCredentials(
-                "Authentication failed — returned to login page. Check username and password.",
+                "Authentication failed — returned to login page. \(lengthHint)Check username and password.",
                 apiName: apiName
             )
         }

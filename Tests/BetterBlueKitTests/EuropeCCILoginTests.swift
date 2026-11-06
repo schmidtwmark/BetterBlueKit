@@ -115,6 +115,76 @@ struct EuropeCCILoginTests {
     }
 }
 
+// MARK: - Signin
+
+@MainActor
+@Suite("Europe CCI Signin")
+struct EuropeCCISigninTests {
+
+    private static let loginPageRedirect =
+        "https://idpconnect-eu.kia.com/auth/api/v2/user/oauth2/authorize?state=ccsp"
+
+    private func client(password: String) -> KiaEuropeAPIClient {
+        KiaEuropeAPIClient(configuration: APIClientConfiguration(
+            region: .europe,
+            brand: .kia,
+            username: "test@example.com",
+            password: password,
+            pin: "0000",
+            accountId: UUID(),
+            deviceId: "11111111-2222-3333-4444-555555555555"
+        ))
+    }
+
+    private func loginPageError(password: String) throws -> APIError {
+        do {
+            _ = try client(password: password).parseCCISigninCode(fromLocation: Self.loginPageRedirect)
+        } catch let error as APIError {
+            return error
+        }
+        throw APIError(message: "Expected the login-page redirect to throw", apiName: "test")
+    }
+
+    /// Since 2026-10-22 signin answers the 2012 Chrome 18 / Galaxy Nexus string
+    /// with a 302 back to the login page, even for valid credentials
+    /// (hyundai_kia_connect_api #1397, BetterBlue#131).
+    @Test("The signin User-Agent is current and keeps the WAF suffix")
+    func testUserAgent() throws {
+        let userAgent = APIClientBase.euMobileUserAgent
+        #expect(userAgent.hasSuffix("_CCS_APP_AOS"))
+        #expect(!userAgent.contains("Galaxy Nexus"))
+        #expect(!userAgent.contains("Android 4."))
+        let match = try #require(userAgent.firstMatch(of: #/Chrome/(\d+)/#))
+        #expect(try #require(Int(match.1)) >= 100)
+    }
+
+    @Test("A signin redirect carrying a code returns the code")
+    func testCodeRedirect() throws {
+        let code = try client(password: "password123").parseCCISigninCode(
+            fromLocation: "https://oneapp.kia.com/redirect?code=abc.def&state=ccsp&login_success=y"
+        )
+        #expect(code == "abc.def")
+    }
+
+    @Test("A login-page redirect is a credential error, with no hint for short passwords")
+    func testLoginPageRedirectShortPassword() throws {
+        for password in ["password123", String(repeating: "x", count: 20)] {
+            let error = try loginPageError(password: password)
+            #expect(error.errorType == .invalidCredentials)
+            #expect(error.message.contains("returned to login page"))
+            #expect(!error.message.contains("first 20"))
+        }
+    }
+
+    @Test("A login-page redirect names the 20-character limit for longer passwords")
+    func testLoginPageRedirectLongPassword() throws {
+        let error = try loginPageError(password: String(repeating: "x", count: 21))
+        #expect(error.errorType == .invalidCredentials)
+        #expect(error.message.contains("returned to login page"))
+        #expect(error.message.contains("first 20"))
+    }
+}
+
 // MARK: - X-Fingerprint signing
 
 /// Pins the EU CCI X-Fingerprint scheme to the two vectors in

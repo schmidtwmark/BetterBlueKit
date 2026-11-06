@@ -15,10 +15,14 @@ extension APIClientBase {
     /// The `_CCS_APP_AOS` suffix is what gets past Cloudflare on
     /// `idpconnect-eu.{kia,hyundai}.com` — without it, the authorize
     /// endpoint returns 400. Discovered in hyundai_kia_connect_api PR #1123.
+    ///
+    /// The browser string matters too. Since 2026-10-22 signin answers the
+    /// old Chrome 18 / Galaxy Nexus string with a 302 back to the login page,
+    /// even for valid credentials, which looks exactly like a wrong password
+    /// (hyundai_kia_connect_api #1397 / PR #1416, BetterBlue#131).
     static var euMobileUserAgent: String {
-        "Mozilla/5.0 (Linux; Android 4.1.1; Galaxy Nexus Build/JRO03C) " +
-        "AppleWebKit/535.19 (KHTML, like Gecko) " +
-        "Chrome/18.0.1025.166 Mobile Safari/535.19_CCS_APP_AOS"
+        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) " +
+        "Chrome/120.0.0.0 Mobile Safari/537.36_CCS_APP_AOS"
     }
 
     // MARK: - RSA / encoding helpers (used by signin)
