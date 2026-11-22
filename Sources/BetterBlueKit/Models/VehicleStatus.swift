@@ -62,6 +62,55 @@ public struct VehicleStatus: Codable, Hashable, Sendable {
         public var chargeTime: Duration { .seconds(maybeChargeTimeSeconds ?? 0 ) }
         public var targetSocAC: Double?
         public var targetSocDC: Double?
+        // The schedule's fields, stored flat like `maybePlugType`. The app
+        // persists `EVStatus` as a SwiftData composite attribute, which
+        // maps nested structs to columns and traps reading an optional
+        // struct back as nil, so `chargingSchedule` can't be stored as one.
+        private var offPeakStartMinutes: Int?
+        private var offPeakEndMinutes: Int?
+        private var maybeOffPeakPreference: ChargingSchedule.OffPeakPreference?
+
+        /// The off-peak schedule the vehicle keeps on board, where the API
+        /// reports one.
+        public var chargingSchedule: ChargingSchedule? {
+            get {
+                guard let offPeakStartMinutes, let offPeakEndMinutes else { return nil }
+                return ChargingSchedule(
+                    offPeakWindow: .init(
+                        start: TimeOfDay(minutesSinceMidnight: offPeakStartMinutes),
+                        end: TimeOfDay(minutesSinceMidnight: offPeakEndMinutes)
+                    ),
+                    offPeakPreference: maybeOffPeakPreference
+                )
+            }
+            set {
+                offPeakStartMinutes = newValue?.offPeakWindow.start.minutesSinceMidnight
+                offPeakEndMinutes = newValue?.offPeakWindow.end.minutesSinceMidnight
+                maybeOffPeakPreference = newValue?.offPeakPreference
+            }
+        }
+        /// The vehicle reported itself plugged in and holding off for a
+        /// scheduled charge (its off-peak window or a departure time).
+        /// Optional so statuses saved before this field still decode.
+        public var waitingForScheduledCharge: Bool?
+        /// The vehicle's own estimate of when its scheduled charge starts
+        /// and finishes, where it gives one (Hyundai's `ect`).
+        public var estimatedChargeStart: Date?
+        public var estimatedChargeEnd: Date?
+
+        /// Plugged in, not charging, and waiting for its schedule.
+        public var isWaitingForScheduledCharge: Bool {
+            !charging && pluggedIn && (waitingForScheduledCharge ?? false)
+        }
+
+        /// When a waiting charge should begin: the vehicle's estimate if
+        /// it's still ahead of `now`, else the next off-peak start.
+        public func expectedChargeStart(after now: Date, calendar: Calendar = .current) -> Date? {
+            if let estimatedChargeStart, estimatedChargeStart > now.addingTimeInterval(-60) {
+                return estimatedChargeStart
+            }
+            return chargingSchedule?.nextOffPeakStart(onOrAfter: now, calendar: calendar)
+        }
 
         public var currentTargetSOC: Double? {
             switch plugType {
@@ -81,12 +130,20 @@ public struct VehicleStatus: Codable, Hashable, Sendable {
             plugType: PlugType = .unplugged,
             chargeTime: Duration,
             targetSocAC: Double? = nil,
-            targetSocDC: Double? = nil
+            targetSocDC: Double? = nil,
+            chargingSchedule: ChargingSchedule? = nil,
+            waitingForScheduledCharge: Bool? = nil,
+            estimatedChargeStart: Date? = nil,
+            estimatedChargeEnd: Date? = nil
         ) {
             (self.charging, self.chargeSpeed, self.evRange, self.maybePlugType,
              self.maybeChargeTimeSeconds) = (charging, chargeSpeed, evRange, plugType,
                                               chargeTime.components.seconds)
             (self.targetSocAC, self.targetSocDC) = (targetSocAC, targetSocDC)
+            self.chargingSchedule = chargingSchedule
+            self.waitingForScheduledCharge = waitingForScheduledCharge
+            self.estimatedChargeStart = estimatedChargeStart
+            self.estimatedChargeEnd = estimatedChargeEnd
         }
     }
 

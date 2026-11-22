@@ -32,6 +32,7 @@ extension KiaUSAAPIClient {
         // "evc/charge/targetsoc/set" path we had copied. Matches
         // KiaUvoApiUSA.set_charge_limits.
         case .setTargetSOC: "evc/sts"
+        case .setChargingSchedule: "" // rejected by `ensureSupported` first
         }
         return "\(apiURL)\(path)"
     }

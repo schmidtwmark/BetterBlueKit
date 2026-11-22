@@ -83,7 +83,8 @@ public enum Region: String, CaseIterable, Codable, Sendable {
     case usa = "US", canada = "CA", europe = "EU"
     case australia = "AU", china = "CN", india = "IN"
 
-    /// This package currently configures only the Canadian Genesis endpoint.
+    /// Genesis is configured for Canada (its own host) and the USA (the
+    /// Hyundai USA host — the two brands share one US backend).
     public func apiBaseURL(for brand: Brand) -> String {
         switch brand {
         case .hyundai:
@@ -91,7 +92,11 @@ public enum Region: String, CaseIterable, Codable, Sendable {
         case .kia:
             return Brand.kiaBaseUrl(region: self)
         case .genesis:
-            return self == .canada ? "https://genesisconnect.ca" : ""
+            switch self {
+            case .canada: return "https://genesisconnect.ca"
+            case .usa: return Brand.hyundaiBaseUrl(region: .usa)
+            default: return ""
+            }
         case .fake:
             return "https://fake.api.testing.com"
         }

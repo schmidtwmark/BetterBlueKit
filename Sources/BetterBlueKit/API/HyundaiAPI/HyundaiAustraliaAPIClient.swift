@@ -37,6 +37,7 @@ public final class HyundaiAustraliaAPIClient: APIClientBase, APIClientProtocol {
     }
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
+        try ensureSupported(command)
         throw APIError.regionNotSupported("Hyundai Australia is not yet implemented.", apiName: apiName)
     }
 

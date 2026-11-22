@@ -190,6 +190,9 @@ public enum OptionalAPIFeature: String, Codable, Sendable, CaseIterable {
     /// "New Capture" affordance. A client that can trigger must also be
     /// able to fetch, so declare both.
     case surroundViewCapture
+    /// Reports the vehicle's charging schedule in its status and can set
+    /// its off-peak hours (`VehicleCommand.setChargingSchedule`).
+    case chargingSchedule
 }
 
 // MARK: - Default Implementations
@@ -243,6 +246,21 @@ extension APIClientProtocol {
     /// surround-view capture. Always a subset of `supportsSurroundView()`.
     public func supportsSurroundViewCapture() -> Bool {
         optionalFeaturesSupported().contains(.surroundViewCapture)
+    }
+
+    /// Throws `featureNotSupported` for a command that needs an optional
+    /// feature this client doesn't declare. Every `sendCommand` calls it
+    /// first, so a client never has to route a command it can't send.
+    func ensureSupported(_ command: VehicleCommand) throws {
+        if case .setChargingSchedule = command, !supportsChargingSchedule() {
+            throw APIError.featureNotSupported("Charging schedules aren't supported for this vehicle")
+        }
+    }
+
+    /// Returns true if this API client can set the vehicle's off-peak
+    /// hours with `VehicleCommand.setChargingSchedule`.
+    public func supportsChargingSchedule() -> Bool {
+        optionalFeaturesSupported().contains(.chargingSchedule)
     }
 
     /// Returns the types of EV trip details this API client supports

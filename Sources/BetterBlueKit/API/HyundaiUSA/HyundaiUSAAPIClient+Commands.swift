@@ -20,6 +20,7 @@ extension HyundaiUSAAPIClient {
         case .startCharge: "ac/v2/evc/charge/start"
         case .stopCharge: "ac/v2/evc/charge/stop"
         case .setTargetSOC: "ac/v2/evc/charge/targetsoc/set"
+        case .setChargingSchedule: "ac/v2/evc/charge/reserv/set"
         }
         return "\(baseURL)/\(path)"
     }
@@ -70,6 +71,10 @@ extension HyundaiUSAAPIClient {
                 ["targetSOClevel": acLevel, "plugType": 1],
                 ["targetSOClevel": dcLevel, "plugType": 0]
             ]]
+        case .setChargingSchedule:
+            // Built in `sendCommand`, which first reads the departures it
+            // has to send back.
+            return [:]
         default:
             return [:]
         }

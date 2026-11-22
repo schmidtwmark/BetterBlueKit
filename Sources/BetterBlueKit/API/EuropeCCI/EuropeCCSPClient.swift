@@ -408,6 +408,9 @@ extension EuropeCCSPClient {
     // MARK: Commands
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
+        if case .setChargingSchedule = command {
+            throw APIError.featureNotSupported("Charging schedules aren't supported for this vehicle", apiName: apiName)
+        }
         try await withDeviceIdRecovery {
             try await sendCommandOnce(for: vehicle, command: command, authToken: authToken)
         }

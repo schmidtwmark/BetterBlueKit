@@ -21,7 +21,7 @@ extension HyundaiUSAAPIClient {
             throw APIError.logError("Invalid login response: \(responseText)", apiName: apiName)
         }
 
-        BBLogger.info(.auth, "HyundaiUSA: Login successful")
+        BBLogger.info(.auth, "\(apiName): Login successful")
         return AuthToken(
             accessToken: accessToken,
             refreshToken: refreshToken,
@@ -196,7 +196,7 @@ extension HyundaiUSAAPIClient {
         let atc = remainTime2["atc"] as? [String: Any] ?? [:]
         let chargeTimeMinutes: Int = extractNumber(from: atc["value"]) ?? 0
         let batteryPlugin: Int = extractNumber(from: evStatusData["batteryPlugin"]) ?? 0
-        let charging = evStatusData["batteryCharge"] as? Bool ?? false
+        let batteryCharge = evStatusData["batteryCharge"] as? Bool ?? false
 
         // `realTimePower` is the live charge rate in kW; on AC it equals
         // `batteryStndChrgPower` (1.4 on an Ioniq 5, kia_uvo#1206; 3.8 on
@@ -211,9 +211,21 @@ extension HyundaiUSAAPIClient {
         let realTimePower: Double? = extractNumber(from: evStatusData["realTimePower"])
         let standardPower: Double = extractNumber(from: evStatusData["batteryStndChrgPower"]) ?? 0
         let fastPower: Double = extractNumber(from: evStatusData["batteryFstChrgPower"]) ?? 0
+        let rate = max(realTimePower ?? standardPower, fastPower, 0)
+
+        // `batteryCharge` also reads true while the car is plugged in and
+        // waiting for a scheduled (off-peak) charge. An Ioniq 5 plugged in
+        // at 6 PM to charge at 11 PM reported it with `atc` at 0 and no
+        // power fields at all, and the cached status stayed that way for
+        // hours, so the charging Live Activity ran all evening on a car
+        // that wasn't charging. A real charge has a time remaining or a
+        // rate. Payloads without `atc` keep trusting the flag.
+        let waitingForSchedule = batteryCharge && atc["value"] != nil && chargeTimeMinutes == 0 && rate == 0
+        let charging = batteryCharge && !waitingForSchedule
+
         // Only a rate mid-charge, as in the Kia USA parser: #1270
         // describes the idle Standard figure as stale.
-        let chargeSpeed = charging ? max(realTimePower ?? standardPower, fastPower, 0) : 0
+        let chargeSpeed = charging ? rate : 0
 
         let reserveChargeInfos = evStatusData["reservChargeInfos"] as? [String: Any] ?? [:]
         let targetSocList = reserveChargeInfos["targetSOClist"] as? [[String: Any]] ?? []
@@ -224,6 +236,15 @@ extension HyundaiUSAAPIClient {
             }
         }
 
+        // The estimated charge window (`ect`) is meaningful only while
+        // plugged in; unplugged payloads carry day 7 and garbled times.
+        // Its weekdays resolve against the status's own timestamp.
+        let reference = (statusData["dateTime"] as? String)
+            .flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
+        let estimate: (start: Date?, end: Date?) = batteryPlugin != 0
+            ? Self.parseEstimatedChargeWindow(from: reserveChargeInfos, reference: reference)
+            : (nil, nil)
+
         return VehicleStatus.EVStatus(
             charging: charging,
             chargeSpeed: chargeSpeed,
@@ -231,7 +252,11 @@ extension HyundaiUSAAPIClient {
             plugType: VehicleStatus.PlugType(fromBatteryPlugin: batteryPlugin),
             chargeTime: .seconds(60 * chargeTimeMinutes),
             targetSocAC: targetSocAC,
-            targetSocDC: targetSocDC
+            targetSocDC: targetSocDC,
+            chargingSchedule: Self.parseChargingSchedule(from: reserveChargeInfos),
+            waitingForScheduledCharge: waitingForSchedule,
+            estimatedChargeStart: estimate.start,
+            estimatedChargeEnd: estimate.end
         )
     }
 

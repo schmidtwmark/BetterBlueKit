@@ -111,11 +111,11 @@ public class FakeAPIClient: APIClientProtocol {
         BBLogger.info(.fakeAPI, "Command completed successfully for fake vehicle '\(vehicle.vin)'")
     }
 
-    // Fake vehicles always claim surround view so the feature can be
-    // exercised in the simulator; the provider decides what imagery (if
+    // Fake vehicles always claim surround view and charging schedules so
+    // the features can be exercised in the simulator; the provider decides what imagery (if
     // any) comes back.
     public func optionalFeaturesSupported() -> [OptionalAPIFeature] {
-        [.surroundView, .surroundViewCapture]
+        [.surroundView, .surroundViewCapture, .chargingSchedule]
     }
 
     public func requestSurroundViewCapture(for vehicle: Vehicle, authToken _: AuthToken) async throws {

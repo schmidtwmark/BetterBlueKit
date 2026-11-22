@@ -13,6 +13,11 @@ public enum VehicleCommand: Sendable {
     case lock, unlock, startClimate(ClimateOptions)
     case stopClimate, startCharge, stopCharge
     case setTargetSOC(acLevel: Int, dcLevel: Int)
+    /// Set when the vehicle's off-peak charging starts and stops.
+    /// Everything else in its schedule (off-peak preference, departure
+    /// times) stays as it is. Only clients declaring `.chargingSchedule`
+    /// support it.
+    case setChargingSchedule(ChargingSchedule.OffPeakWindow)
 }
 
 public struct ClimateOptions: Codable, Equatable, Sendable {

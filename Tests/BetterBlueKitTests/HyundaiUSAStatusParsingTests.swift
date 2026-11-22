@@ -181,6 +181,45 @@ enum HyundaiUSAStatusSampleJSON {
       }
     }
     """)
+
+    /// 2023 Ioniq 5 plugged in at 6 PM, waiting for an 11 PM off-peak
+    /// charge (`reservFlag` 1, off-peak 11 PM–7 AM) — the cached status a
+    /// Live Activity wakeup read at 6:39 PM on 2026-11-07. `batteryCharge`
+    /// is true, but `atc` is 0 and there are no power fields at all.
+    static let ioniq5WaitingForScheduledCharge = response(vehicleStatus: """
+    {
+      "dateTime": "2026-11-08T00:25:31Z",
+      "doorLock": true,
+      "battery": { "batSoc": 80, "batState": 0 },
+      "dte": { "unit": 3, "value": 117 },
+      "evStatus": {
+        "batteryCharge": true,
+        "batteryDisCharge": false,
+        "batteryPlugin": 2,
+        "batteryStatus": 28,
+        "drvDistance": [
+          { "rangeByFuel": {
+              "evModeRange": { "unit": 3, "value": 117 },
+              "totalAvailableRange": { "unit": 3, "value": 117 } }, "type": 0 }
+        ],
+        "remainTime": [{ "unit": 1, "value": 0 }],
+        "remainTime2": {
+          "atc": { "unit": 1, "value": 0 },
+          "etc1": { "unit": 1, "value": 28 },
+          "etc2": { "unit": 1, "value": 2330 },
+          "etc3": { "unit": 0, "value": 245 }
+        },
+        "reservChargeInfos": {
+          "reservFlag": 1,
+          "targetSOClist": [
+            { "plugType": 0, "targetSOClevel": 90 },
+            { "plugType": 1, "targetSOClevel": 90 }
+          ]
+        },
+        "v2L": false
+      }
+    }
+    """)
 }
 
 // MARK: - Tests
@@ -289,5 +328,43 @@ struct HyundaiUSAStatusParsingTests {
             #""realTimePower": 3.8,"#, #""realTimePower": -2.0, "batteryFstChrgPower": -1.0,"#
         )
         #expect(try parse(negative).evStatus?.chargeSpeed == 0)
+    }
+
+    @Test("Plugged in and waiting for a scheduled charge isn't charging")
+    @MainActor func testWaitingForScheduledCharge() throws {
+        let ev = try #require(
+            try parse(HyundaiUSAStatusSampleJSON.ioniq5WaitingForScheduledCharge).evStatus
+        )
+        #expect(!ev.charging)
+        #expect(ev.pluggedIn)
+        #expect(ev.plugType == .acCharger)
+        #expect(ev.chargeSpeed == 0)
+        #expect(ev.evRange.percentage == 28)
+    }
+
+    @Test("A charge with a rate but no time remaining still counts")
+    @MainActor func testRateWithoutTimeRemaining() throws {
+        // Synthetic: the Kona mid-charge with `atc` at 0, as near a
+        // charge limit.
+        let json = tweak(
+            HyundaiUSAStatusSampleJSON.konaACCharging,
+            #""atc": { "value": 450, "unit": 1 }"#, #""atc": { "value": 0, "unit": 1 }"#
+        )
+        let ev = try #require(try parse(json).evStatus)
+        #expect(ev.charging)
+        #expect(ev.chargeSpeed == 3.8)
+    }
+
+    @Test("Without an atc field, batteryCharge alone decides")
+    @MainActor func testChargingWithoutTimeRemainingField() throws {
+        // Synthetic: the waiting payload minus `remainTime2`, as a car
+        // that doesn't report one would send it.
+        var json = HyundaiUSAStatusSampleJSON.ioniq5WaitingForScheduledCharge
+        let start = try #require(json.range(of: #""remainTime2": {"#))
+        let end = try #require(json.range(of: #""reservChargeInfos""#, range: start.upperBound..<json.endIndex))
+        json.removeSubrange(start.lowerBound..<end.lowerBound)
+
+        let ev = try #require(try parse(json).evStatus)
+        #expect(ev.charging)
     }
 }

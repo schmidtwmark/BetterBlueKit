@@ -24,12 +24,7 @@ public func createBetterBlueKitAPIClient(
     case .kia:
         return try createKiaClient(configuration: configuration)
     case .genesis:
-        guard configuration.region == .canada else {
-            throw APIError.regionNotSupported(
-                "Genesis is not yet supported in \(configuration.region.rawValue)"
-            )
-        }
-        return GenesisCanadaAPIClient(configuration: configuration)
+        return try createGenesisClient(configuration: configuration)
     case .fake:
         throw APIError.regionNotSupported(
             "Fake brand is not supported by BetterBlueKit API client factory"
@@ -51,6 +46,24 @@ private func createHyundaiClient(configuration: APIClientConfiguration) throws -
     case .australia, .china, .india:
         throw APIError.regionNotSupported(
             "\(Brand.hyundai.displayName) is not yet supported in \(configuration.region.rawValue)"
+        )
+    }
+}
+
+// MARK: - Genesis Client Creation
+
+@MainActor
+private func createGenesisClient(configuration: APIClientConfiguration) throws -> any APIClientProtocol {
+    switch configuration.region {
+    case .usa:
+        // Genesis USA shares Hyundai USA's backend; the client switches
+        // its brandIndicator and quirks on `configuration.brand`.
+        return HyundaiUSAAPIClient(configuration: configuration)
+    case .canada:
+        return GenesisCanadaAPIClient(configuration: configuration)
+    case .europe, .australia, .china, .india:
+        throw APIError.regionNotSupported(
+            "\(Brand.genesis.displayName) is not yet supported in \(configuration.region.rawValue)"
         )
     }
 }
@@ -81,7 +94,7 @@ public func supportedRegions(for brand: Brand) -> [Region] {
     case .kia:
         return [.usa, .europe]
     case .genesis:
-        return [.canada]
+        return [.usa, .canada]
     case .fake:
         return Region.allCases
     }
@@ -94,7 +107,7 @@ public func betaRegions(for brand: Brand) -> [Region] {
     case .kia:
         return [.europe]
     case .genesis:
-        return [.canada]
+        return [.usa, .canada]
     default: return []
     }
 }
@@ -106,7 +119,7 @@ public func betaRegions(for brand: Brand) -> [Region] {
 /// Today the gating is hardcoded:
 ///   - Hyundai USA / Canada / EU
 ///   - Kia EU
-///   - Genesis Canada
+///   - Genesis USA / Canada
 ///
 /// Kia USA and Fake authenticate without a PIN.
 public func requiresPin(brand: Brand, region: Region) -> Bool {
@@ -115,6 +128,7 @@ public func requiresPin(brand: Brand, region: Region) -> Bool {
          (.hyundai, .canada),
          (.hyundai, .europe),
          (.kia, .europe),
+         (.genesis, .usa),
          (.genesis, .canada):
         return true
     default:

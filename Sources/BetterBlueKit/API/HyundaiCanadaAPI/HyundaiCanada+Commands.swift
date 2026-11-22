@@ -31,6 +31,8 @@ extension HyundaiCanadaAPIClient {
             return "evc/rcstp"
         case .setTargetSOC:
             return "evc/setsoc"
+        case .setChargingSchedule:
+            return "" // rejected by `ensureSupported` before it gets here
         }
     }
 
@@ -48,7 +50,7 @@ extension HyundaiCanadaAPIClient {
             }
             return makeICEClimateBody(options: options, vehicle: vehicle)
 
-        case .stopClimate, .startCharge, .stopCharge, .lock, .unlock:
+        case .stopClimate, .startCharge, .stopCharge, .lock, .unlock, .setChargingSchedule:
             return ["pin": pin]
 
         case .setTargetSOC(let acLevel, let dcLevel):

@@ -247,7 +247,14 @@ public final class GenesisCanadaAPIClient: APIClientBase, APIClientProtocol {
         if let freshOdometer { lastLocationOdometerByVin[vin] = freshOdometer }
 
         do {
-            let pAuth = try await fetchCommandAuthCode(authToken: authToken, vehicle: vehicle)
+            // Log this PIN check as part of the status refresh, not as a
+            // command, so location lookups don't crowd real commands out
+            // of the debug export.
+            let pAuth = try await fetchCommandAuthCode(
+                authToken: authToken,
+                vehicle: vehicle,
+                requestType: .fetchVehicleStatus
+            )
             let locationData = try await fetchLocationData(vehicle: vehicle, authToken: authToken, pAuth: pAuth)
             let location = try parseCanadaLocationResponse(locationData)
             if location.latitude != 0 || location.longitude != 0 {
@@ -298,6 +305,7 @@ public final class GenesisCanadaAPIClient: APIClientBase, APIClientProtocol {
     }
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
+        try ensureSupported(command)
         switch command {
         case .startCharge, .stopCharge, .setTargetSOC:
             throw APIError.featureNotSupported(
@@ -328,14 +336,18 @@ public final class GenesisCanadaAPIClient: APIClientBase, APIClientProtocol {
 
     // MARK: - Command Flow
 
-    func fetchCommandAuthCode(authToken: AuthToken, vehicle: Vehicle) async throws -> String {
+    func fetchCommandAuthCode(
+        authToken: AuthToken,
+        vehicle: Vehicle,
+        requestType: HTTPRequestType = .sendCommand
+    ) async throws -> String {
         // Upstream sends the vehicleId header on `vrfypin` too.
         let (data, _, _) = try await performJSONRequest(
             url: "\(apiBaseURL)/vrfypin",
             method: .POST,
             headers: authorizedHeaders(authToken: authToken, vehicleId: vehicle.regId),
             body: ["pin": pin],
-            requestType: .sendCommand,
+            requestType: requestType,
             vin: vehicle.vin
         )
 

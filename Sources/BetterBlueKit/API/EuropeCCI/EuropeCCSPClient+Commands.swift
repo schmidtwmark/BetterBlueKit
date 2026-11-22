@@ -83,6 +83,8 @@ extension EuropeCCSPClient {
                     ["targetSOClevel": acLevel, "plugType": 1]
                 ]
             ])
+        case .setChargingSchedule:
+            return ("", [:]) // rejected in `sendCommand` before it gets here
         }
     }
 

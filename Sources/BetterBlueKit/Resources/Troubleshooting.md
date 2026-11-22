@@ -36,6 +36,9 @@ If none of the below fixes your issue, [open a GitHub issue](https://github.com/
 | Kia — Canada | ❌ |
 | Kia — Europe | ✅ |
 | Kia — Australia | ❌ |
+| Genesis — USA | ✅ beta |
+| Genesis — Canada | ✅ beta |
+| Genesis — Europe | ❌ |
 | China / India | ❌ |
 
 Unsupported regions are open for contributions on [BetterBlueKit](https://github.com/schmidtwmark/BetterBlueKit).

@@ -300,6 +300,7 @@ public final class KiaUSAAPIClient: APIClientBase, APIClientProtocol {
     var surroundViewIndex: [String: [String: Any]] = [:]
 
     public func sendCommand(for vehicle: Vehicle, command: VehicleCommand, authToken: AuthToken) async throws {
+        try ensureSupported(command)
         let url = commandURL(for: command)
         let body = commandBody(for: command, vehicle: vehicle)
         let method = commandMethod(for: command)

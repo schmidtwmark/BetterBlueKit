@@ -83,8 +83,10 @@ struct CoreEnumsTests {
 
     // MARK: - Region Tests
 
-    @Test func `Region API base URL for Genesis Canada`() {
+    @Test func `Region API base URL for Genesis`() {
         #expect(Region.canada.apiBaseURL(for: .genesis) == "https://genesisconnect.ca")
+        #expect(Region.usa.apiBaseURL(for: .genesis) == "https://api.telematics.hyundaiusa.com")
+        #expect(Region.europe.apiBaseURL(for: .genesis).isEmpty)
     }
 
     @Test("Region apiBaseURL returns correct URLs for Hyundai")

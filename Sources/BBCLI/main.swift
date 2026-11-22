@@ -159,9 +159,9 @@ func printUsage() {
       -u, --username <email>    Account username/email
       -p, --password <pass>     Account password
       -rt, --token <token>      Account refresh token (optional, no password in case of use needed)
-      --pin <pin>               Vehicle PIN (required for Hyundai, Kia EU, and Genesis CA)
+      --pin <pin>               Vehicle PIN (required for Hyundai, Kia EU, and Genesis)
       -b, --brand <brand>       Brand: 'hyundai', 'kia', or 'genesis' (default: hyundai)
-      -r, --region <region>     Region: 'US', 'CA', 'EU' (default: US; Genesis supports CA only)
+      -r, --region <region>     Region: 'US', 'CA', 'EU' (default: US; Genesis supports US and CA)
       --no-redaction            Disable PII redaction in HTTP logs
       --forget                  Discard the saved session for this account and log in fresh
       -h, --help                Show this help message
@@ -184,6 +184,7 @@ func printUsage() {
       bbcli -u user@email.com -p password --pin 1234 -b hyundai
       bbcli -b kia -u user@email.com -p password
       bbcli -b genesis -r CA
+      bbcli -b genesis -r US --pin 1234
       bbcli parse -b hyundai -r US -t vehicleStatus response.json
       bbcli parse -b hyundai -r US -t vehicleStatus '{"vehicleStatus": {...}}'
       bbcli parse -b kia -r US -t vehicles --electric response.json
@@ -436,6 +437,7 @@ func showMenu() {
      15. Probe 360 View Trigger (Kia US)
      16. Confirm 360 View Trigger (Kia US)
      17. Fetch Vehicle Status (cached)
+     18. Show / Set Off-Peak Charging Window (Hyundai US)
       0. Exit
 
     """)
@@ -467,6 +469,56 @@ func promptAndSetChargeLimits(state: CLIState) async throws {
     )
 }
 
+/// Shows the vehicle's charging schedule, then optionally moves its
+/// off-peak window. The write replaces the whole schedule, so it starts
+/// from the one in a fresh status and changes only the window.
+@MainActor
+func promptAndSetOffPeakWindow(state: CLIState) async throws {
+    guard let vehicle = selectVehicle(state: state) else { return }
+    guard let token = state.authToken, let client = state.client else {
+        throw APIError(message: "Not logged in")
+    }
+
+    let status = try await client.fetchVehicleStatus(for: vehicle, authToken: token, cached: true)
+    guard let schedule = status.evStatus?.chargingSchedule else {
+        printError("This vehicle's status has no charging schedule")
+        return
+    }
+
+    func show(_ time: TimeOfDay) -> String {
+        String(format: "%02d:%02d", time.hour, time.minute)
+    }
+    printSubheader("Charging Schedule")
+    print("  Off-peak: \(show(schedule.offPeakWindow.start)) – \(show(schedule.offPeakWindow.end))"
+        + " (\(schedule.offPeakPreference?.rawValue ?? "off"))")
+    if let ev = status.evStatus, ev.isWaitingForScheduledCharge {
+        print("  Waiting to charge; car estimates \(ev.estimatedChargeStart.map { "\($0)" } ?? "—")")
+    }
+
+    let startInput = prompt("New off-peak start as HH:MM, 24-hour (Enter to leave as is): ")
+    guard !startInput.isEmpty else { return }
+    func parse(_ text: String) -> TimeOfDay? {
+        let parts = text.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2, (0..<24).contains(parts[0]), (0..<60).contains(parts[1]) else { return nil }
+        return TimeOfDay(hour: parts[0], minute: parts[1])
+    }
+    guard let start = parse(startInput) else {
+        printError("Couldn't read \(startInput)")
+        return
+    }
+    let endInput = prompt("New off-peak end as HH:MM (Enter to keep \(show(schedule.offPeakWindow.end))): ")
+    guard let end = endInput.isEmpty ? schedule.offPeakWindow.end : parse(endInput) else {
+        printError("Couldn't read the end time")
+        return
+    }
+
+    try await sendCommand(
+        .setChargingSchedule(.init(start: start, end: end)),
+        description: "Set Off-Peak Window",
+        state: state
+    )
+}
+
 /// Runs one menu selection. Split out of `runInteractiveLoop` so the
 /// dispatch table can keep growing without the loop tripping SwiftLint's
 /// cyclomatic-complexity cap — the loop owns prompting and error
@@ -493,6 +545,7 @@ func runMenuChoice(_ choice: String, state: CLIState) async throws -> Bool {
     case "15": try await probeSurroundViewTrigger(state: state)
     case "16": try await confirmSurroundViewTrigger(state: state)
     case "17": try await fetchVehicleStatus(state: state, cached: true)
+    case "18": try await promptAndSetOffPeakWindow(state: state)
     case "0", "q", "quit", "exit":
         print("\nGoodbye!")
         return false

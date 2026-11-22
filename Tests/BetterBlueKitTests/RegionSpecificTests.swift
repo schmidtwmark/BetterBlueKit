@@ -417,6 +417,7 @@ struct RegionSpecificTests {
         #expect(requiresPin(brand: .hyundai, region: .europe))
         #expect(requiresPin(brand: .kia, region: .europe))
         #expect(requiresPin(brand: .genesis, region: .canada))
+        #expect(requiresPin(brand: .genesis, region: .usa))
 
         // PIN-not-required combinations
         #expect(!requiresPin(brand: .kia, region: .usa))
@@ -434,7 +435,6 @@ struct RegionSpecificTests {
             (.canada, .kia),
             (.australia, .hyundai),
             (.australia, .kia),
-            (.usa, .genesis),
             (.europe, .genesis),
             (.australia, .genesis),
             (.china, .genesis),
