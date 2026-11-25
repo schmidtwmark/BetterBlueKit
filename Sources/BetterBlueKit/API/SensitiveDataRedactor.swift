@@ -71,8 +71,9 @@ public enum SensitiveDataRedactor {
             // Token/secret fields (handles escaped quotes)
             (#""(\#(tokenKeys))"\s*:\s*"(?:[^"\\]|\\.)*""#,
              "\"$1\":\"[REDACTED]\""),
-            // JSON embedded in a server error string has escaped field delimiters.
-            (#"(\\"(?:\#(tokenKeys)|password|pin|PIN|otpNo|client_secret)\\"\s*:\s*\\")(?:[^"\\]|\\{3}"|\\(?!").)*(\\")"#,
+            // In embedded JSON, an inner escape starts with two backslashes.
+            // Consume that escape as a unit so a trailing backslash cannot swallow the closing quote.
+            (#"(\\"(?:\#(tokenKeys)|password|pin|PIN|otpNo|client_secret)\\"\s*:\s*\\")(?:[^"\\]|\\/|\\{2}(?:[^"\\]|\\["/\\]))*(\\")"#,
              "$1[REDACTED]$2"),
             // Service errors can echo credentials in plain text or in a JSON string.
             (#"\b(\#(tokenKeys)|client_secret)\s*(?:=|:(?!\s*expired\s*(?:[";}]|$)))\s*(?:"(?:[^"\\]|\\.)*"|'[^']*'|[^\s"'\\&,;]+)"#,
