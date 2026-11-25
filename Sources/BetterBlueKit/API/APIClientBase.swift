@@ -114,7 +114,8 @@ open class APIClientBase {
 
         // Debug logging
         var requestLog = "[\(apiName)] Sending \(requestType.displayName) request"
-        requestLog += " | URL: \(request.url?.absoluteString ?? "unknown")"
+        let safeURL = SensitiveDataRedactor.redact(request.url?.absoluteString) ?? "unknown"
+        requestLog += " | URL: \(safeURL)"
         requestLog += " | Method: \(request.httpMethod ?? "unknown")"
         BBLogger.debug(.api, requestLog)
 
@@ -128,13 +129,20 @@ open class APIClientBase {
         )
 
         do {
+            try Task.checkCancellation()
             let (data, response) = try await (session ?? urlSession).data(for: request)
+            try Task.checkCancellation()
             return try handleSuccessfulRequest(
                 data: data, response: response, context: context, validateStatus: validateStatus
             )
         } catch let error as APIError {
             throw error
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
         } catch {
+            try Task.checkCancellation()
             throw handleNetworkError(error, context: context)
         }
     }
@@ -250,8 +258,8 @@ open class APIClientBase {
             responseStatus: logData.responseStatus,
             responseHeaders: responseHeaders,
             responseBody: responseBody,
-            error: logData.error,
-            apiError: logData.apiError,
+            error: configuration.redactPII ? SensitiveDataRedactor.redactErrorText(logData.error) : logData.error,
+            apiError: configuration.redactPII ? SensitiveDataRedactor.redactErrorText(logData.apiError) : logData.apiError,
             duration: duration,
             stackTrace: stackTrace,
             vin: logData.vin

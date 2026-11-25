@@ -170,12 +170,16 @@ extension APIClientBase {
     }
 
     /// Refresh the CCI token set and re-exchange the CCS token.
-    func cciRefreshLogin(config: EuropeCCIConfig, set: CCITokenSet) async throws -> AuthToken {
+    func cciRefreshLogin(
+        config: EuropeCCIConfig, set: CCITokenSet, onRotation: (String) -> Void
+    ) async throws -> AuthToken {
         let refreshed = try await cciTokenRefresh(config: config, set: set)
+        let stored = refreshed.encodeForStorage()
+        onRotation(stored)
         let (ccsToken, expiresAt) = try await cciExchangeCCSToken(config: config, set: refreshed)
         return AuthToken(
             accessToken: ccsToken,
-            refreshToken: refreshed.encodeForStorage(),
+            refreshToken: stored,
             expiresAt: expiresAt,
             deviceId: configuration.deviceId ?? ""
         )
@@ -407,9 +411,7 @@ extension APIClientBase {
         let (data, response) = try await cciGatedRequest("CCI token refresh", signed: signed, legacy: legacy)
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let accessToken = json["accessToken"] as? String, !accessToken.isEmpty else {
-            throw APIError.invalidCredentials(
-                "CCI token refresh failed — please sign in again.", apiName: apiName
-            )
+            throw APIError(message: "CCI token refresh returned no accessToken.", apiName: apiName)
         }
         var exchangeable = json["exchangeableAccessToken"] as? String ?? set.exchangeableAccessToken
         // HTTPURLResponse coalesces multiple Set-Cookie headers into one
@@ -501,6 +503,7 @@ extension APIClientBase {
         }
         switch status {
         case 401: return .invalidCredentials(message, apiName: apiName)
+        case 400 ..< 500 where code == 9030: return .invalidCredentials(message, apiName: apiName)
         case 500...: return .serverError(message, apiName: apiName)
         default: return APIError(message: message, code: status, apiName: apiName)
         }

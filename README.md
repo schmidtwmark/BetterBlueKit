@@ -133,6 +133,15 @@ Task {
 - Multiple regions supported (US, Canada, Europe, Australia, China, India)
 - Fake API client for testing and development
 
+## European clients
+
+- Concurrent OneApp (CCI) refreshes for the same account and refresh credential share the result within a single process. A caller can cancel its wait while the refresh completes. The clients keep the rotated credential in memory if the CCS exchange fails. Only rejection of the refresh credential can trigger password fallback.
+- To preserve CCI rotation across app restarts, set `APIClientConfiguration.onRefreshTokenRotated` before creating the client. In BetterBlue, assign the callback value to the account's `refreshToken` and save the model context in the callback. The main-actor callback runs when the credential is available, even if the CCS exchange later fails. Each participating client instance receives one callback per rotation. Save the opaque value as supplied. If several client instances share one account, their callbacks can deliver the same value.
+- HTTP logs redact refresh tokens, control tokens, and OAuth codes by default. Request URLs and credential patterns in API errors sent to the diagnostic logger stay redacted when raw HTTP logging is explicitly enabled.
+- Remote commands that require PIN verification need a registered device ID. A malformed successful PIN response surfaces as a response error.
+- Status responses without vehicle state are rejected. CCS2 prefers the reported charging state when available and accepts numeric epoch-millisecond timestamps.
+- CCS2 can report a connected cable without identifying AC or DC. Use `EVStatus.pluggedIn` for the connection state and `knownPlugType` for the reported type. `currentTargetSOC` is nil when the type is unknown. The AC and DC limits remain available separately. For the BetterBlue charging button, show a generic connected plug when `pluggedIn` is true and `knownPlugType` is nil. Use the AC or DC icon when the type is known, and show the unplugged icon when `pluggedIn` is false.
+
 ## Important Notes
 
 - Connecting to your vehicle requires an active Hyundai BlueLink, Kia Connect, or Genesis Connect subscription.

@@ -20,6 +20,28 @@ struct APIClientRedactionTests {
         #expect(result == nil)
     }
 
+    @Test func embeddedPasswordEndingInBackslashDoesNotHideFollowingToken() throws {
+        try expectEmbeddedCredentialsRedacted(password: "synthetic-password\\")
+    }
+
+    @Test(arguments: [#"synthetic"password"#, #"synthetic\"password"#])
+    func embeddedPasswordWithEscapedQuoteIsFullyRedacted(password: String) throws {
+        try expectEmbeddedCredentialsRedacted(password: password)
+    }
+
+    private func expectEmbeddedCredentialsRedacted(password: String) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let nested = try encoder.encode(["password": password, "refreshToken": "synthetic-opaque-token"])
+        let response = try encoder.encode(["error": String(decoding: nested, as: UTF8.self)])
+        let safe = try #require(SensitiveDataRedactor.redact(String(decoding: response, as: UTF8.self)))
+        let decoder = JSONDecoder()
+        let outer = try decoder.decode([String: String].self, from: Data(safe.utf8))
+        let embedded = try #require(outer["error"])
+        let fields = try decoder.decode([String: String].self, from: Data(embedded.utf8))
+        #expect(fields == ["password": "[REDACTED]", "refreshToken": "[REDACTED]"])
+    }
+
     @Test("redact with password fields")
     func testRedactSensitiveDataWithPasswords() {
         let input = """

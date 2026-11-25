@@ -15,7 +15,7 @@ public enum SensitiveDataRedactor {
     private static let redactionRules: [(pattern: String, replacement: String)] = {
         let tokenKeys = [
             "access_token", "refresh_token", "accessToken", "refreshToken",
-            "serializedAuthToken", "rememberMeToken", "Accesstoken", "Pauth",
+            "serializedAuthToken", "rememberMeToken", "Accesstoken", "Pauth", "controlToken",
             // Canada `vrfypin` returns the PIN-auth token in its body as
             // `pAuth`; only the `Pauth` header spelling was covered.
             "pAuth",
@@ -56,13 +56,13 @@ public enum SensitiveDataRedactor {
             (#""(password|pin|PIN|otpNo)"\s*:\s*"[^"]*""#,
              "\"$1\":\"[REDACTED]\""),
             // Bearer tokens
-            (#"Bearer\s+[A-Za-z0-9._-]+"#,
+            (#"(?i:\bBearer)\s+(?:[A-Za-z0-9._~+/-]|\\/)+=*"#,
              "Bearer [REDACTED]"),
             // Form-encoded credentials — the EU IDPConnect signin POSTs
             // application/x-www-form-urlencoded, which the JSON rules
             // never match. Case-sensitive, so `encryptedPassword=true`
             // (a flag, not a secret) is left alone.
-            (#"(?:^|(?<=&))(password|username)=[^&]*"#,
+            (#"(?:^|(?<=[?&]))(password|username|refresh_token|client_secret)=[^&]*"#,
              "$1=[REDACTED]"),
             // OAuth authorization codes riding in a URL query (the EU CCI
             // token exchange puts the signin code in `?code=…`).
@@ -71,6 +71,15 @@ public enum SensitiveDataRedactor {
             // Token/secret fields (handles escaped quotes)
             (#""(\#(tokenKeys))"\s*:\s*"(?:[^"\\]|\\.)*""#,
              "\"$1\":\"[REDACTED]\""),
+            // In embedded JSON, an inner escape starts with two backslashes.
+            // Consume that escape as a unit so a trailing backslash cannot swallow the closing quote.
+            (#"(\\"(?:\#(tokenKeys)|password|pin|PIN|otpNo|client_secret)\\"\s*:\s*\\")(?:[^"\\]|\\/|\\{2}(?:[^"\\]|\\["/\\]))*(\\")"#,
+             "$1[REDACTED]$2"),
+            // Service errors can echo credentials in plain text or in a JSON string.
+            (#"\b(\#(tokenKeys)|client_secret)\s*(?:=|:(?!\s*expired\s*(?:[";}]|$)))\s*(?:"(?:[^"\\]|\\.)*"|'[^']*'|[^\s"'\\&,;]+)"#,
+             "$1=[REDACTED]"),
+            (#"\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"#,
+             "[REDACTED]"),
             // Latitude/longitude coordinates. Two spellings are accepted:
             // the bare keys, and any camelCase key ENDING in one of them —
             // the surround-view payload reports position as
@@ -149,6 +158,10 @@ public enum SensitiveDataRedactor {
             )
         }
         return redacted
+    }
+
+    static func redactErrorText(_ text: String?) -> String? {
+        redact(elideOversizedValues(text))
     }
 
     /// Replaces JSON string values longer than `threshold` with a note

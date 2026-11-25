@@ -1182,10 +1182,10 @@ struct HyJSONFormatTests {
         #expect(vehicleStatus.evStatus?.evRange.range == Distance(length: 277.0, units: .kilometers))
         #expect(vehicleStatus.evStatus?.targetSocAC == 100)
         #expect(vehicleStatus.evStatus?.targetSocDC == 80)
-        #expect(vehicleStatus.evStatus?.currentTargetSOC == 100)
+        #expect(vehicleStatus.evStatus?.currentTargetSOC == nil)
         #expect(vehicleStatus.evStatus?.pluggedIn == true)
         #expect(vehicleStatus.evStatus?.charging == true)
-        #expect(vehicleStatus.evStatus?.plugType == .acCharger)
+        #expect(vehicleStatus.evStatus?.knownPlugType == nil)
         #expect(vehicleStatus.engineOn == true)
     }
 }

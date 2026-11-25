@@ -38,7 +38,7 @@ public enum HyEuResponseKeyPath {
         .battery12v: "Electronics.Battery.Level",
         .engineOn: "DrivingReady",
         .chargeTime: "Green.ChargingInformation.Charging.RemainTime",
-        .isCharging: "Green.ChargingInformation.Charging.RemainTime",
+        .isCharging: "Green.ChargingInformation.Charging.State",
         .pluggedIn: "Green.ChargingInformation.ConnectorFastening.State",
         .rangeTotal: "Drivetrain.FuelSystem.DTE.Total",
         .rangeUnit: "Drivetrain.FuelSystem.DTE.Unit",
@@ -134,6 +134,16 @@ enum BluelinkDateParser {
         "yyyyMMddHHmmss",
         "yyyyMMddHHmmss.SSS"
     ]
+
+    /// CCS2 can send epoch milliseconds as a JSON number. Legacy
+    /// timestamps are local time in the Europe/Berlin time zone.
+    static func parseStatusTimestamp(_ value: Any?) -> Date? {
+        if let string = value as? String {
+            return parse(string, timeZone: TimeZone(identifier: "Europe/Berlin"))
+        }
+        guard let milliseconds = value as? Double, milliseconds.isFinite, milliseconds > 0 else { return nil }
+        return Date(timeIntervalSince1970: milliseconds / 1000)
+    }
 
     static func parse(_ value: String?, timeZone: TimeZone? = nil) -> Date? {
         guard let value else { return nil }

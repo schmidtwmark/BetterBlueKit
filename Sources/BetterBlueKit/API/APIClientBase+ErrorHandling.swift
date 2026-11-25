@@ -20,18 +20,12 @@ extension APIClientBase {
         // as a typed, user-facing error instead of "HTTP 400: bad request".
         try checkCCSPResponseForErrors(data: data)
 
-        if httpResponse.statusCode == 401 {
-            throw APIError.invalidCredentials(
-                "Authentication expired: \(responseBody ?? "Unknown error")",
-                apiName: apiName
-            )
-        }
-
-        if httpResponse.statusCode == 502 {
-            throw APIError.serverError(
-                "Server error (502): \(responseBody ?? "Unknown error")",
-                apiName: apiName
-            )
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 502 {
+            let detail = SensitiveDataRedactor.redactErrorText(responseBody) ?? "Unknown error"
+            if httpResponse.statusCode == 401 {
+                throw APIError.invalidCredentials("Authentication expired: \(detail)", apiName: apiName)
+            }
+            throw APIError.serverError("Server error (502): \(detail)", apiName: apiName)
         }
 
         if httpResponse.statusCode >= 400 {
@@ -46,18 +40,18 @@ extension APIClientBase {
 
     /// Translate a CCSP `retCode: "F"` error envelope into a typed `APIError`.
     ///
-    /// A no-op for any response that isn't a CCSP envelope (no `retCode`/
-    /// `resCode`), so the US/Canada/China clients are unaffected. The codes
+    /// Only an explicit `retCode: "F"` is treated as a CCSP failure. The codes
     /// and their meanings track Home Assistant's `hyundai_kia_connect_api`
     /// `_check_response_for_errors`, which is the reference implementation for
     /// the European Hyundai/Kia API.
     func checkCCSPResponseForErrors(data: Data) throws {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              json["retCode"] as? String == "F",
-              let resCode = json["resCode"] as? String else {
+              json["retCode"] as? String == "F" else {
             return
         }
         let resMsg = (json["resMsg"] as? String) ?? "Unknown error"
+        let numericCode = (json["resCode"] as? Int).map(String.init)
+        let resCode = (json["resCode"] as? String) ?? numericCode ?? "no error code"
 
         switch resCode {
         case "7501": // "Key not authorized" / token expired
