@@ -15,7 +15,7 @@ public enum SensitiveDataRedactor {
     private static let redactionRules: [(pattern: String, replacement: String)] = {
         let tokenKeys = [
             "access_token", "refresh_token", "accessToken", "refreshToken",
-            "serializedAuthToken", "rememberMeToken", "Accesstoken", "Pauth",
+            "serializedAuthToken", "rememberMeToken", "Accesstoken", "Pauth", "controlToken",
             // Canada `vrfypin` returns the PIN-auth token in its body as
             // `pAuth`; only the `Pauth` header spelling was covered.
             "pAuth",
@@ -62,7 +62,7 @@ public enum SensitiveDataRedactor {
             // application/x-www-form-urlencoded, which the JSON rules
             // never match. Case-sensitive, so `encryptedPassword=true`
             // (a flag, not a secret) is left alone.
-            (#"(?:^|(?<=&))(password|username)=[^&]*"#,
+            (#"(?:^|(?<=[?&]))(password|username|refresh_token|client_secret)=[^&]*"#,
              "$1=[REDACTED]"),
             // OAuth authorization codes riding in a URL query (the EU CCI
             // token exchange puts the signin code in `?code=…`).

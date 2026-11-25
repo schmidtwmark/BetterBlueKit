@@ -133,6 +133,14 @@ Task {
 - Multiple regions supported (US, Canada, Europe, Australia, China, India)
 - Fake API client for testing and development
 
+## European clients
+
+- Concurrent OneApp (CCI) refreshes for the same account share the result within a single process. A caller can cancel its wait while the refresh completes. Only a rejected credential can trigger password fallback.
+- HTTP logs redact refresh tokens, control tokens, and OAuth codes by default. The request URL in the diagnostic logger stays redacted when raw HTTP logging is explicitly enabled.
+- Remote commands that require PIN verification need a registered device ID. A malformed successful PIN response surfaces as a response error.
+- Status responses without vehicle state are rejected. CCS2 prefers the reported charging state when available and accepts numeric epoch-millisecond timestamps.
+- CCS2 can report a connected cable without identifying AC or DC. Use `EVStatus.pluggedIn` for the connection state and `knownPlugType` for the reported type. `currentTargetSOC` is nil when the type is unknown. The AC and DC limits remain available separately.
+
 ## Important Notes
 
 - Connecting to your vehicle requires an active Hyundai BlueLink, Kia Connect, or Genesis Connect subscription.

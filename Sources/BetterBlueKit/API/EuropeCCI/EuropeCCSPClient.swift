@@ -113,25 +113,13 @@ extension EuropeCCSPClient {
     // MARK: Login (CCI token set, legacy refresh token, or password)
 
     public func login() async throws -> AuthToken {
+        try Task.checkCancellation()
         if let stored = configuration.refreshToken,
            let set = CCITokenSet.decodeFromStorage(stored) {
-            BBLogger.info(.auth, "\(apiName): Starting login flow (CCI token refresh)")
-            do {
-                let token = try await cciRefreshLogin(config: euBrandSpec.cciConfig, set: set)
-                // The refresh rotates the CCI set. A long-lived client
-                // instance must present the rotated set on its next
-                // refresh, not the one it just spent — the host's
-                // persistence gets the same value via the returned
-                // AuthToken.
-                configuration = configuration.with(refreshToken: token.refreshToken)
-                BBLogger.info(.auth, "\(apiName): Login completed successfully")
-                return token
-            } catch {
-                guard !password.isEmpty else { throw error }
-                BBLogger.info(.auth, "\(apiName): CCI refresh failed, falling back to password login")
-                configuration = configuration.with(refreshToken: "")
-            }
-        } else if let refreshToken = configuration.refreshToken, !refreshToken.isEmpty {
+            return try await loginWithCCI(set: set, stored: stored)
+        }
+
+        if let refreshToken = configuration.refreshToken, !refreshToken.isEmpty {
             // Pre-CCI refresh token — the legacy oauth2/token refresh grant
             // still works for these, so don't force a fresh password login.
             BBLogger.info(.auth, "\(apiName): Starting login flow (legacy refresh token)")
@@ -150,8 +138,38 @@ extension EuropeCCSPClient {
             }
         }
 
-        // Password login runs the OneApp/CCI flow — the legacy signin has
-        // been WAF-blocked ("abusing request") since 2026-08-11.
+        return try await loginWithCCIPassword()
+    }
+
+    private func loginWithCCI(set: CCITokenSet, stored: String) async throws -> AuthToken {
+        let account = EuropeCCIRefresh.Account(id: accountId, brand: brand)
+        let token = try await EuropeCCIRefresh.run(for: account) { [self] in
+            BBLogger.info(.auth, "\(apiName): Starting login flow (CCI token refresh)")
+            let token: AuthToken
+            do {
+                token = try await cciRefreshLogin(config: euBrandSpec.cciConfig, set: set)
+            } catch let error as APIError where error.errorType == .invalidCredentials {
+                guard EuropeCCIRefresh.hasWaiters(for: account),
+                      account.id == accountId, account.brand == brand,
+                      configuration.refreshToken == stored, !password.isEmpty else { throw error }
+                BBLogger.info(.auth, "\(apiName): CCI refresh rejected, falling back to password login")
+                token = try await cciPasswordLogin(config: euBrandSpec.cciConfig)
+            }
+            adoptCCIRefreshToken(token.refreshToken, account: account, replacing: stored)
+            BBLogger.info(.auth, "\(apiName): Login completed successfully")
+            return token
+        }
+        adoptCCIRefreshToken(token.refreshToken, account: account, replacing: stored)
+        return token
+    }
+
+    private func adoptCCIRefreshToken(_ token: String, account: EuropeCCIRefresh.Account, replacing stored: String) {
+        guard account.id == accountId, account.brand == brand, configuration.refreshToken == stored else { return }
+        configuration = configuration.with(refreshToken: token)
+    }
+
+    private func loginWithCCIPassword() async throws -> AuthToken {
+        // The legacy signin has been WAF-blocked since 2026-08-11.
         BBLogger.info(.auth, "\(apiName): using username/password login (OneApp/CCI)")
         let token = try await cciPasswordLogin(config: euBrandSpec.cciConfig)
         configuration = configuration.with(refreshToken: token.refreshToken)
@@ -374,12 +392,16 @@ extension EuropeCCSPClient {
     // MARK: Command token (PIN exchange)
 
     private func setCommandToken(authToken: AuthToken) async throws {
+        guard let deviceId = configuration.deviceId, !deviceId.isEmpty else {
+            throw APIError(message: "A device ID is required for PIN verification.", apiName: apiName)
+        }
+
         // controlTokens expire after `expiresTime` seconds; refresh ~5 min early.
         if Date() < commandTokenExpiration.addingTimeInterval(-300) && !commandToken.isEmpty {
             return
         }
 
-        let body = ["deviceId": configuration.deviceId ?? "", "pin": pin]
+        let body = ["deviceId": deviceId, "pin": pin]
 
         // Routed through performJSONRequest so the PIN/control-token
         // request is captured in the HTTP logs and its CCSP envelope is
@@ -393,10 +415,10 @@ extension EuropeCCSPClient {
             requestType: .sendCommand
         )
 
-        guard let token = json["controlToken"] as? String,
-              let expires = json["expiresTime"] as? Int else {
+        guard let token = json["controlToken"] as? String, !token.isEmpty,
+              let expires = json["expiresTime"] as? Int, expires > 0 else {
             throw APIError(
-                message: "PIN verification failed — check that the account PIN is correct.",
+                message: "Invalid PIN verification response: missing or invalid controlToken or expiresTime.",
                 apiName: apiName
             )
         }

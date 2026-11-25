@@ -68,22 +68,13 @@ extension KiaEuropeAPIClient {
 
         let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
         let pathMap = HyEuResponseKeyPathMap(profile: ccs2 ? .ccs2 : .legacy)
-        let vehicleData = getChildFromJson(from: resMsg, key: pathMap[.vehicleState])
-
-        // CCS2 lastUpdateTime is numeric epoch milliseconds; legacy delivers
-        // a "yyyyMMddHHmmss" local-time string. Treating the latter as epoch
-        // millis produced year-2612 sync dates.
-        let syncDate: Date
-        if let dateString = getAnyFromJson(from: resMsg, key: pathMap[.syncDate]) as? String,
-           let parsed = BluelinkDateParser.parse(
-               dateString, timeZone: TimeZone(identifier: "Europe/Berlin")
-           ) {
-            syncDate = parsed
-        } else {
-            syncDate = Date(
-                timeIntervalSince1970: getDoubleFromJson(from: resMsg, key: pathMap[.syncDate]) / 1000
-            )
+        guard let vehicleData = getAnyFromJson(from: resMsg, key: pathMap[.vehicleState]) as? [String: Any],
+              let status = ccs2 ? vehicleData : vehicleData["vehicleStatus"] as? [String: Any],
+              !status.isEmpty else {
+            throw APIError.logError("Missing vehicle status in response", apiName: apiName)
         }
+
+        let syncDate = BluelinkDateParser.parseStatusTimestamp(getAnyFromJson(from: resMsg, key: pathMap[.syncDate]))
         let odo = Distance(
             length: getDoubleFromJson(from: vehicleData, key: pathMap[.odo]),
             units: Distance.Units(1)
@@ -112,9 +103,7 @@ extension KiaEuropeAPIClient {
 
         let batterySOC = getDoubleFromJson(from: vehicleState, key: pathMap[.soc])
         let remainChargeTime = getDoubleFromJson(from: vehicleState, key: pathMap[.chargeTime])
-        let pluggedIn = getBoolFromJson(from: vehicleState, key: pathMap[.pluggedIn])
-        let plugType: Int = extractNumber(from: getAnyFromJson(from: vehicleState,
-                                                key: pathMap[.pluggedIn])) ?? 0
+        let plugCode: Int = extractNumber(from: getAnyFromJson(from: vehicleState, key: pathMap[.pluggedIn])) ?? 0
         let estimatedRange = getDoubleFromJson(from: vehicleState, key: pathMap[.rangeTotal])
         let driveUnit = Int(getDoubleFromJson(from: vehicleState, key: pathMap[.rangeUnit]))
         var targetAC: Double?
@@ -123,11 +112,9 @@ extension KiaEuropeAPIClient {
         if pathMap.apiProfile == .ccs2 {
             targetAC = getDoubleFromJson(from: vehicleState, key: pathMap[.targetAC])
             targetDC = getDoubleFromJson(from: vehicleState, key: pathMap[.targetDC])
-            isCharging = remainChargeTime > 0
+            isCharging = getAnyFromJson(from: vehicleState, key: pathMap[.isCharging]) == nil
+                ? remainChargeTime > 0 : getBoolFromJson(from: vehicleState, key: pathMap[.isCharging])
         } else {
-            // targetSocList resolves to an ARRAY leaf; getChildFromJson only returns
-            // dictionaries, so the cast failed and AC/DC targets were always empty.
-            // Read via getAnyFromJson (matches the Hyundai EU sibling).
             let targetSocList = getAnyFromJson(from: vehicleState,
                                                key: pathMap[.targetSocList]) as? [[String: Any]] ?? []
             for target in targetSocList {
@@ -151,19 +138,22 @@ extension KiaEuropeAPIClient {
             getDoubleFromJson(from: vehicleState, key: pathMap[.chargePowerFst])
         )
 
-        _ = pluggedIn // surfaced via plugType today; kept for future parity
-        return VehicleStatus.EVStatus(
+        var status = VehicleStatus.EVStatus(
             charging: isCharging,
             chargeSpeed: chargePower,
             evRange: VehicleStatus.FuelRange(
                 range: Distance(length: estimatedRange, units: Distance.Units(driveUnit)),
                 percentage: batterySOC
             ),
-            plugType: VehicleStatus.PlugType(fromBatteryPlugin: plugType),
+            plugType: pathMap.apiProfile == .legacy ? .init(fromBatteryPlugin: plugCode) : .unplugged,
             chargeTime: .seconds(60 * remainChargeTime),
             targetSocAC: targetAC,
             targetSocDC: targetDC
         )
+        if pathMap.apiProfile == .ccs2 {
+            status.connectorPluggedIn = plugCode != 0
+        }
+        return status
     }
 
     private func parseDoorOpen(from vehicleState: [String: Any], pathMap: HyEuResponseKeyPathMap)
@@ -290,17 +280,6 @@ extension KiaEuropeAPIClient {
         case let value as String: return Double(value) ?? 0
         default: return 0
         }
-    }
-
-    private func getChildFromJson(from data: [String: Any], key keyString: String?) -> [String: Any] {
-        if keyString == nil || keyString!.isEmpty { return data }
-        var current = data
-        for key in keyString!.split(separator: ".") {
-            if let value = current[String(key)] as? [String: Any] {
-                current = value
-            }
-        }
-        return current
     }
 
     private func getAnyFromJson(from data: [String: Any], key keyString: String?) -> Any? {

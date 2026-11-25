@@ -54,10 +54,17 @@ public struct VehicleStatus: Codable, Hashable, Sendable {
 
     public struct EVStatus: Codable, Hashable, Sendable {
         public var charging: Bool, chargeSpeed: Double
-        public var pluggedIn: Bool { plugType != .unplugged }
+        public var pluggedIn: Bool { connectorPluggedIn ?? (plugType != .unplugged) }
         public var evRange: FuelRange
         private var maybePlugType: PlugType?
+        // CCS2 can report a connected cable without identifying its type.
+        // Optional so statuses saved before this field still decode.
+        var connectorPluggedIn: Bool?
+        /// The plug type, with the existing `.unplugged` fallback when unavailable.
+        /// Use `pluggedIn` to determine whether a cable is connected.
         public var plugType: PlugType { maybePlugType ?? .unplugged }
+        /// Nil when the vehicle reports a connected cable of unknown type.
+        public var knownPlugType: PlugType? { connectorPluggedIn == true ? nil : plugType }
         private var maybeChargeTimeSeconds: Int64?
         public var chargeTime: Duration { .seconds(maybeChargeTimeSeconds ?? 0 ) }
         public var targetSocAC: Double?
@@ -113,12 +120,12 @@ public struct VehicleStatus: Codable, Hashable, Sendable {
         }
 
         public var currentTargetSOC: Double? {
-            switch plugType {
+            switch knownPlugType {
             case .acCharger:
                 return targetSocAC
             case .dcCharger:
                 return targetSocDC
-            case .unplugged:
+            case .unplugged, nil:
                 return nil
             }
         }

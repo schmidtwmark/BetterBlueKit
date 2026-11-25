@@ -407,9 +407,7 @@ extension APIClientBase {
         let (data, response) = try await cciGatedRequest("CCI token refresh", signed: signed, legacy: legacy)
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let accessToken = json["accessToken"] as? String, !accessToken.isEmpty else {
-            throw APIError.invalidCredentials(
-                "CCI token refresh failed — please sign in again.", apiName: apiName
-            )
+            throw APIError(message: "CCI token refresh returned no accessToken.", apiName: apiName)
         }
         var exchangeable = json["exchangeableAccessToken"] as? String ?? set.exchangeableAccessToken
         // HTTPURLResponse coalesces multiple Set-Cookie headers into one
@@ -501,6 +499,7 @@ extension APIClientBase {
         }
         switch status {
         case 401: return .invalidCredentials(message, apiName: apiName)
+        case 400 ..< 500 where code == 9030: return .invalidCredentials(message, apiName: apiName)
         case 500...: return .serverError(message, apiName: apiName)
         default: return APIError(message: message, code: status, apiName: apiName)
         }

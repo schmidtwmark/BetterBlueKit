@@ -66,13 +66,13 @@ extension HyundaiEuropeAPIClient {
         let ccs2 = vehicle.marketOptions?.ccs2Supported ?? false
         let pathMap = HyEuResponseKeyPathMap(profile: ccs2 ? .ccs2 : .legacy)
 
-        let vehicleData = getChildFromJson( from: resMsg, key: pathMap[.vehicleState] )
+        guard let vehicleData = getAnyFromJson(from: resMsg, key: pathMap[.vehicleState]) as? [String: Any],
+              let status = ccs2 ? vehicleData : vehicleData["vehicleStatus"] as? [String: Any],
+              !status.isEmpty else {
+            throw APIError.logError("Missing vehicle status in response", apiName: apiName)
+        }
 
-        // get datetime string from response (utc) and transform it to date
-        let syncDate = BluelinkDateParser.parse(getAnyFromJson( from: resMsg,
-                                                                key: pathMap[.syncDate] ) as? String,
-                                                timeZone: TimeZone(identifier: "Europe/Berlin"))
-        // get odometer from drivetrain data
+        let syncDate = BluelinkDateParser.parseStatusTimestamp(getAnyFromJson(from: resMsg, key: pathMap[.syncDate]))
         let odo = Distance(
             length: getDoubleFromJson(from: vehicleData, key: pathMap[.odo]),
             units: Distance.Units(1)
@@ -105,8 +105,7 @@ extension HyundaiEuropeAPIClient {
 
         let batterySOC = getDoubleFromJson(from: vehicleState, key: pathMap[.soc])
         let remainChargeTime = getDoubleFromJson(from: vehicleState, key: pathMap[.chargeTime])
-        let plugType: Int = extractNumber(from: getAnyFromJson(from: vehicleState,
-                                                key: pathMap[.pluggedIn])) ?? 0
+        let plugCode: Int = extractNumber(from: getAnyFromJson(from: vehicleState, key: pathMap[.pluggedIn])) ?? 0
         let estimatedRange = getDoubleFromJson(from: vehicleState, key: pathMap[.rangeTotal])
         let driveUnit = Int(getDoubleFromJson(from: vehicleState, key: pathMap[.rangeUnit]))
         var targetAC: Double?
@@ -115,7 +114,8 @@ extension HyundaiEuropeAPIClient {
         if pathMap.apiProfile == .ccs2 {
             targetAC = getDoubleFromJson(from: vehicleState, key: pathMap[.targetAC])
             targetDC = getDoubleFromJson(from: vehicleState, key: pathMap[.targetDC])
-            isCharging = remainChargeTime > 0
+            isCharging = getAnyFromJson(from: vehicleState, key: pathMap[.isCharging]) == nil
+                ? remainChargeTime > 0 : getBoolFromJson(from: vehicleState, key: pathMap[.isCharging])
         } else {
             let targetSocList = getAnyFromJson(from: vehicleState, key: pathMap[.targetSocList])
             let socList = targetSocList as? [[String: Any]] ?? []
@@ -134,7 +134,7 @@ extension HyundaiEuropeAPIClient {
         let chargePower = max(getDoubleFromJson(from: vehicleState, key: pathMap[.chargePowerStd]),
                               getDoubleFromJson(from: vehicleState, key: pathMap[.chargePowerFst]))
 
-        return VehicleStatus.EVStatus(
+        var status = VehicleStatus.EVStatus(
             charging: isCharging,
             chargeSpeed: chargePower,
             evRange: VehicleStatus.FuelRange(
@@ -144,11 +144,15 @@ extension HyundaiEuropeAPIClient {
                 ),
                 percentage: batterySOC
             ),
-            plugType: VehicleStatus.PlugType(fromBatteryPlugin: plugType),
+            plugType: pathMap.apiProfile == .legacy ? .init(fromBatteryPlugin: plugCode) : .unplugged,
             chargeTime: .seconds(60 * remainChargeTime),
             targetSocAC: targetAC,
             targetSocDC: targetDC
         )
+        if pathMap.apiProfile == .ccs2 {
+            status.connectorPluggedIn = plugCode != 0
+        }
+        return status
     }
 
     private func parseDoorOpen(
@@ -315,17 +319,6 @@ extension HyundaiEuropeAPIClient {
         case let value as String: return Double(value) ?? 0
         default: return 0
         }
-    }
-
-    private func getChildFromJson(from data: [String: Any], key keyString: String?) -> [String: Any] {
-        if keyString == nil || keyString!.isEmpty { return data }
-        var current = data
-        for (key) in keyString!.split(separator: ".") {
-            if let value = current[String(key)] as? [String: Any] {
-                current = value
-            }
-        }
-        return current
     }
 
     private func getAnyFromJson(from data: [String: Any], key keyString: String?) -> Any? {
