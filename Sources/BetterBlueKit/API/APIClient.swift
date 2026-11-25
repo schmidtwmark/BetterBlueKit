@@ -29,6 +29,10 @@ public struct APIClientConfiguration {
     /// may opt in by capturing their respective rotated tokens.
     public let onRememberMeTokenRotated: (@MainActor @Sendable (String) -> Void)?
 
+    /// Called on the main actor when European CCI refresh returns a replacement credential.
+    /// Persist this opaque value immediately, even if the subsequent login fails.
+    public var onRefreshTokenRotated: (@MainActor @Sendable (String) -> Void)?
+
     public init(
         region: Region,
         brand: Brand,
@@ -58,7 +62,7 @@ public struct APIClientConfiguration {
     }
 
     public func with(deviceId: String? = nil, refreshToken: String? = nil) -> Self {
-        .init(
+        var copy = Self(
             region: region,
             brand: brand,
             username: username,
@@ -72,6 +76,8 @@ public struct APIClientConfiguration {
             deviceId: deviceId ?? self.deviceId,
             onRememberMeTokenRotated: onRememberMeTokenRotated
         )
+        copy.onRefreshTokenRotated = onRefreshTokenRotated
+        return copy
     }
 }
 

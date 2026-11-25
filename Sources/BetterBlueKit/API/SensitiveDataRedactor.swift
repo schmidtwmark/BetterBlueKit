@@ -56,7 +56,7 @@ public enum SensitiveDataRedactor {
             (#""(password|pin|PIN|otpNo)"\s*:\s*"[^"]*""#,
              "\"$1\":\"[REDACTED]\""),
             // Bearer tokens
-            (#"Bearer\s+[A-Za-z0-9._-]+"#,
+            (#"(?i:\bBearer)\s+(?:[A-Za-z0-9._~+/-]|\\/)+=*"#,
              "Bearer [REDACTED]"),
             // Form-encoded credentials — the EU IDPConnect signin POSTs
             // application/x-www-form-urlencoded, which the JSON rules
@@ -71,6 +71,11 @@ public enum SensitiveDataRedactor {
             // Token/secret fields (handles escaped quotes)
             (#""(\#(tokenKeys))"\s*:\s*"(?:[^"\\]|\\.)*""#,
              "\"$1\":\"[REDACTED]\""),
+            // Service errors can echo credentials in plain text or in a JSON string.
+            (#"\b(\#(tokenKeys)|client_secret)\s*[:=]\s*(?:"(?:[^"\\]|\\.)*"|'[^']*'|[^\s"'\\&,;]+)"#,
+             "$1=[REDACTED]"),
+            (#"\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"#,
+             "[REDACTED]"),
             // Latitude/longitude coordinates. Two spellings are accepted:
             // the bare keys, and any camelCase key ENDING in one of them —
             // the surround-view payload reports position as
@@ -149,6 +154,10 @@ public enum SensitiveDataRedactor {
             )
         }
         return redacted
+    }
+
+    static func redactErrorText(_ text: String?) -> String? {
+        redact(elideOversizedValues(text))
     }
 
     /// Replaces JSON string values longer than `threshold` with a note

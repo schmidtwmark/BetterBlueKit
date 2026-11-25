@@ -19,6 +19,7 @@ struct EuropeHardeningTests {
             var paths: [String] = []
             var onRequest: (@Sendable (String) -> Void)?
             var refreshHold: DispatchSemaphore?
+            var refreshHoldTimedOut = false
         }
 
         static let state = OSAllocatedUnfairLock(initialState: State())
@@ -33,9 +34,20 @@ struct EuropeHardeningTests {
                 return (state.replies[url.path] ?? Reply(status: 418), state.onRequest, state.refreshHold)
             }
             onRequest?(url.path)
-            if url.path == "/auth/v2/token-refresh" {
-                _ = refreshHold?.wait(timeout: .now() + 3)
+            if url.path == "/auth/v2/token-refresh", let refreshHold {
+                // The URL loading queue must remain free to accept a second request.
+                DispatchQueue.global().async {
+                    if refreshHold.wait(timeout: .now() + 3) == .timedOut {
+                        Self.state.withLock { $0.refreshHoldTimedOut = true }
+                    }
+                    self.finish(reply, url: url)
+                }
+                return
             }
+            finish(reply, url: url)
+        }
+
+        private func finish(_ reply: Reply, url: URL) {
             if reply.delay > 0 { Thread.sleep(forTimeInterval: reply.delay) }
             if let error = reply.error {
                 client?.urlProtocol(self, didFailWithError: URLError(error))
@@ -234,16 +246,18 @@ struct EuropeHardeningTests {
         #expect(await iterator.next() == refreshPath)
         StubProtocol.state.withLock {
             $0.refreshHold = nil
+            $0.onRequest = { path in
+                if path == refreshPath { releaseRefresh.signal() }
+            }
             $0.replies[refreshPath] = Reply(body: #"{"accessToken":"rotated-cci","refreshToken":"rotated-refresh"}"#)
         }
         let newLogin = Task { try await newClient.login() }
-        await Task.yield()
-        releaseRefresh.signal()
         let oldError = await #expect(throws: APIError.self) { try await oldLogin.value }
         #expect(oldError?.errorType == .invalidCredentials)
         let newToken = try await newLogin.value
         #expect(newToken.accessToken == "new-ccs")
         #expect(paths == [refreshPath, refreshPath, exchangePath])
+        #expect(!StubProtocol.state.withLock { $0.refreshHoldTimedOut })
     }
 
     @Test func exchange503PreservesRotationForAllWaitingClients() async throws {
@@ -304,6 +318,80 @@ struct EuropeHardeningTests {
         let messages = messageSink.messages.withLock { $0.joined(separator: "\n") }
         #expect(messages.contains("Response \(status)"))
         #expect(!messages.contains(secret))
+    }
+
+    @Test func consumerGetsRotationBeforeFailedCCSExchange() async throws {
+        stub([
+            refreshPath: Reply(body: #"{"accessToken":"rotated-cci","refreshToken":"replacement-refresh"}"#),
+            exchangePath: Reply(status: 503)
+        ])
+        var persisted: String?
+        var pathsAtRotation: [String] = []
+        do {
+            let client = makeClient(refreshToken: Self.storedCCI)
+            client.configuration.onRefreshTokenRotated = { token in
+                persisted = token
+                pathsAtRotation = paths
+            }
+            client.configuration = client.configuration.with(deviceId: "updated-synthetic-device")
+            let error = await #expect(throws: APIError.self) { try await client.login() }
+            #expect(error?.errorType == .serverError)
+        }
+        #expect(pathsAtRotation == [refreshPath])
+        #expect(paths == [refreshPath, exchangePath])
+        let saved = try #require(persisted)
+        #expect(CCITokenSet.decodeFromStorage(saved)?.refreshToken == "replacement-refresh")
+    }
+
+    @Test(arguments: ["HTTP", "CCSP", "CCI"])
+    func credentialTextIsRedactedAcrossErrorSurfaces(source: String) async throws {
+        let bearer = "synthetic-bearer+value/abc=="
+        let opaque = "synthetic-control-value"
+        // Synthetic token ({"alg":"HS256"} / {"sub":"synthetic"}), assembled at runtime
+        // so secret scanners do not flag the fixture.
+        let jwt = ["eyJhbGciOiJIUzI1NiJ9", "eyJzdWIiOiJzeW50aGV0aWMifQ", "syntheticSignature"].joined(separator: ".")
+        let path: String
+        let reply: Reply
+        switch source {
+        case "HTTP":
+            path = pinPath
+            let message = bearer.replacingOccurrences(of: "/", with: #"\/"#)
+            reply = Reply(status: 401, body: "{\"error\":\"Bearer \(message)\"}")
+        case "CCSP":
+            path = pinPath
+            reply = Reply(status: 400, body: "{\"retCode\":\"F\",\"resCode\":\"1234\",\"resMsg\":\"controlToken=\(opaque)\"}")
+        default:
+            path = refreshPath
+            reply = Reply(status: 502, body: "{\"message\":\"Server rejected \(jwt)\"}")
+        }
+        stub([path: reply])
+        let httpLogs = OSAllocatedUnfairLock(initialState: [HTTPLog]())
+        let client = makeClient(refreshToken: Self.storedCCI) { log in httpLogs.withLock { $0.append(log) } }
+        let sink = MessageSink()
+        let previous = BBLogger.sink
+        BBLogger.sink = sink
+        defer { BBLogger.sink = previous }
+
+        let error = await #expect(throws: APIError.self) {
+            if source == "CCI" {
+                _ = try await client.login()
+            } else {
+                try await client.sendCommand(for: vehicle(for: client), command: .lock, authToken: authToken)
+            }
+        }
+
+        let log = try #require(httpLogs.withLock { $0.first })
+        let messages = sink.messages.withLock { $0.joined(separator: "\n") }
+        let raw = [bearer, "abc==", opaque, jwt]
+        for secret in raw {
+            #expect(error?.message.contains(secret) == false)
+            #expect(log.apiError?.contains(secret) != true)
+            #expect(log.responseBody?.contains(secret) == false)
+            #expect(!messages.contains(secret))
+        }
+        if source == "HTTP" { #expect(log.apiError?.contains("[REDACTED]") == true) }
+        #expect(error?.message.contains("[REDACTED]") == true)
+        #expect(messages.contains("Response \(reply.status)"))
     }
 
     @Test func unavailableRefreshDoesNotAttemptPasswordLogin() async {

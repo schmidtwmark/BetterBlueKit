@@ -144,8 +144,14 @@ extension EuropeCCSPClient {
 
     private func loginWithCCI(set: CCITokenSet, stored: String) async throws -> AuthToken {
         let key = EuropeCCIRefresh.Key(accountId: accountId, brand: brand, refreshToken: set.refreshToken)
+        let isCurrent = { [self] in
+            key.accountId == accountId && key.brand == brand && configuration.refreshToken == stored
+        }
         return try await EuropeCCIRefresh.run(for: key) { [self] rotatedToken in
-            guard key.accountId == accountId, key.brand == brand, configuration.refreshToken == stored else { return }
+            guard isCurrent() else { return }
+            configuration.onRefreshTokenRotated?(rotatedToken)
+        } adoptRotation: { [self] rotatedToken in
+            guard isCurrent() else { return }
             configuration = configuration.with(refreshToken: rotatedToken)
         } operation: { [self] recordRotation in
             BBLogger.info(.auth, "\(apiName): Starting login flow (CCI token refresh)")
@@ -158,8 +164,7 @@ extension EuropeCCSPClient {
                 }
             } catch let error as APIError where error.errorType == .invalidCredentials && !didRotate {
                 guard EuropeCCIRefresh.hasWaiters(for: key),
-                      key.accountId == accountId, key.brand == brand,
-                      configuration.refreshToken == stored, !password.isEmpty else { throw error }
+                      isCurrent(), !password.isEmpty else { throw error }
                 BBLogger.info(.auth, "\(apiName): CCI refresh rejected, falling back to password login")
                 token = try await cciPasswordLogin(config: euBrandSpec.cciConfig)
             }

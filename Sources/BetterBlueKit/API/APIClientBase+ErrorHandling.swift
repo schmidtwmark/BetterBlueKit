@@ -21,13 +21,11 @@ extension APIClientBase {
         try checkCCSPResponseForErrors(data: data)
 
         if httpResponse.statusCode == 401 || httpResponse.statusCode == 502 {
-            // The error factories also send this message to BBLogger.
-            let safeBody = SensitiveDataRedactor.redact(SensitiveDataRedactor.elideOversizedValues(responseBody))
-                ?? "Unknown error"
+            let detail = responseBody ?? "Unknown error"
             if httpResponse.statusCode == 401 {
-                throw APIError.invalidCredentials("Authentication expired: \(safeBody)", apiName: apiName)
+                throw APIError.invalidCredentials("Authentication expired: \(detail)", apiName: apiName)
             }
-            throw APIError.serverError("Server error (502): \(safeBody)", apiName: apiName)
+            throw APIError.serverError("Server error (502): \(detail)", apiName: apiName)
         }
 
         if httpResponse.statusCode >= 400 {

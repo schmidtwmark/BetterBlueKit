@@ -12,18 +12,25 @@ enum EuropeCCIRefresh {
     }
 
     private struct Waiter {
+        let notifyRotation: @MainActor (String) -> Void
         let adoptRotation: @MainActor (String) -> Void
         var continuation: CheckedContinuation<AuthToken, Error>?
     }
 
-    private static var inFlight: [Key: [UUID: Waiter]] = [:]
+    private struct Flight {
+        var waiters: [UUID: Waiter]
+        var rotatedToken: String?
+    }
+
+    private static var inFlight: [Key: Flight] = [:]
 
     static func hasWaiters(for key: Key) -> Bool {
-        inFlight[key]?.values.contains { $0.continuation != nil } == true
+        inFlight[key]?.waiters.values.contains { $0.continuation != nil } == true
     }
 
     static func run(
         for key: Key,
+        notifyRotation: @escaping @MainActor (String) -> Void,
         adoptRotation: @escaping @MainActor (String) -> Void,
         operation: @escaping @MainActor (_ recordRotation: (String) -> Void) async throws -> AuthToken
     ) async throws -> AuthToken {
@@ -31,38 +38,46 @@ enum EuropeCCIRefresh {
         let token = try await withTaskCancellationHandler {
             try Task.checkCancellation()
             return try await withCheckedThrowingContinuation { continuation in
-                let waiter = Waiter(adoptRotation: adoptRotation, continuation: continuation)
+                let waiter = Waiter(notifyRotation: notifyRotation, adoptRotation: adoptRotation, continuation: continuation)
                 if inFlight[key] != nil {
-                    inFlight[key]?[id] = waiter
+                    inFlight[key]?.waiters[id] = waiter
+                    if let rotatedToken = inFlight[key]?.rotatedToken { notifyRotation(rotatedToken) }
                     return
                 }
 
-                inFlight[key] = [id: waiter]
+                inFlight[key] = Flight(waiters: [id: waiter])
                 Task {
-                    var rotatedToken: String?
                     let result: Result<AuthToken, Error>
                     do {
-                        let authToken = try await operation { rotatedToken = $0 }
-                        rotatedToken = authToken.refreshToken
+                        let authToken = try await operation { rotatedToken in
+                            inFlight[key]?.rotatedToken = rotatedToken
+                            if let flight = inFlight[key] {
+                                for waiter in flight.waiters.values {
+                                    waiter.notifyRotation(rotatedToken)
+                                }
+                            }
+                        }
+                        inFlight[key]?.rotatedToken = authToken.refreshToken
                         result = .success(authToken)
                     } catch {
                         result = .failure(error)
                     }
 
-                    // Publish the rotation before waking callers, even when
+                    // Update each client before waking callers, even when
                     // the CCS exchange failed. Until then, callers presenting
                     // the original credential share this entire operation.
-                    let waiters = inFlight.removeValue(forKey: key) ?? [:]
-                    for waiter in waiters.values {
-                        if let rotatedToken { waiter.adoptRotation(rotatedToken) }
-                        waiter.continuation?.resume(with: result)
+                    if let flight = inFlight.removeValue(forKey: key) {
+                        for waiter in flight.waiters.values {
+                            if let rotatedToken = flight.rotatedToken { waiter.adoptRotation(rotatedToken) }
+                            waiter.continuation?.resume(with: result)
+                        }
                     }
                 }
             }
         } onCancel: {
             Task { @MainActor in
-                let continuation = inFlight[key]?[id]?.continuation
-                inFlight[key]?[id]?.continuation = nil
+                let continuation = inFlight[key]?.waiters[id]?.continuation
+                inFlight[key]?.waiters[id]?.continuation = nil
                 continuation?.resume(throwing: CancellationError())
             }
         }

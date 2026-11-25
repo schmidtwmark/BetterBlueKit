@@ -66,7 +66,7 @@ public struct APIError: LocalizedError, Codable {
         userInfo: [String: String]? = nil
     ) {
         (self.message, self.code, self.apiName, self.errorType, self.userInfo) =
-            (message, code, apiName, errorType, userInfo)
+            (SensitiveDataRedactor.redactErrorText(message) ?? "", code, apiName, errorType, userInfo)
     }
 
     public static func logError(
@@ -83,7 +83,7 @@ public struct APIError: LocalizedError, Codable {
             errorType: errorType,
             userInfo: userInfo
         )
-        var logMessage = "\(apiName ?? "Unknown"): \(message)"
+        var logMessage = "\(apiName ?? "Unknown"): \(error.message)"
         if let code { logMessage += " | Status Code: \(code)" }
         if errorType != .general { logMessage += " | Error Type: \(errorType.rawValue)" }
         if let userInfo { logMessage += " | User Info: \(userInfo)" }

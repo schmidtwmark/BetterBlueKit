@@ -258,8 +258,8 @@ open class APIClientBase {
             responseStatus: logData.responseStatus,
             responseHeaders: responseHeaders,
             responseBody: responseBody,
-            error: logData.error,
-            apiError: logData.apiError,
+            error: configuration.redactPII ? SensitiveDataRedactor.redactErrorText(logData.error) : logData.error,
+            apiError: configuration.redactPII ? SensitiveDataRedactor.redactErrorText(logData.apiError) : logData.apiError,
             duration: duration,
             stackTrace: stackTrace,
             vin: logData.vin
