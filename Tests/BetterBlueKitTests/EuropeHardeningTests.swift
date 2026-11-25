@@ -18,6 +18,7 @@ struct EuropeHardeningTests {
             var replies: [String: Reply] = [:]
             var paths: [String] = []
             var onRequest: (@Sendable (String) -> Void)?
+            var holdPath = "/auth/v2/token-refresh"
             var refreshHold: DispatchSemaphore?
             var refreshHoldTimedOut = false
         }
@@ -31,10 +32,10 @@ struct EuropeHardeningTests {
             let url = request.url!
             let (reply, onRequest, refreshHold) = Self.state.withLock { state in
                 state.paths.append(url.path)
-                return (state.replies[url.path] ?? Reply(status: 418), state.onRequest, state.refreshHold)
+                return (state.replies[url.path] ?? Reply(status: 418), state.onRequest, url.path == state.holdPath ? state.refreshHold : nil)
             }
             onRequest?(url.path)
-            if url.path == "/auth/v2/token-refresh", let refreshHold {
+            if let refreshHold {
                 // The URL loading queue must remain free to accept a second request.
                 DispatchQueue.global().async {
                     if refreshHold.wait(timeout: .now() + 3) == .timedOut {
@@ -392,6 +393,77 @@ struct EuropeHardeningTests {
         if source == "HTTP" { #expect(log.apiError?.contains("[REDACTED]") == true) }
         #expect(error?.message.contains("[REDACTED]") == true)
         #expect(messages.contains("Response \(reply.status)"))
+    }
+
+    @Test(arguments: [401, 502])
+    func firstFormCredentialIsRedactedInError(status: Int) async throws {
+        let secret = "synthetic-form-password"
+        stub([pinPath: Reply(status: status, body: "password=\(secret)&reason=expired")])
+        let sink = MessageSink()
+        let previous = BBLogger.sink
+        BBLogger.sink = sink
+        defer { BBLogger.sink = previous }
+        let client = makeClient()
+
+        let error = await #expect(throws: APIError.self) {
+            try await client.sendCommand(for: vehicle(for: client), command: .lock, authToken: authToken)
+        }
+        #expect(error?.message.contains("password=[REDACTED]&reason=expired") == true)
+        #expect(!sink.messages.withLock { $0.joined().contains(secret) })
+    }
+
+    @Test func embeddedErrorJSONIsRedactedWithoutLosingExpirationDetail() async throws {
+        let secret = "synthetic-opaque-token"
+        let body = #"{"error":"upstream rejected {\"refreshToken\":\"synthetic-opaque-token\"}; refreshToken: expired"}"#
+        stub([pinPath: Reply(status: 401, body: body)])
+        let httpLogs = OSAllocatedUnfairLock(initialState: [HTTPLog]())
+        let client = makeClient { log in httpLogs.withLock { $0.append(log) } }
+        let sink = MessageSink()
+        let previous = BBLogger.sink
+        BBLogger.sink = sink
+        defer { BBLogger.sink = previous }
+
+        let error = await #expect(throws: APIError.self) {
+            try await client.sendCommand(for: vehicle(for: client), command: .lock, authToken: authToken)
+        }
+        let log = try #require(httpLogs.withLock { $0.first })
+        let diagnostics = sink.messages.withLock { $0.joined() }
+        for message in [error?.message, log.responseBody, log.apiError, diagnostics] {
+            let message = try #require(message)
+            #expect(!message.contains(secret))
+            #expect(message.contains("refreshToken: expired"))
+        }
+        let safeBody = try #require(log.responseBody)
+        _ = try JSONDecoder().decode([String: String].self, from: Data(safeBody.utf8))
+    }
+
+    @Test func clientReceivesOneRotationWhenCallingAgainDuringExchange() async throws {
+        stub([
+            refreshPath: Reply(body: #"{"accessToken":"rotated-cci","refreshToken":"replacement-refresh"}"#),
+            exchangePath: Reply(body: #"{"accessToken":"new-ccs"}"#)
+        ])
+        let (requests, signal) = AsyncStream.makeStream(of: String.self)
+        let release = DispatchSemaphore(value: 0)
+        let heldPath = exchangePath
+        StubProtocol.state.withLock {
+            $0.holdPath = heldPath
+            $0.refreshHold = release
+            $0.onRequest = { signal.yield($0) }
+        }
+        defer { signal.finish() }
+        let client = makeClient(refreshToken: Self.storedCCI)
+        var notifications = 0
+        client.configuration.onRefreshTokenRotated = { _ in notifications += 1 }
+        let first = Task { try await client.login() }
+        var iterator = requests.makeAsyncIterator()
+        #expect(await iterator.next() == refreshPath)
+        #expect(await iterator.next() == exchangePath)
+        #expect(notifications == 1)
+        Task { release.signal() }
+        let second = try await client.login()
+        #expect(try await first.value.accessToken == second.accessToken)
+        #expect(paths == [refreshPath, exchangePath])
+        #expect(notifications == 1)
     }
 
     @Test func unavailableRefreshDoesNotAttemptPasswordLogin() async {

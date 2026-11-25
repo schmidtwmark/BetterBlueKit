@@ -147,7 +147,7 @@ extension EuropeCCSPClient {
         let isCurrent = { [self] in
             key.accountId == accountId && key.brand == brand && configuration.refreshToken == stored
         }
-        return try await EuropeCCIRefresh.run(for: key) { [self] rotatedToken in
+        return try await EuropeCCIRefresh.run(for: key, clientId: ObjectIdentifier(self)) { [self] rotatedToken in
             guard isCurrent() else { return }
             configuration.onRefreshTokenRotated?(rotatedToken)
         } adoptRotation: { [self] rotatedToken in

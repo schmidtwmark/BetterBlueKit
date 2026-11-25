@@ -12,6 +12,7 @@ enum EuropeCCIRefresh {
     }
 
     private struct Waiter {
+        let clientId: ObjectIdentifier
         let notifyRotation: @MainActor (String) -> Void
         let adoptRotation: @MainActor (String) -> Void
         var continuation: CheckedContinuation<AuthToken, Error>?
@@ -20,6 +21,7 @@ enum EuropeCCIRefresh {
     private struct Flight {
         var waiters: [UUID: Waiter]
         var rotatedToken: String?
+        var notifiedClients: Set<ObjectIdentifier> = []
     }
 
     private static var inFlight: [Key: Flight] = [:]
@@ -30,6 +32,7 @@ enum EuropeCCIRefresh {
 
     static func run(
         for key: Key,
+        clientId: ObjectIdentifier,
         notifyRotation: @escaping @MainActor (String) -> Void,
         adoptRotation: @escaping @MainActor (String) -> Void,
         operation: @escaping @MainActor (_ recordRotation: (String) -> Void) async throws -> AuthToken
@@ -38,10 +41,15 @@ enum EuropeCCIRefresh {
         let token = try await withTaskCancellationHandler {
             try Task.checkCancellation()
             return try await withCheckedThrowingContinuation { continuation in
-                let waiter = Waiter(notifyRotation: notifyRotation, adoptRotation: adoptRotation, continuation: continuation)
+                let waiter = Waiter(
+                    clientId: clientId, notifyRotation: notifyRotation,
+                    adoptRotation: adoptRotation, continuation: continuation
+                )
                 if inFlight[key] != nil {
                     inFlight[key]?.waiters[id] = waiter
-                    if let rotatedToken = inFlight[key]?.rotatedToken { notifyRotation(rotatedToken) }
+                    if let rotatedToken = inFlight[key]?.rotatedToken {
+                        notify(waiter, of: rotatedToken, for: key)
+                    }
                     return
                 }
 
@@ -53,7 +61,7 @@ enum EuropeCCIRefresh {
                             inFlight[key]?.rotatedToken = rotatedToken
                             if let flight = inFlight[key] {
                                 for waiter in flight.waiters.values {
-                                    waiter.notifyRotation(rotatedToken)
+                                    notify(waiter, of: rotatedToken, for: key)
                                 }
                             }
                         }
@@ -83,5 +91,10 @@ enum EuropeCCIRefresh {
         }
         try Task.checkCancellation()
         return token
+    }
+
+    private static func notify(_ waiter: Waiter, of token: String, for key: Key) {
+        guard inFlight[key]?.notifiedClients.insert(waiter.clientId).inserted == true else { return }
+        waiter.notifyRotation(token)
     }
 }

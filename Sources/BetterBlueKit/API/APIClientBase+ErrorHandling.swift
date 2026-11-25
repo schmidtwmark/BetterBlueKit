@@ -21,7 +21,7 @@ extension APIClientBase {
         try checkCCSPResponseForErrors(data: data)
 
         if httpResponse.statusCode == 401 || httpResponse.statusCode == 502 {
-            let detail = responseBody ?? "Unknown error"
+            let detail = SensitiveDataRedactor.redactErrorText(responseBody) ?? "Unknown error"
             if httpResponse.statusCode == 401 {
                 throw APIError.invalidCredentials("Authentication expired: \(detail)", apiName: apiName)
             }
