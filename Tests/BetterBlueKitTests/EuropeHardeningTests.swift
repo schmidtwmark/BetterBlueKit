@@ -70,11 +70,12 @@ struct EuropeHardeningTests {
 
     private func makeClient(
         brand: Brand = .kia, accountId: UUID = UUID(), refreshToken: String? = nil,
-        password: String = "", deviceId: String? = "synthetic-device", logSink: HTTPLogSink? = nil
+        password: String = "", deviceId: String? = "synthetic-device",
+        redactPII: Bool = true, logSink: HTTPLogSink? = nil
     ) -> any EuropeCCSPClient {
         let configuration = APIClientConfiguration(
             region: .europe, brand: brand, username: "test@example.com", password: password,
-            refreshToken: refreshToken, pin: "1234", accountId: accountId, logSink: logSink, deviceId: deviceId
+            refreshToken: refreshToken, pin: "1234", accountId: accountId, logSink: logSink, redactPII: redactPII, deviceId: deviceId
         )
         let sessionConfiguration = URLSessionConfiguration.ephemeral
         sessionConfiguration.protocolClasses = [StubProtocol.self]
@@ -211,6 +212,100 @@ struct EuropeHardeningTests {
         #expect(paths == [refreshPath, authorizePath])
     }
 
+    @Test func olderTokenCannotBlockRefreshOfNewerToken() async throws {
+        stub([
+            refreshPath: Reply(status: 401),
+            exchangePath: Reply(body: #"{"accessToken":"new-ccs"}"#)
+        ])
+        let (requests, signal) = AsyncStream.makeStream(of: String.self)
+        let releaseRefresh = DispatchSemaphore(value: 0)
+        StubProtocol.state.withLock {
+            $0.onRequest = { signal.yield($0) }
+            $0.refreshHold = releaseRefresh
+        }
+        defer { signal.finish() }
+        let accountId = UUID()
+        var newerSet = try #require(CCITokenSet.decodeFromStorage(Self.storedCCI))
+        newerSet.refreshToken = "newer-refresh"
+        let oldClient = makeClient(accountId: accountId, refreshToken: Self.storedCCI)
+        let newClient = makeClient(accountId: accountId, refreshToken: newerSet.encodeForStorage())
+        let oldLogin = Task { try await oldClient.login() }
+        var iterator = requests.makeAsyncIterator()
+        #expect(await iterator.next() == refreshPath)
+        StubProtocol.state.withLock {
+            $0.refreshHold = nil
+            $0.replies[refreshPath] = Reply(body: #"{"accessToken":"rotated-cci","refreshToken":"rotated-refresh"}"#)
+        }
+        let newLogin = Task { try await newClient.login() }
+        await Task.yield()
+        releaseRefresh.signal()
+        let oldError = await #expect(throws: APIError.self) { try await oldLogin.value }
+        #expect(oldError?.errorType == .invalidCredentials)
+        let newToken = try await newLogin.value
+        #expect(newToken.accessToken == "new-ccs")
+        #expect(paths == [refreshPath, refreshPath, exchangePath])
+    }
+
+    @Test func exchange503PreservesRotationForAllWaitingClients() async throws {
+        stub([
+            refreshPath: Reply(body: #"{"accessToken":"rotated-cci","refreshToken":"rotated-refresh"}"#, delay: 0.1),
+            exchangePath: Reply(status: 503)
+        ])
+        let accountId = UUID()
+        let first = makeClient(accountId: accountId, refreshToken: Self.storedCCI, password: "synthetic-password")
+        let retryLogs = OSAllocatedUnfairLock(initialState: [HTTPLog]())
+        let second = makeClient(
+            accountId: accountId, refreshToken: Self.storedCCI, password: "synthetic-password", redactPII: false
+        ) { log in retryLogs.withLock { $0.append(log) } }
+        let firstLogin = Task { try await first.login() }
+        let secondLogin = Task { try await second.login() }
+        for login in [firstLogin, secondLogin] {
+            let error = await #expect(throws: APIError.self) { try await login.value }
+            #expect(error?.errorType == .serverError)
+        }
+        #expect(paths == [refreshPath, exchangePath])
+        for client in [first, second] {
+            let stored = try #require(client.configuration.refreshToken)
+            #expect(CCITokenSet.decodeFromStorage(stored)?.refreshToken == "rotated-refresh")
+        }
+
+        stub([
+            refreshPath: Reply(body: #"{"accessToken":"latest-cci","refreshToken":"latest-refresh"}"#),
+            exchangePath: Reply(body: #"{"accessToken":"new-ccs"}"#)
+        ])
+        let token = try await second.login()
+        #expect(token.accessToken == "new-ccs")
+        #expect(paths == [refreshPath, exchangePath])
+        let sent = try #require(retryLogs.withLock { logs in
+            logs.last { $0.url.hasSuffix(refreshPath) }?.requestBody
+        })
+        let fields = try JSONDecoder().decode([String: String].self, from: Data(sent.utf8))
+        #expect(fields["refreshToken"] == "rotated-refresh")
+    }
+
+    @Test(arguments: [401, 502])
+    func errorResponseRedactsControlTokenInBothLogSinks(status: Int) async throws {
+        let secret = "synthetic-error-control-token"
+        stub([pinPath: Reply(status: status, body: #"{"controlToken":"synthetic-error-control-token"}"#)])
+        let httpLogs = OSAllocatedUnfairLock(initialState: [HTTPLog]())
+        let client = makeClient { log in httpLogs.withLock { $0.append(log) } }
+        let messageSink = MessageSink()
+        let previousSink = BBLogger.sink
+        BBLogger.sink = messageSink
+        defer { BBLogger.sink = previousSink }
+        let error = await #expect(throws: APIError.self) {
+            try await client.sendCommand(for: vehicle(for: client), command: .lock, authToken: authToken)
+        }
+        #expect(error?.errorType == (status == 401 ? .invalidCredentials : .serverError))
+        #expect(error?.message.contains(secret) == false)
+        let log = try #require(httpLogs.withLock { $0.first })
+        #expect(log.responseStatus == status)
+        #expect(log.responseBody?.contains(#""controlToken":"[REDACTED]""#) == true)
+        let messages = messageSink.messages.withLock { $0.joined(separator: "\n") }
+        #expect(messages.contains("Response \(status)"))
+        #expect(!messages.contains(secret))
+    }
+
     @Test func unavailableRefreshDoesNotAttemptPasswordLogin() async {
         stub([refreshPath: Reply(status: 503)])
         let client = makeClient(refreshToken: Self.storedCCI, password: "synthetic-password")
@@ -301,7 +396,8 @@ struct EuropeHardeningTests {
         #expect(paths.isEmpty)
     }
 
-    @Test(arguments: ["{}", #"{"controlToken":"synthetic-control-token"}"#, #"{"expiresTime":600}"#])
+    @Test(arguments: ["{}", #"{"controlToken":"synthetic-control-token"}"#, #"{"expiresTime":600}"#,
+                      #"{"controlToken":"synthetic-control-token","expiresTime":true}"#])
     func malformedPINResponseIsAProtocolError(body: String) async {
         stub([pinPath: Reply(body: body)])
         let client = makeClient()

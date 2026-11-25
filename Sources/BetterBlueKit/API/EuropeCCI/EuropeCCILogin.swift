@@ -170,12 +170,16 @@ extension APIClientBase {
     }
 
     /// Refresh the CCI token set and re-exchange the CCS token.
-    func cciRefreshLogin(config: EuropeCCIConfig, set: CCITokenSet) async throws -> AuthToken {
+    func cciRefreshLogin(
+        config: EuropeCCIConfig, set: CCITokenSet, onRotation: (String) -> Void
+    ) async throws -> AuthToken {
         let refreshed = try await cciTokenRefresh(config: config, set: set)
+        let stored = refreshed.encodeForStorage()
+        onRotation(stored)
         let (ccsToken, expiresAt) = try await cciExchangeCCSToken(config: config, set: refreshed)
         return AuthToken(
             accessToken: ccsToken,
-            refreshToken: refreshed.encodeForStorage(),
+            refreshToken: stored,
             expiresAt: expiresAt,
             deviceId: configuration.deviceId ?? ""
         )

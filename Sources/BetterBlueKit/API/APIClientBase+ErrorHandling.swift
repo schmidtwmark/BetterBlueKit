@@ -20,18 +20,14 @@ extension APIClientBase {
         // as a typed, user-facing error instead of "HTTP 400: bad request".
         try checkCCSPResponseForErrors(data: data)
 
-        if httpResponse.statusCode == 401 {
-            throw APIError.invalidCredentials(
-                "Authentication expired: \(responseBody ?? "Unknown error")",
-                apiName: apiName
-            )
-        }
-
-        if httpResponse.statusCode == 502 {
-            throw APIError.serverError(
-                "Server error (502): \(responseBody ?? "Unknown error")",
-                apiName: apiName
-            )
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 502 {
+            // The error factories also send this message to BBLogger.
+            let safeBody = SensitiveDataRedactor.redact(SensitiveDataRedactor.elideOversizedValues(responseBody))
+                ?? "Unknown error"
+            if httpResponse.statusCode == 401 {
+                throw APIError.invalidCredentials("Authentication expired: \(safeBody)", apiName: apiName)
+            }
+            throw APIError.serverError("Server error (502): \(safeBody)", apiName: apiName)
         }
 
         if httpResponse.statusCode >= 400 {

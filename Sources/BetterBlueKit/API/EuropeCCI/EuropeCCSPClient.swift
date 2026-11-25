@@ -12,6 +12,7 @@
 //  lives here once.
 //
 
+import CoreFoundation
 import Foundation
 
 // MARK: - Brand spec
@@ -142,30 +143,29 @@ extension EuropeCCSPClient {
     }
 
     private func loginWithCCI(set: CCITokenSet, stored: String) async throws -> AuthToken {
-        let account = EuropeCCIRefresh.Account(id: accountId, brand: brand)
-        let token = try await EuropeCCIRefresh.run(for: account) { [self] in
+        let key = EuropeCCIRefresh.Key(accountId: accountId, brand: brand, refreshToken: set.refreshToken)
+        return try await EuropeCCIRefresh.run(for: key) { [self] rotatedToken in
+            guard key.accountId == accountId, key.brand == brand, configuration.refreshToken == stored else { return }
+            configuration = configuration.with(refreshToken: rotatedToken)
+        } operation: { [self] recordRotation in
             BBLogger.info(.auth, "\(apiName): Starting login flow (CCI token refresh)")
             let token: AuthToken
+            var didRotate = false
             do {
-                token = try await cciRefreshLogin(config: euBrandSpec.cciConfig, set: set)
-            } catch let error as APIError where error.errorType == .invalidCredentials {
-                guard EuropeCCIRefresh.hasWaiters(for: account),
-                      account.id == accountId, account.brand == brand,
+                token = try await cciRefreshLogin(config: euBrandSpec.cciConfig, set: set) { rotatedToken in
+                    didRotate = true
+                    recordRotation(rotatedToken)
+                }
+            } catch let error as APIError where error.errorType == .invalidCredentials && !didRotate {
+                guard EuropeCCIRefresh.hasWaiters(for: key),
+                      key.accountId == accountId, key.brand == brand,
                       configuration.refreshToken == stored, !password.isEmpty else { throw error }
                 BBLogger.info(.auth, "\(apiName): CCI refresh rejected, falling back to password login")
                 token = try await cciPasswordLogin(config: euBrandSpec.cciConfig)
             }
-            adoptCCIRefreshToken(token.refreshToken, account: account, replacing: stored)
             BBLogger.info(.auth, "\(apiName): Login completed successfully")
             return token
         }
-        adoptCCIRefreshToken(token.refreshToken, account: account, replacing: stored)
-        return token
-    }
-
-    private func adoptCCIRefreshToken(_ token: String, account: EuropeCCIRefresh.Account, replacing stored: String) {
-        guard account.id == accountId, account.brand == brand, configuration.refreshToken == stored else { return }
-        configuration = configuration.with(refreshToken: token)
     }
 
     private func loginWithCCIPassword() async throws -> AuthToken {
@@ -416,7 +416,9 @@ extension EuropeCCSPClient {
         )
 
         guard let token = json["controlToken"] as? String, !token.isEmpty,
-              let expires = json["expiresTime"] as? Int, expires > 0 else {
+              let expiration = json["expiresTime"] as? NSNumber,
+              CFGetTypeID(expiration) != CFBooleanGetTypeID(),
+              let expires = expiration as? Int, expires > 0 else {
             throw APIError(
                 message: "Invalid PIN verification response: missing or invalid controlToken or expiresTime.",
                 apiName: apiName
